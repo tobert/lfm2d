@@ -87,19 +87,17 @@ class TestDedupIsCaseSensitive(unittest.TestCase):
                 self.assertIn('duplicate normalized text', out)
 
 
-class TestMergeAndScorecardAgree(unittest.TestCase):
-    """slice6's merge/scorecard carry their own norm(); keep them in step."""
+class TestBuilderNormAgrees(unittest.TestCase):
+    """build_v9.py carries its own norm(); keep it in step with the validators."""
 
-    def test_norm_helpers_are_case_sensitive(self):
+    def test_norm_is_case_sensitive(self):
         import importlib.util
-        for rel in ('training/v9/slice6/merge_slice6.py',
-                    'training/v9/slice6/scorecard.py'):
-            with self.subTest(module=rel):
-                spec = importlib.util.spec_from_file_location('m', REPO / rel)
-                m = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(m)
-                self.assertNotEqual(m.norm('git branch -d x'), m.norm('git branch -D x'))
-                self.assertEqual(m.norm('a  b'), m.norm('a b'))
+        rel = 'training/v9/build_v9.py'
+        spec = importlib.util.spec_from_file_location('m', REPO / rel)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        self.assertNotEqual(m.norm('git branch -d x'), m.norm('git branch -D x'))
+        self.assertEqual(m.norm('a  b'), m.norm('a b'))
 
 
 if __name__ == '__main__':

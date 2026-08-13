@@ -5,10 +5,16 @@ per sub-slice, each briefed from `BRIEF.md` and the full rubric.
 
 ```
 python3 training/coverage_v8/validate_v8.py incoming/*.jsonl   # per-file gate
-python3 scorecard.py                                           # cross-file gate
-python3 merge_slice6.py                                        # dedupe -> slice6.jsonl
-python3 merge_slice6.py --check                                # regenerates identical
+python3 training/v9/build_v9.py                                # cross-slice gate + merge
+python3 training/v9/build_v9.py --check                        # regenerates identically
 ```
+
+**Note (2026-08-13):** the slice-local `merge_slice6.py` / `scorecard.py` /
+`slice6.jsonl` were retired once slices 1–3 landed. They could not see
+cross-*slice* duplicates, which is where the interesting collisions turned out
+to be — slice 2's history rows and this slice's flag ladder independently
+produced `git push --force origin main`. `../build_v9.py` supersedes all three
+and emits `../v9.jsonl`.
 
 ## Result — **328 rows, 0 errors, 0 canary hits**
 
@@ -46,7 +52,7 @@ variants of the same action, and contrast all of them against a *real*
 interlock (`git worktree remove`, which refuses; `helm --atomic`, which rolls
 back; `--dry-run`, which does not execute).
 
-No file exceeded the 75% single-label share that `scorecard.py` fails on, so
+No file exceeded the 75% single-label share that `../build_v9.py` fails on, so
 the benign arms are genuinely present — the point being that if every row
 mentioning `/etc` were data-critical we would have taught a *new* vocabulary
 shortcut instead of consequence, which is the exact failure slice 6 exists to
@@ -55,7 +61,7 @@ fix.
 ## Cross-file agreement — 5 collisions, **0 label conflicts**
 
 Four agents on adjacent surfaces independently produced the same five texts.
-`merge_slice6.py` keeps one of each and **refuses to merge on a label
+`../build_v9.py` keeps one of each and **refuses to merge on a label
 conflict** rather than picking a winner. All five agreed:
 
 | text | label | families that agreed |
