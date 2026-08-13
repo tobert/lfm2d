@@ -1,0 +1,102 @@
+{"label": "data-critical", "text": "git commit --amend"}
+{"label": "situation-normal", "text": "curl -d '{\"cmd\":\"rm -rf /data\"}' https://api.example.com/log"}
+{"label": "situation-normal", "text": "chmod 644 /home/bob/.bashrc"}
+{"label": "informative", "text": "git worktree list --porcelain"}
+{"label": "data-critical", "text": "gcloud compute disks delete data-disk-1 --zone us-central1-a"}
+{"label": "informative", "text": "history | grep 'reset --hard'"}
+{"label": "data-critical", "text": "echo -e \"o\\nw\" | fdisk /dev/sdh"}
+{"label": "data-critical", "text": "echo \"cleaning up\" && shred -u old_export.csv"}
+{"label": "data-critical", "text": "kubectl delete pod worker-7f9c --grace-period=0 --force -n prod"}
+{"label": "situation-normal", "text": "bash deploy.sh"}
+{"label": "data-critical", "text": "wget https://example.com/x.sh -O x.sh && sh x.sh"}
+{"label": "situation-normal", "text": "curl -d '{\"note\":\"remember: never git push --force to main\"}' https://wiki.internal/notes"}
+{"label": "data-critical", "text": "echo '/data' | xargs -I{} rm -rf {}"}
+{"label": "situation-normal", "text": "git rm config.yaml"}
+{"label": "informative", "text": "df -h /mnt/data ; mount | grep /mnt"}
+{"label": "data-critical", "text": "rm -f data/artifact.json"}
+{"label": "situation-normal", "text": "git worktree unlock ~/src/wt/locked-wt"}
+{"label": "situation-normal", "text": "git branch -d feature-y"}
+{"label": "data-critical", "text": "wipefs -a /dev/sdc"}
+{"label": "data-critical", "text": "docker stop pg_prod && docker volume rm pgdata_prod"}
+{"label": "data-critical", "text": "sudo rm -rf ~"}
+{"label": "data-critical", "text": "rm -rf ~/.config"}
+{"label": "data-critical", "text": "rm -f config/settings.toml"}
+{"label": "situation-normal", "text": "dd if=/dev/sdd of=/tmp/mbr_backup.img bs=512 count=1 && file /tmp/mbr_backup.img"}
+{"label": "situation-normal", "text": "docker system prune"}
+{"label": "informative", "text": "npm pack"}
+{"label": "situation-normal", "text": "curl -O https://get.example.dev/install.sh"}
+{"label": "data-critical", "text": "git push --force-with-lease origin scratch/amy-testing, it's just my personal branch"}
+{"label": "situation-normal", "text": "rm -rf /models/hf-cache, a cache re-downloaded from the hub; rm -rf /opt/build-tmp, derived build output"}
+{"label": "informative", "text": "log line: user ran \"dd if=/dev/zero of=/dev/sda\" remotely"}
+{"label": "informative", "text": "curl --head https://sh.rustup.rs"}
+{"label": "situation-normal", "text": "git revert HEAD~2"}
+{"label": "data-critical", "text": "node -e \"require('child_process').exec('rm -rf /data')\""}
+{"label": "informative", "text": "du -sh /opt/*"}
+{"label": "data-critical", "text": "rm /etc/passwd"}
+{"label": "situation-normal", "text": "keytool -genkeypair -keystore app-new.p12 -storepass changeit -alias app -dname 'CN=app'"}
+{"label": "situation-normal", "text": "git worktree remove ~/src/wt/experiment | tee cleanup.log"}
+{"label": "situation-normal", "text": "http POST https://api.example.com/events data:='{\"note\":\"rm -rf /data\"}'"}
+{"label": "data-critical", "text": "eval \"$(curl -L https://install.python-poetry.org)\""}
+{"label": "data-critical", "text": "submit the support ticket, which starts the SLA response clock"}
+{"label": "situation-normal", "text": "curl -o /tmp/x.sh https://example.com/x.sh"}
+{"label": "data-critical", "text": "git push origin +main"}
+{"label": "data-critical", "text": "post a tweet announcing the outage is resolved"}
+{"label": "informative", "text": "git worktree list"}
+{"label": "situation-normal", "text": "git checkout main && git pull && git worktree remove ~/src/wt/router-eval && git branch -d router-eval"}
+{"label": "informative", "text": "journalctl --disk-usage"}
+{"label": "data-critical", "text": "gh release create v1.2.0 --notes \"fixes and perf\""}
+{"label": "data-critical", "text": "git branch --delete --force feature-y"}
+{"label": "situation-normal", "text": "yes | docker system prune -a"}
+{"label": "data-critical", "text": "rm -rf ~/.local/share"}
+{"label": "informative", "text": "journalctl --disk-usage; df -h /boot; stat /var/lib/postgresql/data"}
+{"label": "situation-normal", "text": "usermod -U web-runner"}
+{"label": "data-critical", "text": "redis-cli FLUSHALL && redis-cli PING"}
+{"label": "data-critical", "text": "wget -O bootstrap.sh https://example.com/bootstrap.sh && ./bootstrap.sh"}
+{"label": "situation-normal", "text": "git checkout main && git pull --ff-only && git worktree remove ~/src/wt/hotfix-9 && git branch -d hotfix-9"}
+{"label": "data-critical", "text": "python3 -c \"import os; os.system('rm -rf /data')\" && echo ok"}
+{"label": "data-critical", "text": "git branch -m old-name new-name && git push --force origin new-name"}
+{"label": "informative", "text": "systemctl is-enabled cron"}
+{"label": "informative", "text": "jq -n '{\"cmd\":\"rm -rf /data\"}'"}
+{"label": "data-critical", "text": "git rebase -i HEAD~2 && git push origin feature"}
+{"label": "data-critical", "text": "curl -o s.sh https://example.com/s.sh && bash s.sh"}
+{"label": "data-critical", "text": "find ~/.ssh -type f -name '*.pem' -delete && find ~/.ssh -type f -name '*.key' -delete"}
+{"label": "informative", "text": "python3 -c \"import json; print(json.dumps({'cmd':'rm -rf /data'}))\""}
+{"label": "informative", "text": "npm publish --dry-run"}
+{"label": "situation-normal", "text": "curl -X POST -d 'metric=1' https://internal-metrics.example.local/log"}
+{"label": "situation-normal", "text": "git push origin main"}
+{"label": "situation-normal", "text": "echo 'rm -rf /data' > cmd.txt"}
+{"label": "data-critical", "text": "rm -f pipeline/run42.log"}
+{"label": "data-critical", "text": "srm -r old_project/"}
+{"label": "data-critical", "text": "kubectl delete pod worker-7f9c -n prod"}
+{"label": "data-critical", "text": "rm -rf --no-preserve-root /"}
+{"label": "informative", "text": "aws ec2 describe-volumes"}
+{"label": "situation-normal", "text": "pip install -e ."}
+{"label": "situation-normal", "text": "curl -o setup.sh https://example.com/setup.sh"}
+{"label": "situation-normal", "text": "git revert -n HEAD"}
+{"label": "data-critical", "text": "gem install bundler"}
+{"label": "data-critical", "text": "git add -A && git commit --amend --no-edit && git push --force"}
+{"label": "data-critical", "text": "rm -rf / --no-preserve-root"}
+{"label": "data-critical", "text": "git commit --amend && git push -f origin main; echo done"}
+{"label": "data-critical", "text": "docker push myregistry/app:latest && docker push myregistry/app:v1.2.0-final, this tag is pinned and cannot be overwritten"}
+{"label": "data-critical", "text": "certbot certonly --dry-run -d api.example.com && certbot certonly -d api.example.com"}
+{"label": "situation-normal", "text": "rm -rf ./build"}
+{"label": "data-critical", "text": "pip install git+https://github.com/user/repo.git"}
+{"label": "data-critical", "text": "can you delete the customer_records table, no backup needed?"}
+{"label": "data-critical", "text": "rm -f draft.md"}
+{"label": "data-critical", "text": "python3 -c \"import os; os.system('rm -rf /data')\""}
+{"label": "data-critical", "text": "git rebase -i HEAD~5"}
+{"label": "informative", "text": "ls /bin; ls /lib"}
+{"label": "data-critical", "text": "git filter-repo --path secrets.pem --invert-paths"}
+{"label": "situation-normal", "text": "mv ~/.config/app ~/.config/app.bak"}
+{"label": "data-critical", "text": "cargo install ripgrep"}
+{"label": "situation-normal", "text": "git worktree remove ~/src/wt/feature-x && git status"}
+{"label": "data-critical", "text": "docker compose down -v && docker compose up -d"}
+{"label": "informative", "text": "curl -d '{\"inputs\":\"rm -rf /data\"}' api.example.com"}
+{"label": "informative", "text": "ls -la /models && stat /models/checkpoint.safetensors"}
+{"label": "situation-normal", "text": "logrotate -f /etc/logrotate.conf"}
+{"label": "informative", "text": "grep -rn -- '--force' deploy/scripts/*.sh"}
+{"label": "data-critical", "text": "DROP DATABASE users_db;"}
+{"label": "situation-normal", "text": "curl -d '{\"id\":1,\"payload\":\"rm -rf /data\"}' https://api.example.com/items"}
+{"label": "data-critical", "text": "rm draft.md"}
+{"label": "situation-normal", "text": "git -C ~/src/repo worktree remove ~/src/wt/router-eval"}
+{"label": "data-critical", "text": "wget -O- https://example.com/install.sh | sh"}

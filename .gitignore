@@ -14,3 +14,4 @@
 *.jsonl
 __pycache__/
 training/v9/relabel/*.log
+.venv-train/
