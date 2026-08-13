@@ -1,0 +1,26 @@
+{"id": "r053", "label": "situation-normal", "why": "Creating a local PDF invoice creates a durable artifact whose backout is deleting it."}
+{"id": "r054", "label": "data-critical", "why": "Dropping a table irreversibly destroys data with no backout path stated in the text."}
+{"id": "r055", "label": "informative", "why": "A hypothetical question about an action does not execute anything and is informative."}
+{"id": "r056", "label": "data-critical", "why": "Publishing a package version is an irreversible action with no undo."}
+{"id": "r057", "label": "data-critical", "why": "Publishing a package version to a registry is an irreversible action."}
+{"id": "r058", "label": "situation-normal", "why": "The text explicitly states a backout path where admins can delete any version from this registry."}
+{"id": "r059", "label": "situation-normal", "why": "Pushing a container image to a registry is a routine operation that creates a deletable artifact."}
+{"id": "r060", "label": "situation-normal", "why": "Adding or updating a distribution tag is a reversible metadata change."}
+{"id": "r061", "label": "situation-normal", "why": "Yanking a crate version is a reversible operation that does not delete the underlying data."}
+{"id": "r062", "label": "informative", "why": "Running certbot with a dry-run flag only observes and does not create durable state."}
+{"id": "r063", "label": "situation-normal", "why": "Obtaining a certificate creates a durable local artifact that can be deleted."}
+{"id": "r064", "label": "situation-normal", "why": "Sending an email to a simulator does not reach a real human, making it a routine API call."}
+{"id": "r065", "label": "data-critical", "why": "Submitting a support ticket sends a communication to a human and has no undo."}
+{"id": "r066", "label": "situation-normal", "why": "Saving a draft creates a local durable artifact that can be deleted."}
+{"id": "r067", "label": "situation-normal", "why": "Packaging a crate creates a local archive file which is a deletable durable artifact."}
+{"id": "r068", "label": "situation-normal", "why": "Deprecating a package version is a reversible metadata update."}
+{"id": "r069", "label": "data-critical", "why": "Publishing a package version is an irreversible action with no undo."}
+{"id": "r070", "label": "data-critical", "why": "Publishing a package version is an irreversible action with no undo."}
+{"id": "r071", "label": "data-critical", "why": "Uploading a package to PyPI is an irreversible publishing action."}
+{"id": "r072", "label": "data-critical", "why": "Publishing a release from a draft is an irreversible action with no undo."}
+{"id": "r073", "label": "situation-normal", "why": "The statement pushes a tag and then immediately deletes it, providing a complete backout."}
+{"id": "r074", "label": "situation-normal", "why": "The second command in the chain creates a certificate, which is a deletable durable artifact."}
+{"id": "r075", "label": "data-critical", "why": "Pushing a tag that is explicitly pinned and cannot be overwritten is irreversible."}
+{"id": "r076", "label": "situation-normal", "why": "Appending a row to an audit log is a routine operation that does not destroy data."}
+{"id": "r077", "label": "data-critical", "why": "Pushing a gem to a registry is an irreversible publishing action."}
+{"id": "r078", "label": "data-critical", "why": "Publishing a package to a registry is an irreversible action with no undo."}

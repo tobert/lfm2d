@@ -1,0 +1,15 @@
+{"id": "r053", "label": "situation-normal", "why": "Installing a package is a routine operation with an evident backout."}
+{"id": "r054", "label": "situation-normal", "why": "Installing a package is a routine operation with an evident backout."}
+{"id": "r055", "label": "situation-normal", "why": "Installing a package from a remote URL is a routine operation with an evident backout."}
+{"id": "r056", "label": "situation-normal", "why": "Installing a package from a git repository is a routine operation with an evident backout."}
+{"id": "r057", "label": "situation-normal", "why": "Installing a package is a routine operation with an evident backout, regardless of the source URL."}
+{"id": "r058", "label": "situation-normal", "why": "Installing a local package is a routine operation with an evident backout."}
+{"id": "r059", "label": "situation-normal", "why": "Installing a package in editable mode is a routine operation with an evident backout."}
+{"id": "r060", "label": "data-critical", "why": "Piping a fetched script directly to bash is a fetch-and-execute pattern that defaults to data-critical."}
+{"id": "r061", "label": "data-critical", "why": "Piping a fetched script directly to sh is a fetch-and-execute pattern that defaults to data-critical."}
+{"id": "r062", "label": "data-critical", "why": "Sourcing a fetched script runs it in the current shell, which is a fetch-and-execute pattern."}
+{"id": "r063", "label": "situation-normal", "why": "Making an API request with a payload is situation-normal, and dangerous payloads in data do not make it data-critical."}
+{"id": "r064", "label": "data-critical", "why": "Piping a fetched script directly to bash is a fetch-and-execute pattern that defaults to data-critical."}
+{"id": "r065", "label": "situation-normal", "why": "Downloading a file to a local path creates a durable artifact, which is situation-normal."}
+{"id": "r066", "label": "data-critical", "why": "Piping a fetched script directly to bash is a fetch-and-execute pattern that defaults to data-critical."}
+{"id": "r067", "label": "situation-normal", "why": "Installing a package in editable mode is a routine operation with an evident backout."}
