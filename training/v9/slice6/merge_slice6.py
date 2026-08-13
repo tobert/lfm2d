@@ -27,7 +27,8 @@ OUT = HERE / 'slice6.jsonl'
 
 
 def norm(t):
-    return ' '.join(str(t).lower().split())
+    # Case-SENSITIVE -- see validate_v8.py: `-d` and `-D` are different commands.
+    return ' '.join(str(t).split())
 
 
 def build():

@@ -50,7 +50,9 @@ def check_file(path: Path) -> int:
         wc = len(str(r.get("text", "")).split())
         if not (3 <= wc <= 40):
             errors.append(f"line {i}: text length {wc} words outside 3-40")
-        norm = " ".join(str(r.get("text", "")).lower().split())
+        # Case-SENSITIVE -- see validate_v8.py: lowercasing collides
+        # `git branch -d` with `-D`, which carry opposite labels.
+        norm = " ".join(str(r.get("text", "")).split())
         if norm in texts:
             errors.append(f"line {i}: duplicate normalized text")
         texts.add(norm)

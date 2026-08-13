@@ -58,7 +58,12 @@ def check_file(path: Path) -> int:
         # exactly the R5/R9 forms this batch targets -- not malformed rows
         if not (1 <= wc <= 40):
             errors.append(f"line {i}: text length {wc} words outside 1-40")
-        norm = " ".join(str(r.get("text", "")).lower().split())
+        # Case-SENSITIVE: in shell text case is semantic. Lowercasing here
+        # collided `git branch -d` with `git branch -D` -- opposite ground-truth
+        # labels -- and rejected the second as a duplicate. That is structurally
+        # biased against exactly the interlock-vs-force pairs rules 11-13 turn on.
+        # Found 2026-08-13 during slice-1 generation.
+        norm = " ".join(str(r.get("text", "")).split())
         if norm in texts:
             errors.append(f"line {i}: duplicate normalized text")
         texts.add(norm)
