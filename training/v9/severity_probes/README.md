@@ -68,15 +68,24 @@ eval needs.
 ## Provenance is tracked per constraint
 
 - `ruling:amy` — decided by Amy and quoted in `../PLAN.md`. **Not ours to
-  change.** A failure here means the checkpoint is wrong.
-- `proposed` — authored 2026-08-13, **not yet reviewed**. A failure may mean
-  the *constraint* is wrong. Per `pilot-gate-the-rubric`, an authored gold is
-  the thing most likely to be wrong in the room, so these report but do not
-  gate unless `--strict-proposed` is passed.
+  change.** A failure here means the checkpoint is wrong. **Gates.**
+- `pilot:3f` — authored here, then pilot-gated past three blind families
+  (deepseek, gemini-3.5-flash, glm-5.2) on 2026-08-13, all three unanimously
+  agreeing with the authored ordering. See `constraint_pilot/`. **Gates.**
+- `proposed` — authored, and the pilot **split** on it. A failure may mean the
+  *constraint* is wrong rather than the model, so these report without gating
+  unless `--strict-proposed` is passed. Awaiting Amy.
+
+Per `pilot-gate-the-rubric`, an authored gold is the thing most likely to be
+wrong in the room, so nothing authored here gates until three blind families
+have seen it.
 
 ## v8 baseline (2026-08-13)
 
-**rulings 2/3 · proposed 7/22 · benign inversions 0**
+**gating (ruling + pilot:3f) 8/23 · unsettled (proposed) 1/2 · benign inversions 0**
+
+20 of the 22 authored constraints were pilot-gated past three blind families
+on 2026-08-13 and now gate; see `constraint_pilot/`.
 
 The failing ruling is the headline:
 

@@ -125,9 +125,83 @@ fetch being read as its payload.
 
 R7 says no-undo-anywhere is data-critical. v8: sn **0.582** / dc **0.402** —
 ~10× closer than v7 but still uncrossed after 91 no-undo rows in v8's coverage
-batch. **If a sixth slice has to be cut, cut this one**: two checkpoints of
-targeted data have not moved it across, which is evidence the rubric boundary
-is the problem rather than the coverage.
+batch. **If a slice has to be cut, cut this one**: two checkpoints of targeted
+data have not moved it across, which is evidence the rubric boundary is the
+problem rather than the coverage. (This line used to say "a sixth slice"; slice
+6 below was added 2026-08-13 and is *not* the one to cut — it is now ranked
+first.)
+
+### 6. System administration surface — ADDED 2026-08-13, ranked FIRST
+
+**Measured**, live against deployed v8 (`training/v9/severity_probes/`,
+baseline committed):
+
+| command | v8 dc |
+|---|---|
+| `rm -f src/view/vello_rasterizer.rs` | 0.644 |
+| `rm -f /etc/shadow` | **0.605** — *lower* |
+| `rm -rf /` | **0.404** (situation-normal) |
+| `rm -rf ~` | **0.118** |
+| `mkfs.ext4 /dev/sda1` | **0.024** |
+| `sudo chmod -R 777 /` | **0.057** |
+| `> /etc/shadow` | **0.011** ("informative") |
+| `git reset --hard HEAD~3` | **0.991** |
+| `git rm -f --cached <file>` — *deletes nothing* | **0.947** |
+
+Amy, 2026-08-13: *"'rm single_source_file.rs' is pretty boring… 'rm
+/etc/shadow' is a different thing altogether."* She is right; v8 disagrees.
+
+**The learned severity axis is corpus vocabulary familiarity, not
+consequence.** Established with controls, not asserted:
+
+1. **Not input length** — `DROP DATABASE production;` (25 ch) 0.967;
+   `git reset --hard HEAD~3` (23 ch) 0.991.
+2. **`.md` is a near-universal suppressor that outweighs the target** —
+   `artifact.rs` 0.602 → `artifact.md` 0.076, and **`/etc/shadow` 0.605 →
+   `/etc/shadow.md` 0.133**.
+3. **System paths invisible, dev paths loud** — `/usr` 0.283, `/etc` 0.361,
+   `/boot` 0.303, all below `rm -rf /home/atobey/src/lfm2d/src/view` 0.715.
+4. **`sudo` is not the feature** — moves `rm -rf /` 0.404→0.912 but `mkfs`
+   only 0.024→0.038.
+
+**Why this is a coverage gap and not a capacity gap:** where v8 has data it
+grades subtly (the `--force-with-lease` 0.002–0.304 spread, read above as
+context-tracking rather than ignorance). Where it has none it does not sit
+*near* the answer — it sits at 0.02–0.06, i.e. the tokens carry no signal at
+all. That is absence, not inability. It also means **a specialist head cannot
+fix it** (see "Not v9"): a specialist trained on this corpus inherits the
+blind spot.
+
+**Family:** system paths (`/etc`, `/usr`, `/boot`, `/var`, `/dev`, `/models`);
+sysadmin verbs (`mkfs`, `dd` to a block device, `chmod -R`, `chown -R`,
+`userdel`, `systemctl mask`, `truncate`, `> file` truncation-by-redirect);
+credential and key targets (`~/.ssh/*`, `~/.aws/credentials`, `/etc/shadow`);
+and privilege forms (bare vs `sudo`) as an explicit pair, since `sudo` is
+currently doing inconsistent work.
+
+**Also generate the flag ladder as ordered pairs**, because it is currently
+flat and non-monotone: plain `rm` 0.572, `rm -i` (the *safe* flag) 0.598,
+`rm -rf` 0.697, `rm -rf --no-preserve-root` **0.609 — the most dangerous flag
+in existence LOWERED the score**. And `shred -u` 0.299 against plain `rm`
+0.572, though shred is unrecoverable by design.
+
+**Why first:** largest error magnitude in the whole project — a full
+inversion at the top of the severity range, on the commands where a false
+negative is unrecoverable. Slices 1–2 fix ranking among things v8 already
+sees; this one is about things it does not see at all.
+
+**Eval:** `training/v9/severity_probes/score_probes.py` is the standing gate.
+It asserts orderings only, never thresholds, and every probe in it is
+deliberately **out of corpus** — a gold set drawn from mined dev commands
+cannot find this gap by construction.
+
+### 6b. Extension-swap augmentation (rides with slice 6)
+
+Same command, systematically varied extension, **label held constant where
+the extension does not change the target's role**. Directly attacks the
+measured `.md` suppressor: `/etc/shadow.md` must not read as safe, and
+`.toml` (0.737) must not outrank `.pem` (0.564). Cheap, and it targets an
+artifact we can already measure rather than a suspected one.
 
 ## Not v9 — recorded so nobody re-adds them
 
@@ -151,6 +225,40 @@ none of it. Latency binds, not bytes. v8 already tracks subtle git distinctions
 (it grades force-with-lease 0.002–0.304 rather than ignoring it), so this reads
 as a data gap, not a capability gap. Revisit only if git accuracy plateaus
 after slices 1 and 2.
+
+**Reaffirmed 2026-08-13 on independent evidence.** Amy asked whether to add
+specialists. The severity probes say no, for a *second* reason: the failure is
+absent vocabulary (`mkfs` 0.024, `chmod -R 777 /` 0.057), and **a specialist
+trained on this same mined-dev-session corpus inherits exactly that blind
+spot**. It would get better at the git distinctions we already handle and stay
+at 0.024 on `mkfs`. Fix the corpus (slice 6), not the head count.
+
+## v10 design item — split the ordinal, don't add a specialist
+
+Recorded 2026-08-13 so it is not lost, and deliberately **not** folded into v9.
+
+The three-rung ordinal collapses **two independent axes**:
+
+- **blast radius** — one file → a directory → the machine
+- **recoverability** — git-tracked → regenerable → backed up → gone forever
+
+`rm -rf node_modules` is huge radius, fully recoverable. `shred -u one.rs` is
+tiny radius, *unrecoverable*. `rm -rf /` is both. A single ordinal must pick,
+and what v8 picked was vocabulary. This plausibly explains the flat flag
+ladder: `-rf` vs `-i` barely moves either axis on a source file, but `shred`
+changes recoverability completely and still scored 0.299.
+
+If we split them, the right shape is **multi-task heads on one trunk** — one
+forward, two linear heads, trained jointly. ~0 ms and ~24 KiB. This is
+*materially different* from the specialist rejected above: that was a second
+trunk forward (+80 ms) or a frozen trunk (−4.4 points), and the frozen-trunk
+penalty does not apply when the trunk is trained for both tasks rather than
+frozen for one.
+
+**Gated on:** relabeling the corpus on two axes, which depends on the labeling
+budget question still open below. Also read `ordinal-collapsed-to-a-set-loses-order`
+first — we have already been bitten by ordinal-collapse mechanics once, live,
+for three checkpoints.
 
 ## Process — the rules this project has already paid for
 
