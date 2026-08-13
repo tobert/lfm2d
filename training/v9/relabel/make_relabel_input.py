@@ -6,7 +6,7 @@ its note, and its author tag are all stripped — a relabel that can see the
 proposal is not an independent second opinion, it is a confirmation bias
 harness.
 
-    python3 make_relabel_input.py flagladder > rendered_flagladder.txt
+    python3 make_relabel_input.py slice6/flagladder > rendered.txt
 
 Row ids are positional (`r001`...) and stable for a given input file, so the
 scorer can join answers back without ever having shown a label.
@@ -16,8 +16,21 @@ import json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-INCOMING = HERE.parent / 'incoming'
-RUBRIC = HERE.parent.parent / 'labeler_prompt.txt'
+RUBRIC = HERE.parent / 'labeler_prompt.txt'
+
+# Targets are named "<slice>/<stem>", e.g. "slice6/flagladder" -- the harness
+# moved up from slice6/ once slices 1-3 landed, because a per-slice copy of it
+# would drift the moment one script was fixed.
+def resolve(target):
+    if '/' not in target:
+        raise SystemExit(f'target must be "<slice>/<stem>", got {target!r}')
+    sl, stem = target.split('/', 1)
+    src = HERE.parent / sl / 'incoming' / f'{stem}.jsonl'
+    raw = HERE / 'raw' / sl / stem
+    if not src.exists():
+        raise SystemExit(f'no such file: {src}')
+    return src, raw
+
 
 HEADER = """You are labeling shell statements that an execution gate will see.
 
@@ -45,11 +58,11 @@ itself shows.
 def main():
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
-    stem = sys.argv[1]
-    src = INCOMING / f'{stem}.jsonl'
+    target = sys.argv[1]
+    src, _ = resolve(target)
     rows = [json.loads(l) for l in src.read_text().splitlines() if l.strip()]
 
-    # Optional 1-based inclusive slice: make_relabel_input.py flagladder 1 26
+    # Optional 1-based inclusive slice: make_relabel_input.py slice6/flagladder 1 26
     # Ids stay GLOBAL (r001..) so chunks join back without renumbering. A
     # 78-row ask made gemini-3.5-flash truncate at r032 mid-token and emit
     # visible reasoning; ~26 rows per call keeps the output well-formed.

@@ -11,7 +11,7 @@ question, and the generator is not privileged: measure-disagreement-dont-
 declare-it. Rows are reported so a human reads the reasoning, not so a
 majority overwrites a label.
 
-    python3 score_relabel.py flagladder
+    python3 score_relabel.py slice6/flagladder
 
 Committed with the numbers it produces, per commit-the-scorer.
 """
@@ -21,19 +21,31 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-INCOMING = HERE.parent / 'incoming'
 RANK = {'informative': 0, 'situation-normal': 1, 'data-critical': 2}
+
+# Targets are named "<slice>/<stem>", e.g. "slice6/flagladder" -- the harness
+# moved up from slice6/ once slices 1-3 landed, because a per-slice copy of it
+# would drift the moment one script was fixed.
+def resolve(target):
+    if '/' not in target:
+        raise SystemExit(f'target must be "<slice>/<stem>", got {target!r}')
+    sl, stem = target.split('/', 1)
+    src = HERE.parent / sl / 'incoming' / f'{stem}.jsonl'
+    raw = HERE / 'raw' / sl / stem
+    if not src.exists():
+        raise SystemExit(f'no such file: {src}')
+    return src, raw
+
 
 
 def main():
-    stem = sys.argv[1] if len(sys.argv) > 1 else 'flagladder'
-    rows = [json.loads(l) for l in (INCOMING / f'{stem}.jsonl').read_text().splitlines()
-            if l.strip()]
+    stem = sys.argv[1] if len(sys.argv) > 1 else 'slice6/flagladder'
+    src, raw_dir = resolve(stem)
+    rows = [json.loads(l) for l in src.read_text().splitlines() if l.strip()]
     by_id = {f'r{i:03d}': r for i, r in enumerate(rows, 1)}
 
     # raw/<stem>/<family>_c<N>.jsonl — per-target dirs so several relabelled
     # files can coexist; chunks of one family merge back on the global ids.
-    raw_dir = HERE / 'raw' / stem
     if not raw_dir.is_dir():
         print(f'no raw dir {raw_dir} — nothing to score for {stem!r}')
         return 2

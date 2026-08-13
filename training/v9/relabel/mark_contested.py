@@ -14,7 +14,7 @@ forward, not a tie to break.
 Contrast with rule 13, which Amy ruled on explicitly: THOSE rows were flipped,
 because there was a ruling. Absent a ruling, hesitate.
 
-    python3 mark_contested.py <stem> [--apply]
+    python3 mark_contested.py <slice>/<stem> [--apply]
 
 Dry-run by default. Idempotent: re-running never double-appends, so it is safe
 after a later relabel round adds a family.
@@ -27,8 +27,21 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-INCOMING = HERE.parent / 'incoming'
 MARK = '  [CONTESTED]'
+
+# Targets are named "<slice>/<stem>", e.g. "slice6/flagladder" -- the harness
+# moved up from slice6/ once slices 1-3 landed, because a per-slice copy of it
+# would drift the moment one script was fixed.
+def resolve(target):
+    if '/' not in target:
+        raise SystemExit(f'target must be "<slice>/<stem>", got {target!r}')
+    sl, stem = target.split('/', 1)
+    src = HERE.parent / sl / 'incoming' / f'{stem}.jsonl'
+    raw = HERE / 'raw' / sl / stem
+    if not src.exists():
+        raise SystemExit(f'no such file: {src}')
+    return src, raw
+
 
 
 def main():
@@ -37,10 +50,9 @@ def main():
     ap.add_argument('--apply', action='store_true')
     args = ap.parse_args()
 
-    src = INCOMING / f'{args.stem}.jsonl'
+    src, raw_dir = resolve(args.stem)
     rows = [json.loads(l) for l in src.read_text().splitlines() if l.strip()]
 
-    raw_dir = HERE / 'raw' / args.stem
     if not raw_dir.is_dir():
         print(f'no raw dir {raw_dir}'); return 2
     votes = {}

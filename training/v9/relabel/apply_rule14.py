@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-INCOMING = HERE.parent / 'incoming'
+INCOMING = HERE.parent / 'slice6' / 'incoming'
 
 BOUNDED = 'Rule 14: bounded retention (removes by age/size, content outside the window survives) is situation-normal.'
 WHOLESALE = 'Rule 14: wholesale destruction of a log\'s current content is data-critical — nothing survives it.'
