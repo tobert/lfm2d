@@ -1,0 +1,6 @@
+{"id": "r079", "label": "informative", "why": "It only searches and counts files without changing any state."}
+{"id": "r080", "label": "informative", "why": "It only queries file metadata and does not modify any data."}
+{"id": "r081", "label": "informative", "why": "It only modifies ephemeral process state and prints an environment variable."}
+{"id": "r082", "label": "situation-normal", "why": "Deleting cache and trash directories is a routine operation on derived or temporary data."}
+{"id": "r083", "label": "situation-normal", "why": "The statement includes a command to regenerate the deleted configuration files."}
+{"id": "r084", "label": "situation-normal", "why": "Moving a directory to a backup path is a routine change with an obvious backout."}

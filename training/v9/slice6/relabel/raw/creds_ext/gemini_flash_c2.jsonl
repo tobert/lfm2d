@@ -1,0 +1,26 @@
+{"id": "r027", "label": "data-critical", "why": "Deletes a Java keystore file containing cryptographic keys without a backout."}
+{"id": "r028", "label": "data-critical", "why": "Deletes a PKCS12 keystore file containing cryptographic keys without a backout."}
+{"id": "r029", "label": "data-critical", "why": "Deletes the primary Kubernetes configuration file without a backout."}
+{"id": "r030", "label": "data-critical", "why": "Deletes a production Kubernetes configuration file without a backout."}
+{"id": "r031", "label": "data-critical", "why": "Irreversibly overwrites the system shadow password file, destroying user credentials."}
+{"id": "r032", "label": "data-critical", "why": "Irreversibly shreds and deletes SSH private and public keys."}
+{"id": "r033", "label": "data-critical", "why": "Deletes SSH private keys and certificates without a backout."}
+{"id": "r034", "label": "data-critical", "why": "Deletes AWS credentials and configuration files without a backout."}
+{"id": "r035", "label": "data-critical", "why": "Deletes the GnuPG directory containing private and public keys without a backout."}
+{"id": "r036", "label": "data-critical", "why": "Deletes a GPG secret key without a backout."}
+{"id": "r037", "label": "data-critical", "why": "Deletes a production Kubernetes secret without a backout."}
+{"id": "r038", "label": "data-critical", "why": "Deletes a production SealedSecret resource without a backout."}
+{"id": "r039", "label": "data-critical", "why": "Deletes production database credentials from Vault without a backout."}
+{"id": "r040", "label": "data-critical", "why": "Deletes production database credentials from 1Password without a backout."}
+{"id": "r041", "label": "data-critical", "why": "Deletes the Docker configuration file containing authentication tokens without a backout."}
+{"id": "r042", "label": "data-critical", "why": "Irreversibly deletes private key configuration from the environment file without a backout."}
+{"id": "r043", "label": "data-critical", "why": "Irreversibly empties the netrc file containing credentials."}
+{"id": "r044", "label": "data-critical", "why": "Deletes all system keyrings containing saved passwords without a backout."}
+{"id": "r045", "label": "data-critical", "why": "Deletes a GitHub token from the macOS keychain without a backout."}
+{"id": "r046", "label": "data-critical", "why": "Deletes a secrets file without a backout."}
+{"id": "r047", "label": "data-critical", "why": "Shreds the SSH key and deletes its temporary backup, leaving no way to recover the data."}
+{"id": "r048", "label": "data-critical", "why": "Rewrites Git history using filter-branch, which is an unrecoverable history modification."}
+{"id": "r049", "label": "data-critical", "why": "Deletes the SSH authorized_keys file without a backout."}
+{"id": "r050", "label": "informative", "why": "Only queries and retrieves the current AWS identity without modifying any state."}
+{"id": "r051", "label": "informative", "why": "Only lists the currently loaded SSH keys in the agent."}
+{"id": "r052", "label": "informative", "why": "Only reads and displays the contents of the SSH authorized_keys file."}

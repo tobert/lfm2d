@@ -31,8 +31,14 @@ def main():
             if l.strip()]
     by_id = {f'r{i:03d}': r for i, r in enumerate(rows, 1)}
 
+    # raw/<stem>/<family>_c<N>.jsonl — per-target dirs so several relabelled
+    # files can coexist; chunks of one family merge back on the global ids.
+    raw_dir = HERE / 'raw' / stem
+    if not raw_dir.is_dir():
+        print(f'no raw dir {raw_dir} — nothing to score for {stem!r}')
+        return 2
     families = defaultdict(dict)
-    for f in sorted((HERE / 'raw').glob('*.jsonl')):
+    for f in sorted(raw_dir.glob('*.jsonl')):
         fam = f.stem.rsplit('_c', 1)[0]
         for line in f.read_text().splitlines():
             if line.strip():

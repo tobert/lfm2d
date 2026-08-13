@@ -1,0 +1,5 @@
+{"id": "r079", "label": "informative", "why": "It only queries block device information and does not modify any state."}
+{"id": "r080", "label": "situation-normal", "why": "It deletes a temporary cache file which is classified as derived data."}
+{"id": "r081", "label": "data-critical", "why": "It permanently deletes a production database volume with no backout path."}
+{"id": "r082", "label": "situation-normal", "why": "It deletes a builder cache volume which contains regenerable derived data."}
+{"id": "r083", "label": "informative", "why": "It lists docker volumes and does not alter any durable state."}
