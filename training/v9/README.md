@@ -22,8 +22,8 @@ python3 -m unittest discover training/tests
 | **6** | system administration surface (+6b extensions) | 334 | generated, relabeled |
 
 Merged: **547 rows** after deduping 9 cross-file repeats —
-**279 data-critical (51.0%) · 113 informative (20.7%) · 155 situation-normal
-(28.3%)**, 33 contested (6.0%), **17 author tags across 10 model families**.
+**279 data-critical (51.0%) · 110 informative (20.1%) · 158 situation-normal
+(28.9%)**, 18 contested (3.3%), **17 author tags across 10 model families**.
 
 ## Gates
 
@@ -50,8 +50,18 @@ slice-local tool, which is why `build_v9.py` replaced them.
 - **Rule 14** — logs: bounded retention (`--vacuum-time=30d`) is
   situation-normal; wholesale destruction (`truncate -s 0`) is data-critical.
   Rule 10 does not reach logs.
+- **Rule 15** — fetch-and-execute (`curl … | bash`, `eval "$(curl …)"`)
+  defaults to data-critical: the text cannot show what runs. The other arm of
+  rule 8 — carried text becomes a program once piped into an interpreter.
+- **Rule 8 now biases UPWARD** — it removes the *payload* from consideration,
+  not the carrier (`git commit` still creates a commit), and ambiguity resolves
+  to `situation-normal` or above, never down to `informative`. Amy: *"bias
+  towards labeling data-critical or situation-normal when they're detected in
+  the data and/or it's ambiguous."*
 
-Both came out of blind relabel passes finding the same disagreement repeatedly.
+All four came out of blind relabel passes finding the same disagreement
+repeatedly. One question Amy left deliberately open — bare `git restore .`,
+where she is comfortable with the inconsistency — is recorded in `PLAN.md`.
 
 ## What we learned about the generators
 
@@ -78,7 +88,7 @@ stable measurement on ambiguous rows.
 
 - **Labels are PROPOSALS.** Bulk blind labeling still gated on budget. Every
   row carries its `author` tag so a later pass can disagree row by row.
-- **33 contested rows (6.0%)** hold their original label with the dissent in
+- **18 contested rows (3.3%)** hold their original label with the dissent in
   `note`, per Amy: *"hesitate where gen/relabel disagree."*
 - **All 7 files have had a blind cross-family relabel pass** (86.7%–97.2%);
   see `relabel/README.md`. Five open questions came out of it, listed there.

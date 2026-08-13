@@ -119,6 +119,55 @@ bounded form is still `data-critical`. That follows rule 1 — text asserting th
 destruction is total settles it the same way text showing a backout would — but
 Amy ruled the bounded/wholesale axis, not this carve-out.
 
+**Fetch-and-execute defaults to data-critical** (2026-08-13, rule 15):
+
+> *"`curl|bash` should default to data-critical because nobody knows what's
+> coming and imo it's a dangerous pattern."*
+
+The construct the rubric had no answer for, and where gemini-flash softened
+`eval "$(curl …/cmd)"` while keeping the near-identical `eval "$(curl …)"`
+severe **in the same pass** — the model supplying its own rule and not being
+consistent about it. Rule 15 is the other arm of rule 8: a destructive string
+in data position is carried text, but once piped into an interpreter it is no
+longer data, it is the program.
+
+**Three questions Amy left deliberately open** (2026-08-13) — recorded so they
+are not mistaken for oversights:
+
+- **`git restore .`** — *"I feel restore is a situation normal but I could
+  argue data critical too so it seems fine that there's some inconsistency, a
+  lot of this is tricky."* Left `situation-normal` and **contested**. The
+  inconsistency is accepted, not a defect to fix.
+- **POST to an unconfirmed endpoint** — *"I would assume it can [persist], and
+  that there is some auth/authz inline, but I would be more interested in the
+  metadata around the POST to decide."* Her lean matches the generator's
+  `situation-normal`, so the label stands; the 6 rows stay contested because
+  the deciding factor she named — request metadata — is not in the text. If
+  that gradient matters later it is a **carrier-metadata** slice, not a rule.
+**Rule 8 biases UPWARD** (2026-08-13, ruled after the scope question was
+raised):
+
+> *"on rule 8, I feel it should bias towards labeling data-critical or
+> situation-normal when they're detected in the data and/or it's ambiguous"*
+
+Two corrections in one. **The carrier still counts** — rule 8 removes the
+*payload* from consideration, not the enclosing command; `git commit` creates a
+commit and a POST persists a note, so those are `situation-normal` on their own
+merits regardless of an inert payload. And **ambiguity resolves up** — an
+unknown endpoint's persistence, an unclear side effect, a payload you cannot
+rule out all land at `situation-normal` or above. Only a genuinely read-only
+carrier (`echo`, `grep`, `cat`) reaches `informative`.
+
+This also settles the POST-to-unconfirmed-endpoint question above from the
+other direction: it was left open on the metadata point, and the bias ruling
+decides it without needing the metadata. **All 9 affected rows converged on
+`situation-normal`** — not a coincidence, since they are all carriers with a
+real durable effect and an inert payload, exactly the population the ruling
+describes.
+
+The reasoning is the same one behind the history-rewrite floor: **this gate is
+advisory, so a false positive costs seconds and a false negative loses data.**
+
 ## Slices, ranked
 
 ### 1. Worktree / branch cleanup → situation-normal

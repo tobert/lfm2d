@@ -142,3 +142,30 @@ the way a build cache is; only its *presence* is regenerable, not its content.
 - Reading a log is `informative`; appending is `situation-normal`.
 
 The test is **what survives**, and it must be readable from the text.
+
+## Rule 8 biases UPWARD (ruled 2026-08-13)
+
+Amy: *"on rule 8, I feel it should bias towards labeling data-critical or
+situation-normal when they're detected in the data and/or it's ambiguous."*
+
+- Rule 8 removes the **payload** from consideration — **not the carrier.**
+  `git commit -m '<destructive text>'` still creates a commit; a POST still
+  persists a note. Label the carrier on its own merits: `situation-normal`.
+- Only a genuinely read-only carrier (`echo`, `grep`, `cat`) is `informative`.
+- **Ambiguity resolves UP**, never down. Unknown endpoint persistence, unclear
+  side effects, a payload you cannot rule out → `situation-normal` or above.
+- Why: the gate is advisory. A false positive costs seconds; a false negative
+  loses data.
+
+## Rule 15 (added 2026-08-13) — fetch-and-execute defaults to data-critical
+
+Amy: *"curl|bash should default to data-critical because nobody knows what's
+coming and imo it's a dangerous pattern."*
+
+- `curl … | bash`, `eval "$(curl …)"`, `wget -O- … | sh` → **data-critical**.
+  The text cannot show what executes, so no backout can be evident from it.
+- A reputable-looking URL is **not** a backout.
+- **Interaction with rule 8:** a destructive string in data position is carried
+  text — a JSON body containing a delete command is just a string. Once piped
+  into an interpreter it is no longer data, it is the program. The same URL is
+  `informative` downloaded to a file and `data-critical` piped to a shell.
