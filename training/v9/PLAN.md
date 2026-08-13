@@ -92,6 +92,33 @@ Two consequences generators must reflect:
 The reasoning generalises past flags: **this gate advises an agent, and a speed
 bump sized for a human is not a control.**
 
+**Logs: bounded retention vs wholesale destruction** (2026-08-13). Six rows
+across all four slice-6 files disagreed on this, from four different
+generators — and two generators labelled the *same* operation oppositely
+(`truncate -s 0` on `/var/log` content: `data-critical` in `syspaths`,
+`situation-normal` in `sysverbs`). That is a rubric silence, not a labeler
+failure.
+
+Amy chose the **bounded/wholesale** test over "logs are never derived",
+"depends on the log's role", and "keep rule 10 as-is". Her rationale: it maps
+to **what survives**, which is what recoverability means, and it is textually
+checkable the way rule 1's text-only test is.
+
+- **Bounded** (removes by age or size, the rest survives) → `situation-normal`.
+  `journalctl --vacuum-time=30d`, `find /var/log -mtime +90 -delete`.
+- **Wholesale** (destroys current content, nothing survives) → `data-critical`.
+  `truncate -s 0 access.log`, `xargs rm` over `*.log`, `rm -f run42.log`.
+
+Encoded as rule 14. Rule 10 explicitly does **not** reach logs: a log is not
+regenerated from durable sources the way a build cache is — new lines are new
+events, and only the log's *presence* is regenerable, not its content.
+
+One extension beyond the literal ruling, flagged as such: where the text states
+the removed content is the **only copy** ("the only local audit trail"), a
+bounded form is still `data-critical`. That follows rule 1 — text asserting the
+destruction is total settles it the same way text showing a backout would — but
+Amy ruled the bounded/wholesale axis, not this carve-out.
+
 ## Slices, ranked
 
 ### 1. Worktree / branch cleanup → situation-normal

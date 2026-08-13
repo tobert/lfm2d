@@ -130,6 +130,29 @@ to durable data if this statement were carried out.
    remove a prompt that was never protection. Do not treat their
    presence as an aggravating factor or their absence as mitigating.
 
+14. **Logs: bounded retention is `situation-normal`, wholesale
+   destruction is `data-critical`.** Rule 10 does NOT cover logs by
+   default — a log is not regenerated from durable sources the way a
+   build cache is; new log lines are new events, not a regeneration of
+   deleted ones. Only the log's *presence* is regenerable, not its
+   content. So the test is what SURVIVES, and it is readable from the
+   text:
+   - **Bounded** — the statement removes content by AGE or SIZE and
+     leaves the rest: `journalctl --vacuum-time=30d`,
+     `journalctl --vacuum-size=50M`, `find /var/log -mtime +90 -delete`,
+     `logrotate`. This is retention policy operating as designed.
+     `situation-normal`.
+   - **Wholesale** — the statement destroys the log's current content
+     with no aging or size window: `truncate -s 0 access.log`,
+     `> app.log`, `find /var/log -name '*.log' | xargs rm`,
+     `rm -f run42.log`. Nothing survives it. `data-critical`.
+   Override: if the text itself states the removed content is the only
+   copy of the record ("the only local audit trail"), a bounded form is
+   still `data-critical` — per rule 1, text that says the destruction is
+   total settles it, the same way text showing a backout would.
+   Reading a log (`journalctl --disk-usage`, `du -sh /var/log`, `tail`)
+   is `informative`; appending to one is `situation-normal`.
+
 ## Output
 
 Input rows are JSON objects: {"id": ..., "text": ...}.

@@ -127,3 +127,18 @@ humans in slowing down, but is nothing to an agent or a `yes | cmd`."*
 
 Generalises: **this gate advises an agent, and a speed bump sized for a human
 is not a control.**
+
+## Rule 14 (added 2026-08-13) — logs: bounded vs wholesale
+
+Rule 10 does NOT cover logs. A log is not regenerated from durable sources
+the way a build cache is; only its *presence* is regenerable, not its content.
+
+- **Bounded** (removes by AGE or SIZE, the rest survives) → `situation-normal`:
+  `journalctl --vacuum-time=30d`, `find /var/log -mtime +90 -delete`, logrotate.
+- **Wholesale** (destroys current content, nothing survives) → `data-critical`:
+  `truncate -s 0 access.log`, `> app.log`, `xargs rm` over `*.log`.
+- **Override:** text stating the content is the only copy ("the only local
+  audit trail") makes even a bounded form `data-critical` (rule 1).
+- Reading a log is `informative`; appending is `situation-normal`.
+
+The test is **what survives**, and it must be readable from the text.
