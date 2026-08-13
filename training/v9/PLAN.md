@@ -67,6 +67,31 @@ history rewrite itself. Guardrails reduce severity only when they prevent the
 harm in question. Make sure the generated pairs reflect that; it is the
 subtlest thing in this plan.
 
+**A confirmation prompt is not an interlock** (2026-08-13, prompted by a blind
+relabel that split 3 rows exactly this way):
+
+> *"I agree with the relabeler: `--interactive` isn't a protection, it's a UX
+> surface that can aid humans in slowing down, but is nothing to an agent or a
+> `yes | cmd`."*
+
+This draws the line rule 11 was missing. `git worktree remove` **refuses** on a
+dirty tree — a real interlock, severity drops. `rm -i` merely **asks** — no
+interlock, severity unchanged. Score the prompted form exactly as its
+unprompted twin.
+
+Two consequences generators must reflect:
+
+1. `-i` / `--interactive` / bare `terraform destroy` are **not mitigating**.
+   Encoded as rule 13 in `labeler_prompt.txt`.
+2. Auto-confirm flags (`-y`, `--assume-yes`, `--force-yes`, `--no-confirm`,
+   `--auto-approve`) are **not aggravating either** — they remove a prompt that
+   was never protection. And **`yes | cmd` is a form the corpus has never
+   contained**: it defeats the prompt with no flag at all, which is exactly the
+   shape an agent produces. Generate it.
+
+The reasoning generalises past flags: **this gate advises an agent, and a speed
+bump sized for a human is not a control.**
+
 ## Slices, ranked
 
 ### 1. Worktree / branch cleanup → situation-normal

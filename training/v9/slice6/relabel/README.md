@@ -61,13 +61,25 @@ confirmation prompt count as an interlock that lowers severity?**
 The generator read the prompt as "a text-evident human checkpoint". The
 relabeler read it as no protection at all — you can just say yes.
 
-Rule 4 says an interlock lowers severity **only when it prevents the harm in
-question**. A confirmation prompt does not *prevent* the deletion; it confirms
-it. If the relabeler is right, the whole `-i` rung of the flag ladder collapses
-into data-critical and several generated labels need flipping. **This is
-Amy's call, and it is worth making explicitly** — it generalises to `-i`,
-`--interactive`, bare `terraform destroy`, `helm uninstall`, and every
-"are you sure?" flow.
+### RESOLVED — Amy ruled for the relabeler, 2026-08-13
+
+> *"I agree with the relabeler: `--interactive` isn't a protection, it's a UX
+> surface that can aid humans in slowing down, but is nothing to an agent or a
+> `yes | cmd`."*
+
+All three rows flipped **situation-normal → data-critical**. Now **rule 13** in
+`../../labeler_prompt.txt` and in PLAN.md's rulings section, with the line it
+draws against rule 11 stated explicitly: `git worktree remove` **refuses** on a
+dirty tree (real interlock, severity drops); `rm -i` merely **asks** (no
+interlock, severity unchanged).
+
+The `yes | cmd` half of the ruling exposed a form the corpus had never
+contained, now covered by `../incoming/autoconfirm.jsonl` (20 rows). Post-fix
+agreement on these three rows is 3/3.
+
+**The relabel earned its cost here.** A single-authored file on the subtlest
+rule produced three rows that were wrong in the same way, and one blind pass
+found all three and nothing else.
 
 Two more genuine ones:
 
