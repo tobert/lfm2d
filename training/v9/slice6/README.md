@@ -1,0 +1,87 @@
+# slice 6 — system administration surface, batch 1
+
+First generation batch for PLAN.md slice 6 (+6b). Four Sonnet subagents, one
+per sub-slice, each briefed from `BRIEF.md` and the full rubric.
+
+```
+python3 training/coverage_v8/validate_v8.py incoming/*.jsonl   # per-file gate
+python3 scorecard.py                                           # cross-file gate
+python3 merge_slice6.py                                        # dedupe -> slice6.jsonl
+python3 merge_slice6.py --check                                # regenerates identical
+```
+
+## Result — **309 rows, 0 errors, 0 canary hits**
+
+| file | rows | data-critical | informative | situation-normal | compound | authors |
+|---|---|---|---|---|---|---|
+| `syspaths` | 84 | 41 | 24 | 19 | 33% | deepseek 84 |
+| `sysverbs` | 83 | 34 | 24 | 25 | 35% | gemini-flash 72, sonnet 11 |
+| `flagladder` | 78 | 49 | 10 | 19 | 27% | sonnet 78 |
+| `creds_ext` | 69 | 48 | 10 | 11 | 29% | deepseek 39, sonnet 22, **gemini-pro 8** |
+| **merged** | **309** | **168 (54.4%)** | **67 (21.7%)** | **74 (23.9%)** | — | 7 author tags |
+
+139 distinct verbs · 199 distinct resources · 7 contested (2.3%).
+
+No file exceeded the 75% single-label share that `scorecard.py` fails on, so
+the benign arms are genuinely present — the point being that if every row
+mentioning `/etc` were data-critical we would have taught a *new* vocabulary
+shortcut instead of consequence, which is the exact failure slice 6 exists to
+fix.
+
+## Cross-file agreement — 5 collisions, **0 label conflicts**
+
+Four agents on adjacent surfaces independently produced the same five texts.
+`merge_slice6.py` keeps one of each and **refuses to merge on a label
+conflict** rather than picking a winner. All five agreed:
+
+| text | label | families that agreed |
+|---|---|---|
+| `mkfs.ext4 /dev/sda1` | data-critical | sonnet, deepseek |
+| `rm -rf /etc` | data-critical | sonnet, deepseek |
+| `> /etc/shadow` | data-critical | deepseek, gemini-flash |
+| `terraform destroy -auto-approve` | data-critical | sonnet, gemini-flash |
+| `terraform plan -destroy` | **informative** | sonnet, gemini-flash |
+
+Unplanned inter-annotator agreement across three model families, 5/5. Small,
+but it is free evidence the rubric transfers.
+
+## Model routing actually used
+
+Per Amy's budget guidance: deepseek for bulk, gemini-flash for one slice,
+**exactly 2** gemini-pro calls on the subtlest judgements, **no OpenRouter**.
+
+**Local (`lfm25-8b-a1b`) was trialled and FAILED.** Given the 7-arm `rm` flag
+ladder with the rubric spelled out, it returned schema-valid JSON and labeled
+**every row `data-critical`, including `rm -i` and `rm --interactive=never`** —
+i.e. it reproduced precisely the flat, non-monotone response this batch exists
+to correct, and would have baked the bug back into the training data. It also
+invented `verb` values (`"force-recursive-delete"`) instead of the literal
+command verb. Not usable for rubric-sensitive work; untested for low-stakes
+phrasing variance. (Gemma was not loaded — the local server had lfm25-8b.)
+
+Because of that, `flagladder.jsonl` is **entirely sonnet-authored** — no
+cross-family check on the slice with the subtlest rule (rule 4: which
+interlocks count). That file is the best candidate for a blind relabel pass.
+
+## Labels are PROPOSALS
+
+Bulk blind labeling is still gated on Amy's budget decision. Every `label`
+here is the generator's proposal, carried with its `author` tag so a later
+blind pass can disagree with it row by row.
+
+## What generation surfaced that we did not know
+
+**`rm -rf /` has a built-in interlock.** Verified against the binary: GNU
+coreutils 9.11 ships `--preserve-root` as the default, so bare `rm -rf /`
+refuses. Under Amy's own guardrail ruling that may make v8's low score for it
+*defensible*, and it means one of the severity probes is measuring an
+interlock rather than blindness. Written up in
+`../severity_probes/README.md` under "CORRECTION 2026-08-13". Both rows that
+hit this (`sudo rm -rf /`, `chmod -R 000 /`) are marked `contested: true`
+rather than forced.
+
+**`blkdiscard` has no dry-run flag** on this util-linux build — checked
+rather than assumed, so the destructive row was paired with `lsblk -f`
+instead of a fabricated `--dry-run` twin. Worth repeating as a habit: the
+cheapest failure mode in synthetic command data is plausible-looking commands
+that cannot actually run.
