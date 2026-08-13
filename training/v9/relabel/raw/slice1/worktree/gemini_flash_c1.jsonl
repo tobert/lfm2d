@@ -1,0 +1,26 @@
+{"id": "r001", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r002", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r003", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r004", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r005", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r006", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r007", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r008", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r009", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r010", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r011", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r012", "label": "situation-normal", "why": "git worktree remove has a built-in interlock that prevents deleting dirty worktrees."}
+{"id": "r013", "label": "data-critical", "why": "Using the --force flag bypasses the built-in safety interlock of git worktree remove."}
+{"id": "r014", "label": "data-critical", "why": "Using the --force flag bypasses the built-in safety interlock of git worktree remove."}
+{"id": "r015", "label": "data-critical", "why": "Using the --force flag bypasses the built-in safety interlock of git worktree remove."}
+{"id": "r016", "label": "data-critical", "why": "Using the --force flag bypasses the built-in safety interlock of git worktree remove."}
+{"id": "r017", "label": "data-critical", "why": "rm -rf lacks any safety interlocks and permanently deletes the directory."}
+{"id": "r018", "label": "data-critical", "why": "rm -rf lacks any safety interlocks and permanently deletes the directory."}
+{"id": "r019", "label": "data-critical", "why": "rm -rf lacks any safety interlocks and permanently deletes the directory."}
+{"id": "r020", "label": "situation-normal", "why": "git worktree prune is a routine cleanup of administrative metadata."}
+{"id": "r021", "label": "informative", "why": "The --dry-run flag ensures the command only observes and does not modify state."}
+{"id": "r022", "label": "informative", "why": "git worktree list only reads and displays the current worktrees."}
+{"id": "r023", "label": "informative", "why": "git worktree list only reads and displays the current worktrees."}
+{"id": "r024", "label": "situation-normal", "why": "git worktree add is a routine operation that creates a new worktree."}
+{"id": "r025", "label": "situation-normal", "why": "git worktree add is a routine operation that creates a new worktree."}
+{"id": "r026", "label": "situation-normal", "why": "git worktree add is a routine operation that creates a new worktree."}

@@ -1,0 +1,26 @@
+{"id": "r001", "label": "informative", "why": "Streams a JSON payload to a remote log endpoint without creating a local durable artifact."}
+{"id": "r002", "label": "informative", "why": "Streams a JSON payload to a remote store endpoint and outputs the response to stdout."}
+{"id": "r003", "label": "informative", "why": "Streams a JSON payload to a remote events endpoint without creating a local durable artifact."}
+{"id": "r004", "label": "informative", "why": "Processes JSON and outputs to stdout without creating a durable artifact."}
+{"id": "r005", "label": "informative", "why": "Prints a JSON string to stdout without creating a durable artifact."}
+{"id": "r006", "label": "informative", "why": "Prints a JSON string to stdout without creating a durable artifact."}
+{"id": "r007", "label": "situation-normal", "why": "Creates a git commit on a branch, which is a routine operation with an evident backout."}
+{"id": "r008", "label": "informative", "why": "Searches for a string in a directory and only observes data."}
+{"id": "r009", "label": "informative", "why": "Searches for a string in a directory and only observes data."}
+{"id": "r010", "label": "situation-normal", "why": "Writes a string to a local file, creating a durable artifact that can be deleted."}
+{"id": "r011", "label": "situation-normal", "why": "Appends a string to a local file, modifying a durable artifact with an evident backout."}
+{"id": "r012", "label": "situation-normal", "why": "Writes a string to a local configuration file, creating a durable artifact that can be deleted."}
+{"id": "r013", "label": "situation-normal", "why": "Inserts a row into a database table, creating a durable record that can be deleted."}
+{"id": "r014", "label": "informative", "why": "Streams a JSON payload to a remote webhook endpoint without creating a local durable artifact."}
+{"id": "r015", "label": "informative", "why": "Streams a JSON payload to a remote webhook endpoint without creating a local durable artifact."}
+{"id": "r016", "label": "situation-normal", "why": "Writes a string to a local file using Python, creating a durable artifact that can be deleted."}
+{"id": "r017", "label": "situation-normal", "why": "Writes a string to a local file using Node.js, creating a durable artifact that can be deleted."}
+{"id": "r018", "label": "situation-normal", "why": "Creates a git commit on a branch, which is a routine operation with an evident backout."}
+{"id": "r019", "label": "informative", "why": "Searches for a string in shell files and only observes data."}
+{"id": "r020", "label": "informative", "why": "Searches for a string in the current directory and only observes data."}
+{"id": "r021", "label": "situation-normal", "why": "Appends a string to a local log file, modifying a durable artifact with an evident backout."}
+{"id": "r022", "label": "situation-normal", "why": "Writes a string to a local file, creating a durable artifact that can be deleted."}
+{"id": "r023", "label": "informative", "why": "Streams a JSON payload to a remote items endpoint without creating a local durable artifact."}
+{"id": "r024", "label": "informative", "why": "Streams a JSON payload to a remote message endpoint and outputs the response to stdout."}
+{"id": "r025", "label": "informative", "why": "Streams a JSON payload to a remote update endpoint without creating a local durable artifact."}
+{"id": "r026", "label": "data-critical", "why": "Pipes the response of a command-execution endpoint to bash, executing a destructive command with no backout."}

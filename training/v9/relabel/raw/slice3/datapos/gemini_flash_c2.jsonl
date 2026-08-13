@@ -1,0 +1,26 @@
+{"id": "r027", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}
+{"id": "r028", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}
+{"id": "r029", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}
+{"id": "r030", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}
+{"id": "r031", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}
+{"id": "r032", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}
+{"id": "r033", "label": "situation-normal", "why": "Executing a remote command is a routine operation whose changes can be reverted."}
+{"id": "r034", "label": "situation-normal", "why": "Running a remote script is a routine operation whose changes can be reverted."}
+{"id": "r035", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly on a remote host."}
+{"id": "r036", "label": "informative", "why": "It submits text to an API endpoint without creating a durable artifact."}
+{"id": "r037", "label": "informative", "why": "It only reads and searches a file without modifying any state."}
+{"id": "r038", "label": "informative", "why": "It only prints text to the terminal and does not execute the command."}
+{"id": "r039", "label": "informative", "why": "It only prints text to the terminal and does not execute the command."}
+{"id": "r040", "label": "situation-normal", "why": "Creating a git commit is a routine operation with an evident backout."}
+{"id": "r041", "label": "situation-normal", "why": "Writing to a file creates a durable artifact that can be easily deleted."}
+{"id": "r042", "label": "situation-normal", "why": "Writing to a file creates a durable artifact that can be easily deleted."}
+{"id": "r043", "label": "situation-normal", "why": "Appending to a configuration file is a routine modification with an evident backout."}
+{"id": "r044", "label": "situation-normal", "why": "Inserting a row into a database table is a routine state change that can be reverted."}
+{"id": "r045", "label": "informative", "why": "It only reads and searches file contents without modifying state."}
+{"id": "r046", "label": "informative", "why": "It streams data to an external API endpoint without creating a durable artifact."}
+{"id": "r047", "label": "informative", "why": "It only reads and filters data without making any changes."}
+{"id": "r048", "label": "informative", "why": "It only outputs text to the terminal without creating any durable artifact."}
+{"id": "r049", "label": "data-critical", "why": "It permanently deletes durable data with no backout path."}
+{"id": "r050", "label": "data-critical", "why": "It permanently overwrites a storage device, destroying all data irreversibly."}
+{"id": "r051", "label": "situation-normal", "why": "Running a remote script is a routine operation whose changes can typically be undone."}
+{"id": "r052", "label": "data-critical", "why": "It executes a command that deletes durable data irreversibly."}

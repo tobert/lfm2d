@@ -1,0 +1,19 @@
+{"id": "r053", "label": "situation-normal", "why": "The git worktree remove command has a built-in interlock that prevents data loss on a dirty tree."}
+{"id": "r054", "label": "situation-normal", "why": "The git worktree remove command has a built-in interlock that prevents data loss on a dirty tree."}
+{"id": "r055", "label": "situation-normal", "why": "The git worktree remove command has a built-in interlock that prevents data loss on a dirty tree."}
+{"id": "r056", "label": "situation-normal", "why": "The git worktree remove command has a built-in interlock that prevents data loss on a dirty tree."}
+{"id": "r057", "label": "data-critical", "why": "The --force flag disables the built-in safety interlock of git worktree remove."}
+{"id": "r058", "label": "data-critical", "why": "The --force flag disables the built-in safety interlock of git worktree remove."}
+{"id": "r059", "label": "informative", "why": "Listing git branches only reads and observes state without making changes."}
+{"id": "r060", "label": "data-critical", "why": "The --force flag disables the built-in safety interlock of git worktree remove."}
+{"id": "r061", "label": "data-critical", "why": "Using rm -rf on a worktree directory bypasses git safety interlocks and permanently deletes files."}
+{"id": "r062", "label": "informative", "why": "Listing directory contents only reads and observes state."}
+{"id": "r063", "label": "situation-normal", "why": "The git worktree remove command has a built-in interlock that prevents data loss on a dirty tree."}
+{"id": "r064", "label": "data-critical", "why": "Performing a git rebase is a history rewrite with no guaranteed backout path in the text."}
+{"id": "r065", "label": "data-critical", "why": "The --force flag disables the built-in safety interlock of git worktree remove."}
+{"id": "r066", "label": "situation-normal", "why": "Unlocking a git worktree is a routine administrative operation that does not destroy data."}
+{"id": "r067", "label": "situation-normal", "why": "Locking a git worktree is a routine administrative operation that does not destroy data."}
+{"id": "r068", "label": "situation-normal", "why": "The requested actions use commands with active safety interlocks."}
+{"id": "r069", "label": "data-critical", "why": "The request asks to use rm -rf, which bypasses git safety interlocks and permanently deletes files."}
+{"id": "r070", "label": "situation-normal", "why": "The git worktree remove command has a built-in interlock and pruning is a routine operation."}
+{"id": "r071", "label": "data-critical", "why": "The command performs a force push and a force branch deletion, both of which bypass safety interlocks."}

@@ -13,3 +13,4 @@
 /training/data
 *.jsonl
 __pycache__/
+training/v9/relabel/*.log

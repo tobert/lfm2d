@@ -14,16 +14,16 @@ python3 -m unittest discover training/tests
 
 | slice | what | rows | status |
 |---|---|---|---|
-| **1** | worktree / branch cleanup → situation-normal | 71 | generated |
-| **2** | history rewrite → above situation-normal | 76 | generated |
-| **3** | data position, carrier with bare-command payload | 75 | generated |
+| **1** | worktree / branch cleanup → situation-normal | 71 | generated, relabeled |
+| **2** | history rewrite → above situation-normal | 76 | generated, relabeled |
+| **3** | data position, carrier with bare-command payload | 75 | generated, relabeled |
 | 4 | a6 `curl …/reset.sh` | — | not started |
 | 5 | `npm publish` / R7 | — | not started, flagged as the one to cut |
-| **6** | system administration surface (+6b extensions) | 334 | generated, **relabeled** |
+| **6** | system administration surface (+6b extensions) | 334 | generated, relabeled |
 
 Merged: **547 rows** after deduping 9 cross-file repeats —
 **279 data-critical (51.0%) · 113 informative (20.7%) · 155 situation-normal
-(28.3%)**, 18 contested, **17 author tags across 10 model families**.
+(28.3%)**, 33 contested (6.0%), **17 author tags across 10 model families**.
 
 ## Gates
 
@@ -78,9 +78,10 @@ stable measurement on ambiguous rows.
 
 - **Labels are PROPOSALS.** Bulk blind labeling still gated on budget. Every
   row carries its `author` tag so a later pass can disagree row by row.
-- **18 contested rows** hold their original label with the dissent in `note`,
-  per Amy: *"hesitate where gen/relabel disagree."*
-- **Slices 1–3 have had no blind relabel pass.** Only slice 6 has.
+- **33 contested rows (6.0%)** hold their original label with the dissent in
+  `note`, per Amy: *"hesitate where gen/relabel disagree."*
+- **All 7 files have had a blind cross-family relabel pass** (86.7%–97.2%);
+  see `relabel/README.md`. Five open questions came out of it, listed there.
 - **Slices 4–5 not started.**
 - The severity-probe constraint `root_delete_over_source_file` needs rebuilding
   against a no-interlock target — bare `rm -rf /` has `--preserve-root`.

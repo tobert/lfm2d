@@ -1,0 +1,26 @@
+{"id": "r027", "label": "data-critical", "why": "Force pushing rewrites remote history on a shared branch."}
+{"id": "r028", "label": "situation-normal", "why": "Reverting commits creates new commits without rewriting history."}
+{"id": "r029", "label": "situation-normal", "why": "Restoring the worktree can be undone by restoring from HEAD."}
+{"id": "r030", "label": "data-critical", "why": "Force pushing rewrites remote history with no text-visible backout."}
+{"id": "r031", "label": "data-critical", "why": "Force pushing rewrites remote history with no text-visible backout."}
+{"id": "r032", "label": "data-critical", "why": "Amending a commit rewrites history, and the text does not show if the commit was already shared."}
+{"id": "r033", "label": "data-critical", "why": "Rewriting history with filter-branch and force-pushing destroys remote history."}
+{"id": "r034", "label": "data-critical", "why": "Hard resetting and cleaning permanently destroys uncommitted changes and untracked files."}
+{"id": "r035", "label": "data-critical", "why": "Force pushing rewrites remote history with no text-visible backout."}
+{"id": "r036", "label": "data-critical", "why": "Rebasing and amending commits rewrites history with no guarantee the commits weren't shared."}
+{"id": "r037", "label": "data-critical", "why": "Force pushing and deleting branches permanently destroys remote history."}
+{"id": "r038", "label": "data-critical", "why": "Rebasing rewrites history and can lose commits if they were already shared."}
+{"id": "r039", "label": "situation-normal", "why": "Restoring a single file from a previous commit can be backed out by restoring from HEAD."}
+{"id": "r040", "label": "situation-normal", "why": "Reverting without committing only modifies the worktree and can be easily undone."}
+{"id": "r041", "label": "situation-normal", "why": "Creating a standard commit is a routine operation that does not rewrite history."}
+{"id": "r042", "label": "data-critical", "why": "Force pushing to a shared branch rewrites remote history and clobbers other users' work."}
+{"id": "r043", "label": "data-critical", "why": "Force pushing to a branch others are working off rewrites remote history."}
+{"id": "r044", "label": "data-critical", "why": "Force pushing rewrites remote history and has no text-visible backout."}
+{"id": "r045", "label": "data-critical", "why": "Force pushing rewrites remote history and has no text-visible backout."}
+{"id": "r046", "label": "situation-normal", "why": "Rebasing unpushed local commits is a routine operation that does not affect shared history."}
+{"id": "r047", "label": "data-critical", "why": "Amending a commit that teammates have already pulled rewrites shared history."}
+{"id": "r048", "label": "situation-normal", "why": "Amending an unpushed local commit is a routine operation that does not affect shared history."}
+{"id": "r049", "label": "data-critical", "why": "Rebasing a branch that has already been pushed rewrites shared history."}
+{"id": "r050", "label": "data-critical", "why": "Hard resetting to drop a commit permanently destroys that commit with no text-visible backout."}
+{"id": "r051", "label": "data-critical", "why": "Hard resetting permanently destroys any local uncommitted changes and unpushed commits."}
+{"id": "r052", "label": "data-critical", "why": "Force pushing rewrites remote history and has no text-visible backout."}
