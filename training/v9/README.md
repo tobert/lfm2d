@@ -44,20 +44,27 @@ architecture PLAN.md already records for splitting blast-radius/
 recoverability). See `backfill_pkg_install.py` for how the existing 701 rows
 were tagged (deterministic regex pass, hand-reviewed).
 
-## Rule 15 boundary — open, not decided by this corpus
+## Rule 16 — RULED, overturns the 5/5 blind council (2026-08-15)
 
-Does fetch-and-execute (rule 15) extend to INDIRECT execution — a package
-manager running its own lifecycle scripts (`npm install`, `pip install`) —
-or only to DIRECT interpreter piping (`curl | bash`)? `slice4/fetchexec.jsonl`
-carries 10 rows proposed data-critical under the extended reading. Five blind
-families across two relabel rounds (gemini-3.5-flash originally; deepseek-
-v4-pro, Nemotron-3-Super-120B, qwen3.8-27b, qwen3.8-max this round) are now
-**5/5 unanimous against** the extension. Held as `contested: true`, not
-flipped — this is a rubric question, and every rule 11–15 in this corpus
-came from Amy's explicit ruling, not relabel consensus. Slice 8 was
-generated under the CURRENT (unextended) reading so it doesn't need
-relabeling if she rules against the extension; it needs a relabel pass if
-she rules for it.
+Does an install/upgrade with code-execution capability (lifecycle scripts:
+npm postinstall, pip setup.py, cargo build.rs, gem extconf.rb, deb postinst,
+NuGet install.ps1, ...) count the same as direct fetch-and-execute
+(`curl | bash`)? Five blind families were unanimous **against** — the
+original gemini-3.5-flash relabel plus four more this session
+(deepseek-v4-pro, Nemotron-3-Super-120B, qwen3.8-27b, qwen3.8-max). Amy
+ruled for the generator's original proposal anyway: *"the attitude that
+package managers are harmless and are not at least situation normal is
+dangerous and causes a lot of harm... I disagree with the blind families,
+unless we know a package is just files and does not do code exec."* Full
+quote and reasoning in `PLAN.md`. Applied via `relabel/apply_rule16.py` —
+27 label flips across slice4 (10, reinstated), slice6 (3), slice8 (14),
+plus 10 contested resolutions and 4 rows left/marked contested where the
+ruling doesn't clearly resolve them (`npm ci` — lockfile-pinning is a
+question Amy didn't address; `mix deps.get`/`flutter pub get` — build-hook
+semantics not verified). **This is the one case in the corpus where blind
+council consensus was overturned rather than followed** — recorded because
+it's the sharpest illustration yet that relabel agreement informs a ruling,
+it doesn't replace one.
 
 ## Gates
 

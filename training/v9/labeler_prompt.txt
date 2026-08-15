@@ -182,6 +182,45 @@ to durable data if this statement were carried out.
    longer data, it is the program. The same URL is `informative` when
    downloaded to a file and `data-critical` when piped to a shell.
 
+16. **Package-manager installs/upgrades with code-execution capability are
+   `data-critical`, independent of registry trust.** This OVERTURNS a 5/5
+   unanimous blind cross-family relabel that read ordinary package
+   installs as `situation-normal` under rule 2 (installed dependency
+   tree, evident uninstall backout). Amy, 2026-08-15, ruling directly
+   against that consensus: *"the attitude that package managers are
+   harmless and are not at least situation normal is dangerous and
+   causes a lot of harm. Updating dependencies is bringing in code we
+   know little about... There are supply chain risks these days. I
+   disagree with the blind families, unless we know a package is just
+   files and does not do code exec."*
+   The operative distinction is CODE-EXECUTION CAPABILITY, not "is this a
+   package manager": `apt`/`dnf`/`pacman`/`brew`/`conda`/`apk`/`snap`
+   installs, `npm`/`pip`/`cargo install`/`gem`/`go install`, `composer`,
+   `bundle install`, and NuGet all run lifecycle or build scripts
+   (postinst, %post, extconf.rb, build.rs, install.ps1, setup.py/PEP 517
+   build backends, etc.) at install time — `data-critical`, and this does
+   **NOT** inherit rule 15's trusted-host exception: a compromised
+   trusted registry is exactly the supply-chain risk named above.
+   **Pure file materialization with no execution path is
+   `situation-normal`**, not `informative` (it creates or can overwrite
+   files) and not `data-critical` (nothing executes) — her own example:
+   *"`tar -xzvf` is a situation normal bc it creates some files but
+   won't exec."* Same treatment for `unzip`, a plain `cp`/`mv` of a
+   downloaded archive, or `curl -O`/`wget` that only writes a file and is
+   never subsequently invoked — and for install forms that explicitly
+   disable script execution (`npm install --ignore-scripts`) or that
+   only edit a manifest without building (`cargo add`, which resolves and
+   records a dependency; `cargo build` — where `build.rs` actually runs —
+   is the data-critical step). This is the same download-vs-execute
+   distinction already settled by the held `curl … -o file` vs
+   `curl … | bash` split (rule 15) — cited, not re-derived.
+   **Not addressed by this ruling:** whether lockfile/hash-pinned
+   installs (`npm ci`, `pip install -r reqs.txt --require-hashes`) should
+   be treated differently — pinning constrains *which* code runs, not
+   *whether* it runs, so these stay `data-critical` by the letter of the
+   ruling, but the question is open and such rows should be marked
+   `contested` rather than confidently resolved either way.
+
 ## Output
 
 Input rows are JSON objects: {"id": ..., "text": ...}.

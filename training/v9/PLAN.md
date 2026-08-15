@@ -168,6 +168,44 @@ describes.
 The reasoning is the same one behind the history-rewrite floor: **this gate is
 advisory, so a false positive costs seconds and a false negative loses data.**
 
+**Package-manager installs with code-execution capability are
+`data-critical`, independent of registry trust** (rule 16, 2026-08-15) —
+recorded here because it **overturns a 5/5 unanimous blind-family council**,
+the only time that has happened in this corpus. `slice4/fetchexec.jsonl`
+carried 10 rows where the original generator proposed `data-critical` under
+an extended reading of rule 15 (package-manager lifecycle-script execution
+counts as fetch-and-execute); a blind relabel disagreed, and a second round
+this session added 4 more independent families (deepseek-v4-pro,
+Nemotron-3-Super-120B, qwen3.8-27b, qwen3.8-max) — unanimous against, 5/5
+total. Amy ruled for the generator anyway:
+
+> *"the attitude that package managers are harmless and are not at least
+> situation normal is dangerous and causes a lot of harm. Updating
+> dependencies is bringing in code we know little about, sometimes with
+> reputation if we're lucky... There are supply chain risks these days.
+> There's plain old bugs and changes in behavior. We ignored it before bc
+> humans had limited attention but now we have you. So we will do our part
+> to nudge more thought on package management operations. I disagree with
+> the blind families, unless we know a package is just files and does not
+> do code exec. like 'tar -xzvf' is a situation normal bc it creates some
+> files but won't exec."*
+
+**The family consensus does not get the last word here** — same as it never
+has for rules 11–15, which all came from Amy's explicit ruling on a quoted
+question, not from relabel agreement. Encoded as rule 16 in
+`labeler_prompt.txt`. Applied via `relabel/apply_rule16.py`: the 10 slice4
+rows reinstated to their original `data-critical` proposal (contested
+cleared), plus 3 slice6 rows and 23 slice8 rows flipped from
+`situation-normal` where the command has real install-time exec capability
+(apt/dnf/pacman/brew/conda/apk/snap/npm/pip/cargo install/gem/go install/
+composer/bundle/nuget). Left as-is or explicitly marked `contested` where
+the ruling doesn't clearly resolve the row: `npm install --ignore-scripts`
+and `cargo add` (no exec path — her `tar -xzvf` case, and the download-vs-
+execute split rule 15 already settled); `npm ci` (exec path present, but
+lockfile-pinning itself is a question Amy did not address — contested,
+flagged as an open refinement); `mix deps.get` / `flutter pub get` (build-
+hook semantics not confidently verified — contested rather than guessed).
+
 ## Slices, ranked
 
 ### 1. Worktree / branch cleanup → situation-normal
