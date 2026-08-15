@@ -1,13 +1,17 @@
 # kube_ordinal v9 — corpus status
 
-**Two local training passes exist (`.models/kube_ordinal_v9`, gitignored;
-metrics committed at `severity_probes/baseline_v9.json` and
-`baseline_v9_round2.json`). Neither is a rollout candidate** — both show a
-form of overfit/miscalibration on the out-of-corpus probe gate (pass 1: raw
-score saturation; pass 2: baseline-probe compression toward the ceiling,
-which makes the gate's orderings numerically fragile even where the
-underlying ranking looks directionally right). The deployed classifier is
-still `kube_ordinal_v8`. Read `PLAN.md` for the design and the rulings.
+**Three local training passes exist (`.models/kube_ordinal_v9`, gitignored;
+metrics committed at `severity_probes/baseline_v9{,_round2,_round3}.json`).
+None is a rollout candidate** — all three show a form of instability on the
+out-of-corpus probe gate (pass 1: raw score saturation; pass 2: baseline-
+probe compression toward the ceiling; pass 3: the calibration-vs-margin
+picture holds — classic pass/fail 8→15→17→18/23, but the honest
+`--delta-margin 0.05` reading is 5→8→8→9/23, and this pass's benign-control
+inversions TRIPLED (1→3) including the exact live false-positive shapes
+`signoff.md` already flagged in production). See
+`severity_probes/DELTA_METRIC.md` for the metric and the full table. The
+deployed classifier is still `kube_ordinal_v8`. Read `PLAN.md` for the
+design and the rulings.
 
 ```
 python3 training/v9/build_v9.py            # merge every slice -> v9.jsonl, gate it
