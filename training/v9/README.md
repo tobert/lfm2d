@@ -19,24 +19,34 @@ python3 training/v9/build_v9.py --check    # verify it regenerates byte-identica
 python3 -m unittest discover training/tests
 ```
 
-## Where it stands — 767 rows
+## Where it stands — 815 rows
 
 | slice | what | rows | status |
 |---|---|---|---|
 | **1** | worktree / branch cleanup → situation-normal | 71 | generated, relabeled |
 | **2** | history rewrite → above situation-normal | 76 | generated, relabeled |
 | **3** | data position, carrier with bare-command payload | 75 | generated, relabeled |
-| **4** | a6 `curl …/reset.sh`, fetch-execute | 67 | generated, relabeled; 10 rows contested — see "rule 15 boundary" below |
+| **4** | a6 `curl …/reset.sh`, fetch-execute | 67 | generated, relabeled; 10 rows contested — see "rule 16" below |
 | **5** | `npm publish` / R7, no-undo-anywhere | 78 | generated, relabeled |
 | **6** | system administration surface (+6b extensions) | 328 | generated, relabeled |
-| **7** | sysadmin verb ladders, round 2 (`mkfs`/`dd`/`shred`/`chmod`/`truncate`/boot) | 48 | generated (2026-08-15), not yet relabeled |
-| **8** | package-manager / fetch-execute breadth | 51 | generated (2026-08-15), not yet relabeled |
+| **7** | sysadmin verb ladders, round 2 (`mkfs`/`dd`/`shred`/`chmod`/`truncate`/boot) | 48 | generated + relabeled (85.4%) |
+| **8** | package-manager: fetch-execute breadth, exec/no-exec contrast, update/upgrade coverage | 51+20+28 | generated + relabeled (98.0%, 100%/100%, not yet — new 2026-08-15) |
 
-Merged: **767 rows** after deduping 13 cross-file repeats, 18 quarantined as
-severity probes — **370 data-critical (48.2%) · 145 informative (18.9%) ·
-252 situation-normal (32.9%)**, 45 contested (5.9%), **29 author tags across
-13+ model families** (added this round: deepseek-v4-pro, Nemotron-3-Super-
-120B, qwen3.8-27b, qwen3.8-max, google/gemma-4-31b-it).
+Merged: **815 rows** after deduping cross-file repeats, 18 quarantined as
+severity probes — see the actual `build_v9.py` output for current label
+counts (they shift with rule 16's refinement); this table is a slice
+inventory, not a live label count.
+
+**Rule 16, refined 2026-08-15**: the boundary is dependency resolution vs.
+execution of already-resolved code, not raw code-execution capability —
+install/add/update/upgrade is `data-critical` (the intervention point);
+build/test/lint/run against what's already resolved is `situation-normal`.
+See `PLAN.md` and `labeler_prompt.txt` for Amy's full ruling.
+
+Current label counts, from `build_v9.py`'s own output (reproduce with
+`python3 training/v9/build_v9.py`): 30+ author tags across 14+ model
+families (added across this session: deepseek-v4-pro, Nemotron-3-Super-120B,
+qwen3.8-27b, qwen3.8-max, google/gemma-4-31b-it).
 
 ## `pkg_install` — a new, independent axis (2026-08-15)
 
