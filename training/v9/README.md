@@ -1,8 +1,13 @@
 # kube_ordinal v9 — corpus status
 
-**This is data and tooling. There is no v9 checkpoint.** No training run has
-happened; the deployed classifier is still `kube_ordinal_v8`. Read `PLAN.md`
-for the design and the rulings.
+**Two local training passes exist (`.models/kube_ordinal_v9`, gitignored;
+metrics committed at `severity_probes/baseline_v9.json` and
+`baseline_v9_round2.json`). Neither is a rollout candidate** — both show a
+form of overfit/miscalibration on the out-of-corpus probe gate (pass 1: raw
+score saturation; pass 2: baseline-probe compression toward the ceiling,
+which makes the gate's orderings numerically fragile even where the
+underlying ranking looks directionally right). The deployed classifier is
+still `kube_ordinal_v8`. Read `PLAN.md` for the design and the rulings.
 
 ```
 python3 training/v9/build_v9.py            # merge every slice -> v9.jsonl, gate it
@@ -10,20 +15,49 @@ python3 training/v9/build_v9.py --check    # verify it regenerates byte-identica
 python3 -m unittest discover training/tests
 ```
 
-## Where it stands — 547 rows
+## Where it stands — 767 rows
 
 | slice | what | rows | status |
 |---|---|---|---|
 | **1** | worktree / branch cleanup → situation-normal | 71 | generated, relabeled |
 | **2** | history rewrite → above situation-normal | 76 | generated, relabeled |
 | **3** | data position, carrier with bare-command payload | 75 | generated, relabeled |
-| 4 | a6 `curl …/reset.sh` | — | not started |
-| 5 | `npm publish` / R7 | — | not started, flagged as the one to cut |
-| **6** | system administration surface (+6b extensions) | 334 | generated, relabeled |
+| **4** | a6 `curl …/reset.sh`, fetch-execute | 67 | generated, relabeled; 10 rows contested — see "rule 15 boundary" below |
+| **5** | `npm publish` / R7, no-undo-anywhere | 78 | generated, relabeled |
+| **6** | system administration surface (+6b extensions) | 328 | generated, relabeled |
+| **7** | sysadmin verb ladders, round 2 (`mkfs`/`dd`/`shred`/`chmod`/`truncate`/boot) | 48 | generated (2026-08-15), not yet relabeled |
+| **8** | package-manager / fetch-execute breadth | 51 | generated (2026-08-15), not yet relabeled |
 
-Merged: **547 rows** after deduping 9 cross-file repeats —
-**279 data-critical (51.0%) · 110 informative (20.1%) · 158 situation-normal
-(28.9%)**, 18 contested (3.3%), **17 author tags across 10 model families**.
+Merged: **767 rows** after deduping 13 cross-file repeats, 18 quarantined as
+severity probes — **370 data-critical (48.2%) · 145 informative (18.9%) ·
+252 situation-normal (32.9%)**, 45 contested (5.9%), **29 author tags across
+13+ model families** (added this round: deepseek-v4-pro, Nemotron-3-Super-
+120B, qwen3.8-27b, qwen3.8-max, google/gemma-4-31b-it).
+
+## `pkg_install` — a new, independent axis (2026-08-15)
+
+Every row now also carries `pkg_install: bool`, orthogonal to `label`: true
+if the statement's primary effect is fetching/installing a software
+dependency, regardless of severity. Not used by training or the probe gate
+yet — banked for a future v10 multi-task head (the same one-trunk
+architecture PLAN.md already records for splitting blast-radius/
+recoverability). See `backfill_pkg_install.py` for how the existing 701 rows
+were tagged (deterministic regex pass, hand-reviewed).
+
+## Rule 15 boundary — open, not decided by this corpus
+
+Does fetch-and-execute (rule 15) extend to INDIRECT execution — a package
+manager running its own lifecycle scripts (`npm install`, `pip install`) —
+or only to DIRECT interpreter piping (`curl | bash`)? `slice4/fetchexec.jsonl`
+carries 10 rows proposed data-critical under the extended reading. Five blind
+families across two relabel rounds (gemini-3.5-flash originally; deepseek-
+v4-pro, Nemotron-3-Super-120B, qwen3.8-27b, qwen3.8-max this round) are now
+**5/5 unanimous against** the extension. Held as `contested: true`, not
+flipped — this is a rubric question, and every rule 11–15 in this corpus
+came from Amy's explicit ruling, not relabel consensus. Slice 8 was
+generated under the CURRENT (unextended) reading so it doesn't need
+relabeling if she rules against the extension; it needs a relabel pass if
+she rules for it.
 
 ## Gates
 
@@ -80,6 +114,18 @@ to fix. Not routed to since.
 | `gemma-4-31b` | correct labels, templated notes (6 rows shared one verbatim string) |
 | `Llama-3.3-70B` | **weakest** — half its rows were combinatorial padding, ~2/3 discarded |
 
+**New this round (2026-08-15) — Alibaba Qwen3.8 via OpenRouter, an explicit
+exception to the usual bulk-work default:**
+
+| model | verdict |
+|---|---|
+| `qwen3.8-27b` (small) | strongest of this round's new families; 27/28 rows clean on first ask, only generator to correctly reason about direction-of-flow for `dd` (read vs write) unprompted |
+| `qwen3.8-max` (big) | good quality but **truncates on a 28-row ask** (16k output cap) — needs ≤16 rows/call with short notes, same shape as Kimi-K2.6's limit |
+| `deepseek-v4-pro` (crusoe) | clean, terse, reliable at bulk pkg-mgmt generation |
+| `gemma-4-31b` (crusoe) | clean but appends a reasoning/self-check block AFTER the JSON — harmless (script strips it) but wastes output budget |
+| `Nemotron-3-Super-120B` (crusoe) | **one malformed line** mid-stream (visible reasoning leaked into a JSON value before self-correcting) — same failure shape gemini-flash showed in the original relabel round; read output, don't trust it blind |
+| `gpt-oss-120b` (crusoe) | **empty answer** on a 28-row ask, hit its 16k output cap before writing anything — not retried this round, worth a shorter-ask retry next time |
+
 **gemini-3.5-flash is not self-consistent run-to-run** — an identical prompt
 flipped one row's label between two samples. A single relabel sample is not a
 stable measurement on ambiguous rows.
@@ -88,13 +134,21 @@ stable measurement on ambiguous rows.
 
 - **Labels are PROPOSALS.** Bulk blind labeling still gated on budget. Every
   row carries its `author` tag so a later pass can disagree row by row.
-- **18 contested rows (3.3%)** hold their original label with the dissent in
+- **45 contested rows (5.9%)** hold their original label with the dissent in
   `note`, per Amy: *"hesitate where gen/relabel disagree."*
-- **All 7 files have had a blind cross-family relabel pass** (86.7%–97.2%);
-  see `relabel/README.md`. Five open questions came out of it, listed there.
-- **Slices 4–5 not started.**
+- **Slices 1–6 have had a blind cross-family relabel pass** (86.7%–97.2%);
+  see `relabel/README.md`. **Slices 7–8 (2026-08-15) do not yet** — generated
+  this round, not yet relabeled.
 - The severity-probe constraint `root_delete_over_source_file` needs rebuilding
   against a no-interlock target — bare `rm -rf /` has `--preserve-root`.
+- **Score saturation, not absent vocabulary, is the live failure shape**
+  (2026-08-15). Baseline probes meant to be ordinary controls (`rm -f
+  src/view/vello_rasterizer.rs`) are drifting toward 0.999 alongside the
+  sysadmin probes they're compared against, compressing the orderings the
+  gate depends on. More rows targeting the still-failing constraints didn't
+  move most of them this pass — see `severity_probes/baseline_v9_round2.json`
+  commit message for the full readout. Next-pass design question, not solved
+  here.
 
 ## A bug this corpus found in its own tooling
 
