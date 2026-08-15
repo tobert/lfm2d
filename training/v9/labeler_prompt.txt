@@ -221,6 +221,38 @@ to durable data if this statement were carried out.
    ruling, but the question is open and such rows should be marked
    `contested` rather than confidently resolved either way.
 
+   **REFINED 2026-08-15**, after this rule's own training data (sysverbs2's
+   blind relabel) surfaced a scoping conflict: read LITERALLY, "code-
+   execution capability" would also make `cargo build`, `npm test`, and
+   `make lint` `data-critical` — they run scripts whose effects the text
+   doesn't show, same as a package install does. That conflicts with these
+   being the probe gate's own deliberate BENIGN CONTROLS. Amy resolved it
+   by moving the line from *code-execution capability* to **dependency
+   resolution vs. execution of already-resolved code**:
+   *"I feel a build should generally land in situation normal. they can
+   still have supply chain issues, but are not the point where we'd want
+   to intervene. before the build, at package update is the efficient
+   point I'd like to be able to catch more."*
+   - **Install / add / update / upgrade a dependency** — new or changed
+     package content entering the tree, before anything has run —
+     is `data-critical`: `npm install`/`update`/`add`, `pip
+     install`/`upgrade`, `cargo add`/`update`, `go get [-u]`, `bundle
+     install`/`update`, `apt`/`brew install`/`upgrade`, `poetry
+     add`/`update`/`lock`, `pip-compile`, lockfile regeneration. This is
+     the actual intervention point.
+   - **Build / test / lint / run against dependencies already resolved**
+     — `cargo build`, `npm test`, `make`, `go build`, `pytest`, `npm run
+     lint` — is `situation-normal`. Still executes code, can still carry
+     supply-chain risk baked into whatever's already vendored, but by
+     build time the dependency content is already fixed: catching it
+     there is too late to be the useful intervention point.
+   This SUPERSEDES the exec-capability framing for anything that is
+   itself an install/update/upgrade verb (the exec-capability framing
+   still explains WHY those verbs are risky — lifecycle scripts — it just
+   no longer decides the boundary; the resolution-vs-execution point
+   does). The `tar -xzvf`/file-materialization half of rule 16 is
+   unchanged — it was never about package-manager verbs at all.
+
 ## Output
 
 Input rows are JSON objects: {"id": ..., "text": ...}.

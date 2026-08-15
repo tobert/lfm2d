@@ -206,6 +206,49 @@ lockfile-pinning itself is a question Amy did not address — contested,
 flagged as an open refinement); `mix deps.get` / `flutter pub get` (build-
 hook semantics not confidently verified — contested rather than guessed).
 
+**Rule 16 REFINED, 2026-08-15** — the exec-capability framing above was
+literal enough to also catch `cargo build`, `npm test`, `make lint` (they
+run scripts too), which the blind relabel of `slice7/sysverbs2` surfaced as
+a direct conflict with those three being the probe gate's own deliberate
+benign controls. Amy moved the boundary from *code-execution capability* to
+**dependency resolution vs. execution of already-resolved code**:
+
+> *"I feel a build should generally land in situation normal. they can
+> still have supply chain issues, but are not the point where we'd want to
+> intervene. before the build, at package update is the efficient point
+> I'd like to be able to catch more."*
+
+Install/add/update/upgrade (new or changed dependency content entering the
+tree) stays `data-critical` — this is now the stated intervention point.
+Build/test/lint/run against already-resolved dependencies is
+`situation-normal` — supply-chain risk can still be baked into what's
+already vendored, but by build time it's too late to be the useful catch.
+This directly resolves the sysverbs2 conflict (`cargo build`/`npm test`/
+`make lint` back to `situation-normal`, restoring their role as benign
+controls) and, read plainly, also resolves two of the three rows this plan
+left uncertain above: `cargo add` is explicitly named by Amy as
+`data-critical` (it's the update-family verb — resolving/recording a new
+dependency version IS the intervention point, whether or not `build.rs` has
+run yet, which supersedes this document's earlier "no exec path yet"
+reasoning for that row); `mix deps.get` / `flutter pub get` are themselves
+the dependency-fetch step (same family as `bundle install`), so the earlier
+"build-hook semantics uncertain" contested reason is moot under the new
+framing and both resolve to `data-critical`. `npm install --ignore-scripts`
+is NOT directly named by Amy and is left `data-critical` but `contested` —
+it's still an install verb under the new framing (the flag changes how it
+installs, not whether dependency content changes), but that's this
+project's inference, not her stated example, so it's flagged rather than
+silently asserted. `npm ci`'s lockfile-pinning question remains untouched
+and still open.
+
+**Also new, 2026-08-15: coverage on UPDATE/UPGRADE forms specifically.**
+Amy: *"catch more"* at the update point — the corpus through slice 8 skewed
+toward fresh installs; `npm update`, `pip install --upgrade`, `cargo
+update`, `bundle update`, `apt upgrade`, `go get -u`, `poetry update`/
+`lock`, `pip-compile` regeneration, and dependabot/renovate-style version
+bumps needed their own rows rather than being assumed to inherit the
+fresh-install verdict for free.
+
 ## Slices, ranked
 
 ### 1. Worktree / branch cleanup → situation-normal
