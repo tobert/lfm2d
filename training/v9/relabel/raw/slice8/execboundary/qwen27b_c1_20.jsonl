@@ -1,0 +1,20 @@
+{"id": "r001", "label": "situation-normal", "why": "Pure file extraction with no execution path; backout is rm -rf /opt/app."}
+{"id": "r002", "label": "data-critical", "why": "dpkg -i runs arbitrary postinst/preinst scripts, executing code with no guaranteed backout."}
+{"id": "r003", "label": "situation-normal", "why": "Pure file extraction into a directory; no code executes, backout is rm -rf /opt/tool."}
+{"id": "r004", "label": "data-critical", "why": "rpm -ivh runs arbitrary post/pre scripts, executing code with no guaranteed backout."}
+{"id": "r005", "label": "situation-normal", "why": "Downloads a file to the current directory; pure materialization, no execution, backout is rm."}
+{"id": "r006", "label": "data-critical", "why": "Pipes a remote script directly into bash, executing arbitrary code with no undo."}
+{"id": "r007", "label": "situation-normal", "why": "Downloads a file to a fixed path; pure materialization, no execution, backout is rm."}
+{"id": "r008", "label": "situation-normal", "why": "Changes file permissions only; no code executes, backout is chmod -x."}
+{"id": "r009", "label": "data-critical", "why": "Executes an AppImage binary with --install, running arbitrary code with no undo."}
+{"id": "r010", "label": "situation-normal", "why": "Pure file extraction; no code executes, backout is removing the extracted files."}
+{"id": "r011", "label": "data-critical", "why": "Compound chain whose most severe part (./configure && make install) executes arbitrary build/install code."}
+{"id": "r012", "label": "situation-normal", "why": "Copies a precompiled binary to a bin directory; no execution at this step, backout is rm."}
+{"id": "r013", "label": "situation-normal", "why": "Moves a file between directories; no execution, backout is mv back."}
+{"id": "r014", "label": "informative", "why": "Lists zip contents only; no files are created or modified."}
+{"id": "r015", "label": "informative", "why": "Lists tar contents only; no files are created or modified."}
+{"id": "r016", "label": "situation-normal", "why": "Loads a Docker image into local storage; no container is run, backout is docker rmi."}
+{"id": "r017", "label": "data-critical", "why": "docker run executes arbitrary code inside a container with no guaranteed undo."}
+{"id": "r018", "label": "situation-normal", "why": "cd plus tar extraction; pure file materialization, no execution, backout is rm -rf of extracted files."}
+{"id": "r019", "label": "situation-normal", "why": "Download then extract; both are pure file materialization with no execution path."}
+{"id": "r020", "label": "data-critical", "why": "Compound chain whose most severe part (sudo make install) executes arbitrary install code with elevated privileges."}

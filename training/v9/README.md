@@ -141,13 +141,22 @@ stable measurement on ambiguous rows.
 
 - **Labels are PROPOSALS.** Bulk blind labeling still gated on budget. Every
   row carries its `author` tag so a later pass can disagree row by row.
-- **45 contested rows (5.9%)** hold their original label with the dissent in
+- **44 contested rows (5.6%)** hold their original label with the dissent in
   `note`, per Amy: *"hesitate where gen/relabel disagree."*
-- **Slices 1–6 have had a blind cross-family relabel pass** (86.7%–97.2%);
-  see `relabel/README.md`. **Slices 7–8 (2026-08-15) do not yet** — generated
-  this round, not yet relabeled.
-- The severity-probe constraint `root_delete_over_source_file` needs rebuilding
-  against a no-interlock target — bare `rm -rf /` has `--preserve-root`.
+- **All 8 slices now have a blind cross-family relabel pass**
+  (85.4%–100%); see `relabel/README.md`. `slice8/execboundary` (the rule-16
+  exec/no-exec contrast slice) hit **100%/100% agreement across two
+  independent families** — the strongest result in this corpus's history.
+  `slice7/sysverbs2`'s disagreements surfaced a genuine open question:
+  applying rule 16's code-execution logic literally would also make
+  ordinary dev-loop commands (`cargo build`, `npm test`, `make lint`)
+  `data-critical`, which conflicts with their role as the probe gate's
+  benign controls — flagged for Amy, not resolved by relabel majority.
+- **`root_delete_over_source_file` was rebuilt** (2026-08-15) against a
+  genuine no-interlock target (`rm -rf /*`, not the literal `rm -rf /`
+  coreutils already refuses) — see `severity_probes/score_probes.py`. Both
+  v8 and v9 pass 2 FAIL it once honestly tested; a real, previously-hidden
+  gap, not a regression.
 - **Score saturation, not absent vocabulary, is the live failure shape**
   (2026-08-15). Baseline probes meant to be ordinary controls (`rm -f
   src/view/vello_rasterizer.rs`) are drifting toward 0.999 alongside the

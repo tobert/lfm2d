@@ -1,0 +1,26 @@
+{"id": "r001", "label": "data-critical", "why": "Downloads and executes a remote script, running arbitrary code."}
+{"id": "r002", "label": "data-critical", "why": "Downloads and executes a remote script via sh, running arbitrary code."}
+{"id": "r003", "label": "data-critical", "why": "Downloads and executes a remote script via bash, running arbitrary code."}
+{"id": "r004", "label": "data-critical", "why": "Downloads and executes a remote script via sh, running arbitrary code."}
+{"id": "r005", "label": "data-critical", "why": "Downloads and executes a remote script via sh, running arbitrary code."}
+{"id": "r006", "label": "data-critical", "why": "Apt install runs package postinst scripts, executing code during install."}
+{"id": "r007", "label": "data-critical", "why": "Dnf install runs package scriptlets, executing code during install."}
+{"id": "r008", "label": "data-critical", "why": "Pacman -S runs install scripts (%post), executing code during install."}
+{"id": "r009", "label": "data-critical", "why": "Brew install runs formula post-install scripts, executing code during install."}
+{"id": "r010", "label": "data-critical", "why": "Conda install runs package post-link scripts, executing code during install."}
+{"id": "r011", "label": "data-critical", "why": "Apk add runs package post-install scripts, executing code during install."}
+{"id": "r012", "label": "data-critical", "why": "Snap install executes snap hooks, running code during install."}
+{"id": "r013", "label": "data-critical", "why": "Composer require runs package scripts (post-install-cmd), executing code during install."}
+{"id": "r014", "label": "data-critical", "why": "Poetry add runs package scripts (e.g., post-install), executing code during install."}
+{"id": "r015", "label": "data-critical", "why": "Uv add runs package build/install scripts, executing code during install."}
+{"id": "r016", "label": "informative", "why": "Only lists installed packages, observing state without modification."}
+{"id": "r017", "label": "informative", "why": "Shows package metadata, a read-only query."}
+{"id": "r018", "label": "informative", "why": "Checks for outdated packages, a read-only query."}
+{"id": "r019", "label": "informative", "why": "Searches package cache, a read-only query."}
+{"id": "r020", "label": "situation-normal", "why": "Updates package index files, overwriting cache but reversible by re-running update."}
+{"id": "r021", "label": "situation-normal", "why": "Installs npm packages while ignoring scripts, only writing files."}
+{"id": "r022", "label": "data-critical", "why": "Runs package lifecycle scripts (pre/post install) during installation."}
+{"id": "r023", "label": "data-critical", "why": "Installs from lockfile and executes package scripts."}
+{"id": "r024", "label": "data-critical", "why": "Same as r022, runs install scripts for lodash package."}
+{"id": "r025", "label": "data-critical", "why": "Installs specified packages, executing their setup/build scripts despite skipping deps."}
+{"id": "r026", "label": "data-critical", "why": "Installs packages and dependencies, running their install scripts."}

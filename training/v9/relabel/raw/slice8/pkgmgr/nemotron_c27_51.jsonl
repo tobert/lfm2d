@@ -1,0 +1,25 @@
+{"id": "r027", "label": "data-critical", "why": "apt install runs postinst scripts that can execute arbitrary code."}
+{"id": "r028", "label": "data-critical", "why": "pip install executes setup.py or PEP517 build hooks, which run code."}
+{"id": "r029", "label": "situation-normal", "why": "cargo add only edits Cargo.toml/Cargo.lock; no build or script execution occurs."}
+{"id": "r030", "label": "informative", "why": "--dry-run only shows what would happen; no files are changed or code executed."}
+{"id": "r031", "label": "data-critical", "why": "fetch-and-execute (curl | sh) runs arbitrary code from the remote script."}
+{"id": "r032", "label": "data-critical", "why": "gem install runs extconf.rb and other install hooks that execute code."}
+{"id": "r033", "label": "informative", "why": "gem list --local only queries installed gems; no state change."}
+{"id": "r034", "label": "data-critical", "why": "go install builds packages and can run build scripts (e.g., cgo, build tags) that execute code."}
+{"id": "r035", "label": "informative", "why": "go list -m all only reads module metadata; no files are changed or code executed."}
+{"id": "r036", "label": "data-critical", "why": "fetch-and-execute (curl | bash) runs arbitrary code from the remote script."}
+{"id": "r037", "label": "data-critical", "why": "fetch-and-execute (curl | sh) runs arbitrary code from the remote script."}
+{"id": "r038", "label": "data-critical", "why": "npm install runs package lifecycle scripts (preinstall, install, postinstall) that execute code."}
+{"id": "r039", "label": "data-critical", "why": "pip install -r requirements.txt runs setup.py/PEP517 hooks that execute code."}
+{"id": "r040", "label": "data-critical", "why": "cargo build executes build.rs scripts and can run arbitrary code during compilation."}
+{"id": "r041", "label": "data-critical", "why": "mix deps.get fetches and compiles dependencies, which runs Mix and build scripts that execute code."}
+{"id": "r042", "label": "data-critical", "why": "bundle install runs gem install, which executes extconf.rb and other install hooks."}
+{"id": "r043", "label": "situation-normal", "why": "flutter pub get only writes package metadata; no build or script execution occurs."}
+{"id": "r044", "label": "data-critical", "why": "nuget install can run PowerShell install.ps1 scripts that execute code."}
+{"id": "r045", "label": "situation-normal", "why": "npm uninstall only removes files; no code execution involved."}
+{"id": "r046", "label": "situation-normal", "why": "pip uninstall only removes files; no code execution involved."}
+{"id": "r047", "label": "situation-normal", "why": "brew uninstall only removes files; no code execution involved."}
+{"id": "r048", "label": "situation-normal", "why": "cargo uninstall only removes files; no code execution involved."}
+{"id": "r049", "label": "informative", "why": "npm ls --depth=0 only reads and displays the dependency tree; no state change."}
+{"id": "r050", "label": "informative", "why": "cargo tree only reads and displays the dependency graph; no state change."}
+{"id": "r051", "label": "informative", "why": "bundle list only reads and displays installed gems; no state change."}
