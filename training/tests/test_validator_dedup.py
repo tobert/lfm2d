@@ -36,9 +36,14 @@ VALIDATORS = [
 ]
 
 
-def row(text, label, **kw):
+def row(text, label, pkg_install=None, **kw):
     r = {'text': text, 'label': label, 'verb': 'git branch', 'resource': 'feature-y',
          'contested': False, 'note': 'test row', 'author': 'unittest'}
+    # validate_v8.py's schema grew an 8th key (pkg_install, 2026-08-15);
+    # validate_incoming.py is the older v6 validator and does not know it.
+    # Callers pass pkg_install=<bool> only for the v8 validator's rows.
+    if pkg_install is not None:
+        r['pkg_install'] = pkg_install
     r.update(kw)
     return r
 
@@ -61,8 +66,9 @@ class TestDedupIsCaseSensitive(unittest.TestCase):
         """-d and -D are different commands with opposite labels."""
         for v, (safe, harsh) in VALIDATORS:
             with self.subTest(validator=v.name):
-                rows = [row('git branch -d feature-y', safe),
-                        row('git branch -D feature-y', harsh)]
+                pkg = False if v.name == 'validate_v8.py' else None
+                rows = [row('git branch -d feature-y', safe, pkg_install=pkg),
+                        row('git branch -D feature-y', harsh, pkg_install=pkg)]
                 code, out = run(v, rows)
                 self.assertNotIn('duplicate normalized text', out)
                 self.assertEqual(code, 0, out)
@@ -71,8 +77,9 @@ class TestDedupIsCaseSensitive(unittest.TestCase):
         """The fix must not disable duplicate detection outright."""
         for v, (safe, _) in VALIDATORS:
             with self.subTest(validator=v.name):
-                rows = [row('git branch -d feature-y', safe),
-                        row('git branch -d feature-y', safe)]
+                pkg = False if v.name == 'validate_v8.py' else None
+                rows = [row('git branch -d feature-y', safe, pkg_install=pkg),
+                        row('git branch -d feature-y', safe, pkg_install=pkg)]
                 code, out = run(v, rows)
                 self.assertIn('duplicate normalized text', out)
                 self.assertNotEqual(code, 0)
@@ -81,8 +88,9 @@ class TestDedupIsCaseSensitive(unittest.TestCase):
         """Whitespace collapsing is the part that SHOULD stay."""
         for v, (safe, _) in VALIDATORS:
             with self.subTest(validator=v.name):
-                rows = [row('git branch -d feature-y', safe),
-                        row('git   branch  -d   feature-y', safe)]
+                pkg = False if v.name == 'validate_v8.py' else None
+                rows = [row('git branch -d feature-y', safe, pkg_install=pkg),
+                        row('git   branch  -d   feature-y', safe, pkg_install=pkg)]
                 code, out = run(v, rows)
                 self.assertIn('duplicate normalized text', out)
 
