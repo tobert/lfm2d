@@ -93,6 +93,7 @@ async fn main() {
     tracing::info!(
         embedder_dir = ?cli.embedder_dir,
         classifier_dir = ?cli.classifier_dir,
+        candidate_classifier_dir = ?cli.candidate_classifier_dir,
         router_dir = ?cli.router_dir,
         token_classifier_dir = ?cli.token_classifier_dir,
         cascade_routes = ?cli.cascade_routes,

@@ -71,6 +71,12 @@ fn load_meta(dir: &Path) -> Result<ModelMeta, String> {
 pub struct RealEngine {
     embedder: Option<(Lfm2Embedding, ModelMeta)>,
     classifier: Option<(Lfm2SequenceClassifier, ModelMeta)>,
+    /// SHADOW second classifier, scored alongside `classifier` on every
+    /// `classify`/`cascade` call and immediately discarded after recording
+    /// an agreement counter (`telemetry::record_candidate_agreement`) —
+    /// never returned to a caller, never listed in `list_models`. See
+    /// `--candidate-classifier-dir` in `config.rs` for the full contract.
+    candidate_classifier: Option<(Lfm2SequenceClassifier, ModelMeta)>,
     router: Option<(Lfm2SequenceRouter, ModelMeta)>,
     /// Zero, one, or many — mirrors `--token-classifier-dir` being
     /// repeatable, unlike every other head. Order is load order (the
@@ -123,6 +129,18 @@ impl RealEngine {
             Some(dir) => {
                 let model = Lfm2SequenceRouter::from_dir_with(dir, dtype, &Device::Cpu)
                     .map_err(|e| format!("loading router at {}: {e}", dir.display()))?;
+                let meta = load_meta(dir)?;
+                Some((model, meta))
+            }
+            None => None,
+        };
+        // Shadow classifier: same loading discipline (fail loudly, fully
+        // loaded before serving) as every other head, but never surfaced —
+        // see the struct field doc and --candidate-classifier-dir.
+        let candidate_classifier = match &cli.candidate_classifier_dir {
+            Some(dir) => {
+                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &Device::Cpu)
+                    .map_err(|e| format!("loading candidate classifier at {}: {e}", dir.display()))?;
                 let meta = load_meta(dir)?;
                 Some((model, meta))
             }
@@ -181,6 +199,7 @@ impl RealEngine {
         let engine = Self {
             embedder,
             classifier,
+            candidate_classifier,
             router,
             token_classifiers,
             cascade_routes: cli.cascade_routes.clone(),
@@ -226,6 +245,9 @@ impl RealEngine {
         }
         if let Some((m, _)) = &self.classifier {
             m.predict(PROBE).map_err(|e| fail("classifier", e.to_string()))?;
+        }
+        if let Some((m, _)) = &self.candidate_classifier {
+            m.predict(PROBE).map_err(|e| fail("candidate classifier", e.to_string()))?;
         }
         if let Some((m, _)) = &self.router {
             m.route_cosines(PROBE, &["a"]).map_err(|e| fail("router", e.to_string()))?;
@@ -380,14 +402,28 @@ impl InferenceEngine for RealEngine {
         let (model, meta) = self.classifier.as_ref().ok_or_else(|| {
             WorkerError::BadRequest("no classifier configured on this server".to_string())
         })?;
-        inputs
+        let out: Result<Vec<ClassifyResult>, WorkerError> = inputs
             .iter()
             .map(|text| {
                 let probs = model.predict(text).map_err(WorkerError::from)?;
                 let (scores, top) = scores_and_top(model.labels(), &probs);
                 Ok(ClassifyResult { scores, top, model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone() })
             })
-            .collect()
+            .collect();
+        // SHADOW pass: scores the same inputs against candidate_classifier
+        // (if configured) purely for a local agreement counter, never
+        // touching `out`. A candidate forward-pass failure is swallowed,
+        // not propagated -- an experimental second head must never turn
+        // into a caller-visible error the primary classifier didn't have.
+        if let (Ok(primary), Some((cand_model, cand_meta))) = (&out, &self.candidate_classifier) {
+            for (text, result) in inputs.iter().zip(primary) {
+                if let Ok(probs) = cand_model.predict(text) {
+                    let (_, cand_top) = scores_and_top(cand_model.labels(), &probs);
+                    crate::telemetry::record_candidate_agreement(&meta.id, &cand_meta.id, &result.top, &cand_top);
+                }
+            }
+        }
+        out
     }
 
     fn route(&self, input: &str, routes: &[String]) -> Result<RouteResponse, WorkerError> {
@@ -436,7 +472,17 @@ impl InferenceEngine for RealEngine {
             .collect();
 
         let winner_row = &verdict.clauses[verdict.winner];
-        let (winner_scores, _) = scores_and_top(labels, &winner_row.severity_probs);
+        let (winner_scores, winner_top) = scores_and_top(labels, &winner_row.severity_probs);
+
+        // SHADOW pass on the winning clause only -- that's the text
+        // cascade's decision actually hinges on. Same discipline as
+        // `classify`: swallowed on failure, never touches the response.
+        if let Some((cand_model, cand_meta)) = &self.candidate_classifier {
+            if let Ok(probs) = cand_model.predict(&winner_row.clause) {
+                let (_, cand_top) = scores_and_top(cand_model.labels(), &probs);
+                crate::telemetry::record_candidate_agreement(&classifier_meta.id, &cand_meta.id, &winner_top, &cand_top);
+            }
+        }
 
         Ok(CascadeResponse {
             winner: CascadeWinner { index: verdict.winner, clause: winner_row.clause.clone(), severity_scores: winner_scores },

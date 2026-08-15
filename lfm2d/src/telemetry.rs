@@ -242,6 +242,29 @@ pub fn record_inference_duration(operation: &'static str, elapsed: Duration) {
         .record(elapsed.as_secs_f64() * 1000.0, &attrs);
 }
 
+/// Shadow-classifier agreement counter, recorded once per `classify`/
+/// `cascade` call when `--candidate-classifier-dir` is configured
+/// (`engine_real.rs`). Labels are the two model ids plus BOTH verdicts —
+/// each is one of the classifier's own small label set (3 in this
+/// checkpoint family), so cardinality is bounded at `ids × labels²`, not
+/// per-request. Deliberately never carries the input text or a per-request
+/// identifier — same reasoning `--log-input-hash`'s doc comment gives for
+/// keeping unbounded values out of metric labels entirely.
+pub fn record_candidate_agreement(primary_id: &str, candidate_id: &str, primary_top: &str, candidate_top: &str) {
+    let attrs = [
+        KeyValue::new("primary_model", primary_id.to_string()),
+        KeyValue::new("candidate_model", candidate_id.to_string()),
+        KeyValue::new("primary_top", primary_top.to_string()),
+        KeyValue::new("candidate_top", candidate_top.to_string()),
+        KeyValue::new("agree", primary_top == candidate_top),
+    ];
+    meter()
+        .u64_counter("lfm2d.candidate.agreement")
+        .with_description("Shadow-classifier verdict agreement, by primary/candidate top label")
+        .build()
+        .add(1, &attrs);
+}
+
 /// Register the queue-depth observable gauge over `queue_depth` — called
 /// once from `main.rs` right after [`crate::worker::WorkerHandle::spawn_crash_on_panic`]
 /// returns a handle (the [`std::sync::Arc<std::sync::atomic::AtomicUsize>`]

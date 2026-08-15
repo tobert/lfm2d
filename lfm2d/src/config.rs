@@ -51,6 +51,21 @@ pub struct Cli {
     #[arg(long, env = "LFM2D_ROUTER_DIR")]
     pub router_dir: Option<PathBuf>,
 
+    /// Directory holding a SECOND `Lfm2SequenceClassifier`-shaped
+    /// checkpoint, scored SHADOW-only alongside `--classifier-dir` on every
+    /// `/v1/classify` and `/v1/cascade` call. Purely observational: never
+    /// listed in `/v1/models`, never influences a response body, byte, or
+    /// status code — see `engine_real.rs`'s `classify`/`cascade` for where
+    /// the shadow score is computed and immediately discarded after being
+    /// recorded (agreement counter only, never the raw verdict pair or
+    /// input text as a label — unbounded per-input cardinality would wreck
+    /// VictoriaMetrics, same reasoning as `--log-input-hash` above).
+    /// Optional; omitting it is a no-op, zero behavior or latency change
+    /// (2026-08-15, evaluating `kube_ordinal_v9` candidates against live
+    /// traffic without touching what `kube_ordinal_v8` serves).
+    #[arg(long, env = "LFM2D_CANDIDATE_CLASSIFIER_DIR")]
+    pub candidate_classifier_dir: Option<PathBuf>,
+
     /// Directory holding an `Lfm2TokenClassifier`-shaped checkpoint —
     /// REPEATABLE (pass `--token-classifier-dir` once per head, or a
     /// comma-separated list via `LFM2D_TOKEN_CLASSIFIER_DIR`), unlike
@@ -273,6 +288,7 @@ mod tests {
             embedder_dir: None,
             classifier_dir: None,
             router_dir: None,
+            candidate_classifier_dir: None,
             token_classifier_dir: Vec::new(),
             log_input_hash: false,
             cascade_routes: Vec::new(),
@@ -314,6 +330,7 @@ mod tests {
             embedder_dir: Some("/tmp/e".into()),
             classifier_dir: Some("/tmp/c".into()),
             router_dir: Some("/tmp/r".into()),
+            candidate_classifier_dir: None,
             token_classifier_dir: vec!["/tmp/t".into()],
             log_input_hash: true,
             cascade_routes: vec!["shell".into()],
