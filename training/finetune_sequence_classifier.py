@@ -293,7 +293,9 @@ class Lfm2ForSequenceClassification(nn.Module):
 # --------------------------------------------------------------------------
 
 
-def soft_cross_entropy(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+def soft_cross_entropy(
+    logits: torch.Tensor, targets: torch.Tensor, class_weight: torch.Tensor | None = None
+) -> torch.Tensor:
     """-sum(target * log_softmax(logits)), averaged over the batch.
 
     `targets` is a [batch, num_labels] probability distribution (rows sum
@@ -301,9 +303,22 @@ def soft_cross_entropy(logits: torch.Tensor, targets: torch.Tensor) -> torch.Ten
     only data, old and new), this is numerically identical to
     `nn.functional.cross_entropy(logits, hard_labels)` — see
     `test_soft_targets.py`'s one-hot-equivalence test.
+
+    `class_weight`, if given, is a [num_labels] vector. Per-example loss is
+    weighted by `(targets * class_weight).sum(-1)` (the target-weighted
+    generalization of `nn.CrossEntropyLoss(weight=...)` — collapses to the
+    usual per-class weight for one-hot targets) and the batch is averaged by
+    SUM of weights, not count, matching `nn.CrossEntropyLoss`'s own
+    normalization so an inverse-frequency weight vector actually rebalances
+    the effective per-class contribution rather than just rescaling the
+    overall loss magnitude.
     """
     log_probs = torch.log_softmax(logits, dim=-1)
-    return -(targets * log_probs).sum(dim=-1).mean()
+    per_example = -(targets * log_probs).sum(dim=-1)
+    if class_weight is None:
+        return per_example.mean()
+    w = (targets * class_weight).sum(dim=-1)
+    return (per_example * w).sum() / w.sum().clamp_min(1e-12)
 
 
 @torch.no_grad()
@@ -421,6 +436,31 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--warmup-ratio", type=float, default=0.06)
     p.add_argument(
+        "--class-weight",
+        choices=["none", "inverse_freq"],
+        default="none",
+        help=(
+            "none (default): unweighted, unchanged from before this flag existed. "
+            "inverse_freq: sklearn-'balanced'-style weight, "
+            "n_total / (n_classes * count[c]), computed from --train's own label "
+            "counts and printed at startup. Tests whether a skewed class prior "
+            "(2026-08-15 ablation: v9's data-critical share climbed pass over "
+            "pass) is shifting the model toward over-predicting the majority "
+            "class rather than genuinely separating cases."
+        ),
+    )
+    p.add_argument(
+        "--export-every-epoch",
+        action="store_true",
+        help=(
+            "In addition to the best-val-acc export at --out, also export EVERY "
+            "epoch's checkpoint to <out>-e<N>. For probing whether drift "
+            "(e.g. benign-control score creep) appears at a specific epoch that "
+            "val_acc alone doesn't flag -- accuracy has already been shown "
+            "(2026-08-15 ablation) not to catch this by itself."
+        ),
+    )
+    p.add_argument(
         "--label-order",
         type=str,
         default=None,
@@ -495,6 +535,23 @@ def main() -> None:
         val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate
     )
 
+    class_weight_vec = None
+    if args.class_weight == "inverse_freq":
+        counts = Counter(label2id[item["label"]] for item in train_items)
+        n_total = len(train_items)
+        n_classes = len(labels_sorted)
+        class_weight_vec = torch.tensor(
+            [n_total / (n_classes * max(1, counts[i])) for i in range(n_classes)],
+            dtype=torch.float32,
+        ).to(device)
+        print(
+            "class_weight=inverse_freq  "
+            + "  ".join(
+                f"{labels_sorted[i]}={class_weight_vec[i].item():.3f}(n={counts[i]})"
+                for i in range(n_classes)
+            )
+        )
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     total_steps = max(1, len(train_loader) * args.epochs)
     warmup_steps = max(1, int(total_steps * args.warmup_ratio))
@@ -521,7 +578,7 @@ def main() -> None:
                 device_type=device.type, dtype=autocast_dtype, enabled=device.type == "cuda"
             ):
                 logits = model(input_ids, attention_mask)
-                loss = soft_cross_entropy(logits.float(), targets)
+                loss = soft_cross_entropy(logits.float(), targets, class_weight_vec)
 
             if use_scaler:
                 scaler.scale(loss).backward()
@@ -546,6 +603,11 @@ def main() -> None:
             print(
                 f"    {label:>20s}  precision={precision:.3f}  recall={recall:.3f}  support={support}"
             )
+
+        if args.export_every_epoch:
+            epoch_out = args.out.parent / f"{args.out.name}-e{epoch}"
+            export_checkpoint(model, id2label, base_dir, epoch_out)
+            print(f"  -> exported epoch {epoch} to {epoch_out} (--export-every-epoch)")
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
