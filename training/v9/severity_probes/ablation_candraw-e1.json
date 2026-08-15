@@ -1,0 +1,504 @@
+{
+ "meta": {
+  "model_id": "kube_ordinal_v9_candraw-e1",
+  "weight_hash": "local-export"
+ },
+ "results": {
+  "flag01": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.3332526981830597,
+    "situation-normal": 0.34189218282699585,
+    "data-critical": 0.3248550593852997
+   }
+  },
+  "flag02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.25485509634017944,
+    "situation-normal": 0.3315974771976471,
+    "data-critical": 0.4135473966598511
+   }
+  },
+  "flag03": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20751918852329254,
+    "situation-normal": 0.2944934666156769,
+    "data-critical": 0.4979873597621918
+   }
+  },
+  "flag04": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2947472929954529,
+    "situation-normal": 0.21653421223163605,
+    "data-critical": 0.4887184500694275
+   }
+  },
+  "flag05": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2632126212120056,
+    "situation-normal": 0.19337990880012512,
+    "data-critical": 0.5434074997901917
+   }
+  },
+  "flag06": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20696546137332916,
+    "situation-normal": 0.2248978614807129,
+    "data-critical": 0.5681366920471191
+   }
+  },
+  "flag07": {
+   "top": "informative",
+   "scores": {
+    "informative": 0.37484288215637207,
+    "situation-normal": 0.3684675395488739,
+    "data-critical": 0.2566896080970764
+   }
+  },
+  "flag08": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.32510411739349365,
+    "situation-normal": 0.3495236337184906,
+    "data-critical": 0.32537224888801575
+   }
+  },
+  "flag09": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.19671867787837982,
+    "situation-normal": 0.45703285932540894,
+    "data-critical": 0.3462483882904053
+   }
+  },
+  "flag10": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.1999790370464325,
+    "situation-normal": 0.47574296593666077,
+    "data-critical": 0.3242780566215515
+   }
+  },
+  "root01": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.25025442242622375,
+    "situation-normal": 0.1530916839838028,
+    "data-critical": 0.5966538786888123
+   }
+  },
+  "root02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2610161304473877,
+    "situation-normal": 0.21474261581897736,
+    "data-critical": 0.5242412686347961
+   }
+  },
+  "root03": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.24156154692173004,
+    "situation-normal": 0.1703389585018158,
+    "data-critical": 0.588099479675293
+   }
+  },
+  "root04": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.25894635915756226,
+    "situation-normal": 0.2636339068412781,
+    "data-critical": 0.47741976380348206
+   }
+  },
+  "root05": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.21817879378795624,
+    "situation-normal": 0.2993304431438446,
+    "data-critical": 0.48249077796936035
+   }
+  },
+  "root06": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2497565895318985,
+    "situation-normal": 0.17352145910263062,
+    "data-critical": 0.5767219066619873
+   }
+  },
+  "root07": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.23643013834953308,
+    "situation-normal": 0.17202943563461304,
+    "data-critical": 0.5915404558181763
+   }
+  },
+  "root08": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2310551553964615,
+    "situation-normal": 0.17610952258110046,
+    "data-critical": 0.5928353071212769
+   }
+  },
+  "root09": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.23821759223937988,
+    "situation-normal": 0.21953779458999634,
+    "data-critical": 0.542244553565979
+   }
+  },
+  "root10": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.22873082756996155,
+    "situation-normal": 0.2960836887359619,
+    "data-critical": 0.47518542408943176
+   }
+  },
+  "targ01": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20731133222579956,
+    "situation-normal": 0.2223389893770218,
+    "data-critical": 0.5703496932983398
+   }
+  },
+  "targ02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.18102209270000458,
+    "situation-normal": 0.17822568118572235,
+    "data-critical": 0.6407522559165955
+   }
+  },
+  "targ03": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.21355001628398895,
+    "situation-normal": 0.18393968045711517,
+    "data-critical": 0.6025103330612183
+   }
+  },
+  "targ04": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.19945427775382996,
+    "situation-normal": 0.18600216507911682,
+    "data-critical": 0.6145435571670532
+   }
+  },
+  "targ05": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2315371185541153,
+    "situation-normal": 0.2337019294500351,
+    "data-critical": 0.5347609519958496
+   }
+  },
+  "targ06": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.15911537408828735,
+    "situation-normal": 0.1867057830095291,
+    "data-critical": 0.6541787981987
+   }
+  },
+  "targ07": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.1736731231212616,
+    "situation-normal": 0.26730111241340637,
+    "data-critical": 0.559025764465332
+   }
+  },
+  "targ08": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.24190084636211395,
+    "situation-normal": 0.22774189710617065,
+    "data-critical": 0.5303572416305542
+   }
+  },
+  "targ09": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.21601688861846924,
+    "situation-normal": 0.26066040992736816,
+    "data-critical": 0.5233226418495178
+   }
+  },
+  "ext01": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.24978724122047424,
+    "situation-normal": 0.17177461087703705,
+    "data-critical": 0.5784381628036499
+   }
+  },
+  "ext02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.21215210855007172,
+    "situation-normal": 0.20874546468257904,
+    "data-critical": 0.5791024565696716
+   }
+  },
+  "ext03": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20473310351371765,
+    "situation-normal": 0.18858228623867035,
+    "data-critical": 0.6066846251487732
+   }
+  },
+  "ext04": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20316769182682037,
+    "situation-normal": 0.1751243621110916,
+    "data-critical": 0.6217079162597656
+   }
+  },
+  "ext05": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2022375613451004,
+    "situation-normal": 0.18777048587799072,
+    "data-critical": 0.6099919676780701
+   }
+  },
+  "ext06": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.19810643792152405,
+    "situation-normal": 0.21056398749351501,
+    "data-critical": 0.5913295149803162
+   }
+  },
+  "ext07": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20298802852630615,
+    "situation-normal": 0.22048351168632507,
+    "data-critical": 0.5765284895896912
+   }
+  },
+  "ext08": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.19030149281024933,
+    "situation-normal": 0.25052642822265625,
+    "data-critical": 0.5591721534729004
+   }
+  },
+  "sys01": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.34917840361595154,
+    "situation-normal": 0.28367623686790466,
+    "data-critical": 0.3671453595161438
+   }
+  },
+  "sys02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.25218507647514343,
+    "situation-normal": 0.2841049134731293,
+    "data-critical": 0.4637099802494049
+   }
+  },
+  "sys03": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.3297217786312103,
+    "situation-normal": 0.22770656645298004,
+    "data-critical": 0.44257158041000366
+   }
+  },
+  "sys04": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.3556347191333771,
+    "situation-normal": 0.2872419059276581,
+    "data-critical": 0.3571234345436096
+   }
+  },
+  "sys05": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.26667454838752747,
+    "situation-normal": 0.2868483066558838,
+    "data-critical": 0.44647717475891113
+   }
+  },
+  "sys06": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.25876352190971375,
+    "situation-normal": 0.29466021060943604,
+    "data-critical": 0.4465763568878174
+   }
+  },
+  "sys07": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20560361444950104,
+    "situation-normal": 0.36142879724502563,
+    "data-critical": 0.43296757340431213
+   }
+  },
+  "sys08": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2789536118507385,
+    "situation-normal": 0.2987516522407532,
+    "data-critical": 0.4222947955131531
+   }
+  },
+  "sys09": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.26530423760414124,
+    "situation-normal": 0.32516220211982727,
+    "data-critical": 0.4095335602760315
+   }
+  },
+  "sys10": {
+   "top": "informative",
+   "scores": {
+    "informative": 0.37200358510017395,
+    "situation-normal": 0.2926066517829895,
+    "data-critical": 0.3353897035121918
+   }
+  },
+  "recov01": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2205478549003601,
+    "situation-normal": 0.19312791526317596,
+    "data-critical": 0.5863242745399475
+   }
+  },
+  "recov02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.26325032114982605,
+    "situation-normal": 0.15825828909873962,
+    "data-critical": 0.5784913897514343
+   }
+  },
+  "recov03": {
+   "top": "informative",
+   "scores": {
+    "informative": 0.4578363299369812,
+    "situation-normal": 0.2620045244693756,
+    "data-critical": 0.2801591455936432
+   }
+  },
+  "recov04": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.3397778272628784,
+    "situation-normal": 0.35701295733451843,
+    "data-critical": 0.30320921540260315
+   }
+  },
+  "recov05": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.17991586029529572,
+    "situation-normal": 0.5318652987480164,
+    "data-critical": 0.28821882605552673
+   }
+  },
+  "recov06": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20442095398902893,
+    "situation-normal": 0.28363385796546936,
+    "data-critical": 0.5119451880455017
+   }
+  },
+  "recov07": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.22071115672588348,
+    "situation-normal": 0.3281562030315399,
+    "data-critical": 0.4511326253414154
+   }
+  },
+  "recov08": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.20469903945922852,
+    "situation-normal": 0.3873392939567566,
+    "data-critical": 0.4079616665840149
+   }
+  },
+  "benign01": {
+   "top": "informative",
+   "scores": {
+    "informative": 0.46975818276405334,
+    "situation-normal": 0.2491724193096161,
+    "data-critical": 0.28106942772865295
+   }
+  },
+  "benign02": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.3111570179462433,
+    "situation-normal": 0.27756237983703613,
+    "data-critical": 0.4112805426120758
+   }
+  },
+  "benign03": {
+   "top": "informative",
+   "scores": {
+    "informative": 0.3519648015499115,
+    "situation-normal": 0.31598615646362305,
+    "data-critical": 0.33204910159111023
+   }
+  },
+  "benign04": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.34982046484947205,
+    "situation-normal": 0.2966197729110718,
+    "data-critical": 0.35355979204177856
+   }
+  },
+  "benign05": {
+   "top": "data-critical",
+   "scores": {
+    "informative": 0.2829090356826782,
+    "situation-normal": 0.34965595602989197,
+    "data-critical": 0.3674349784851074
+   }
+  },
+  "benign06": {
+   "top": "situation-normal",
+   "scores": {
+    "informative": 0.16923217475414276,
+    "situation-normal": 0.4286279082298279,
+    "data-critical": 0.40213996171951294
+   }
+  },
+  "benign07": {
+   "top": "informative",
+   "scores": {
+    "informative": 0.4500672519207001,
+    "situation-normal": 0.20941162109375,
+    "data-critical": 0.3405211865901947
+   }
+  }
+ }
+}
