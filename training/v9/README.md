@@ -1,17 +1,22 @@
 # kube_ordinal v9 — corpus status
 
-**Three local training passes exist (`.models/kube_ordinal_v9`, gitignored;
-metrics committed at `severity_probes/baseline_v9{,_round2,_round3}.json`).
-None is a rollout candidate** — all three show a form of instability on the
-out-of-corpus probe gate (pass 1: raw score saturation; pass 2: baseline-
-probe compression toward the ceiling; pass 3: the calibration-vs-margin
-picture holds — classic pass/fail 8→15→17→18/23, but the honest
-`--delta-margin 0.05` reading is 5→8→8→9/23, and this pass's benign-control
-inversions TRIPLED (1→3) including the exact live false-positive shapes
-`signoff.md` already flagged in production). See
-`severity_probes/DELTA_METRIC.md` for the metric and the full table. The
-deployed classifier is still `kube_ordinal_v8`. Read `PLAN.md` for the
-design and the rulings.
+**Four local training passes exist (`.models/kube_ordinal_v9`, gitignored;
+metrics committed at `severity_probes/baseline_v9{,_round2,_round3,_round4}.json`).
+None is a rollout candidate.** Classic pass/fail climbs steadily
+(8→15→17→18→19/23 across v8→pass4) but the honest `--delta-margin 0.05`
+reading is nearly flat (5→8→8→9→9/23) — two of four passes added ZERO
+robust constraints despite real, targeted data each time. Benign-control
+inversions have gotten monotonically WORSE, not better, every single pass
+(1→1→3→4), including a pass-4 regression where a pure-read `cat README.md`
+now outranks an actual file deletion, and the pass-4 fix that correctly
+relabeled `cargo build` in the training data did not fix its live score
+(0.828→0.931→0.955, worse after the fix). Leading hypothesis, not yet
+confirmed by a controlled test: the training set's rising data-critical
+share (52.6% by pass 4) may be shifting the whole model toward
+over-predicting severity rather than genuinely separating cases. See
+`severity_probes/DELTA_METRIC.md` and the `baseline_v9_round4.json` commit
+message for the full readout. The deployed classifier is still
+`kube_ordinal_v8`. Read `PLAN.md` for the design and the rulings.
 
 ```
 python3 training/v9/build_v9.py            # merge every slice -> v9.jsonl, gate it
