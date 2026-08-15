@@ -32,8 +32,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SRC = HERE / 'v9.jsonl'
-TRAIN = HERE / 'train.jsonl'
-VAL = HERE / 'val.jsonl'
 SEED = 20260813
 VAL_FRACTION = 0.15
 # Ordinal order, least to most severe. The Rust side reads id2label by index,
@@ -41,7 +39,7 @@ VAL_FRACTION = 0.15
 LABEL_ORDER = ['informative', 'situation-normal', 'data-critical']
 
 
-def build():
+def build(val_fraction: float):
     rows = [json.loads(l) for l in SRC.read_text().splitlines() if l.strip()]
     by_label = defaultdict(list)
     for r in rows:
@@ -52,7 +50,7 @@ def build():
     for label in LABEL_ORDER:
         group = sorted(by_label[label], key=lambda r: r['text'])  # stable before shuffle
         rng.shuffle(group)
-        n_val = max(1, round(len(group) * VAL_FRACTION))
+        n_val = max(1, round(len(group) * val_fraction))
         val.extend(group[:n_val])
         train.extend(group[n_val:])
 
@@ -65,14 +63,30 @@ def build():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--check', action='store_true')
+    ap.add_argument('--val-fraction', type=float, default=VAL_FRACTION,
+                    help='default 0.15, unchanged from before this flag existed. '
+                         'A wider split (e.g. 0.30) trades train rows for a val '
+                         'set whose accuracy/gate reading is less exposed to '
+                         'single-sample noise -- see the 2026-08-15 ablation, '
+                         'where a one-seed 15%% val split was part of why B '
+                         'could not reproduce pass 3 exactly.')
+    ap.add_argument('--suffix', default='',
+                    help="write to train<suffix>.jsonl/val<suffix>.jsonl instead "
+                         "of train.jsonl/val.jsonl. Default '' preserves the "
+                         "committed filenames every other script expects; use a "
+                         "suffix for one-off variants (e.g. --suffix _wide) so "
+                         "they never collide with the standing split.")
     args = ap.parse_args()
 
-    train, val, rows = build()
+    train_path = HERE / f'train{args.suffix}.jsonl'
+    val_path = HERE / f'val{args.suffix}.jsonl'
+
+    train, val, rows = build(args.val_fraction)
     tb = '\n'.join(json.dumps(r, sort_keys=True) for r in train) + '\n'
     vb = '\n'.join(json.dumps(r, sort_keys=True) for r in val) + '\n'
 
     if args.check:
-        for p, body in ((TRAIN, tb), (VAL, vb)):
+        for p, body in ((train_path, tb), (val_path, vb)):
             if not p.exists():
                 print(f'{p.name} missing'); return 2
             if p.read_text() != body:
@@ -81,14 +95,15 @@ def main():
               f'({len(train)} train / {len(val)} val)')
         return 0
 
-    TRAIN.write_text(tb)
-    VAL.write_text(vb)
+    train_path.write_text(tb)
+    val_path.write_text(vb)
 
     print(f'source: {len(rows)} rows')
     print(f'  train {len(train)}  {dict(sorted(Counter(r["label"] for r in train).items()))}')
     print(f'  val   {len(val)}  {dict(sorted(Counter(r["label"] for r in val).items()))}')
     print(f'\nlabel order (ordinal, least->most severe): {",".join(LABEL_ORDER)}')
-    print(f'seed {SEED}, val fraction {VAL_FRACTION}')
+    print(f'seed {SEED}, val fraction {args.val_fraction}')
+    print(f'wrote {train_path.name} / {val_path.name}')
     return 0
 
 
