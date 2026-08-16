@@ -101,11 +101,20 @@ def main():
                 with open(out_path, 'a') as out:
                     for r, pred in zip(rows, preds):
                         live = r['lfm2d']['top']
+                        # SELF-DESCRIBING field names, and they must stay that
+                        # way. These were once 'v8_verdict'/'candidate_verdict',
+                        # which silently INVERTED on 2026-08-16: production
+                        # became v9 and this scorer was repointed at v8, so a
+                        # field called 'v8_verdict' was carrying v9's answer.
+                        # Mislabelled data is data corruption, and a reader has
+                        # no way to notice. Record which model said what.
                         out.write(json.dumps({
                             'ts': time.time(),
                             'command': r['command'],
-                            'v8_verdict': live,
-                            'candidate_verdict': pred,
+                            'live_model': r['lfm2d'].get('model_id'),
+                            'live_verdict': live,
+                            'shadow_model': args.model.name,
+                            'shadow_verdict': pred,
                             'agree': pred == live,
                         }) + '\n')
                 os.chmod(out_path, 0o600)

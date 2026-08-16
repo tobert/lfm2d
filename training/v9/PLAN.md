@@ -465,6 +465,58 @@ for three checkpoints.
 
 ## Open questions
 
+- **Payload exclusion: how do we get heredoc body spans?** (Amy, 2026-08-16,
+  weighing a hand-rolled POSIX-ish scanner vs a kaish plugin.) **Decided on
+  evidence: do not hand-roll.** Three options were measured, not argued:
+
+  | | reach | correctness |
+  |---|---|---|
+  | **A** hand-rolled Python scanner | all traffic | **rejected** |
+  | **B** kaish plugin | kaish traffic only | exact by construction |
+  | **C** `kaish --plan` from Python | ~83% of bash traffic | exact where it parses |
+
+  **A is rejected because we built it and it was wrong.** Our regex omitted
+  `[^\n]*\n` after the delimiter, so a body started after the delimiter
+  TOKEN rather than after the introducer LINE. `git commit -F - <<'EOF' &&
+  git push origin main` had ` && git push origin main` stripped **as
+  payload** — deleting a real command and hiding it from the classifier.
+  That is a false NEGATIVE in a guard. Against kaish's parser on 300 real
+  heredoc commands: **93.6% agreement before the fix, 100.0% after**
+  (`947d267`). Every one of the 16 disagreements was ours, all in the
+  dangerous direction. It survived review because every test case put the
+  delimiter at end-of-line — the commonest real shape was the untested one.
+
+  **C works today** (`kaish --plan`, JSON at exit 0 and 2, pure function of
+  source text, no kernel built) but has a **~17% floor on bash input**: 81
+  of 500 real commands fail to parse, and only 9 of those are the non-ASCII
+  bareword gap. The rest — `=~`, `[[ ]]`, `.venv-train` as DOTIDENT,
+  "adjacent words" — are **kaish not being bash**, by design. The floor is
+  an artifact of feeding bash to a kaish parser, not a property of the
+  surface, so it **disappears in a kaish-native stack**, which is where Amy
+  is heading.
+
+  **Design constraint for whichever lands: exclusion must be an optimisation
+  over a correct-but-noisy default, never load-bearing.** If the plan is
+  unavailable, the binary is stale, or the parse fails — classify the whole
+  command exactly as today. Then a parser problem costs precision and never
+  recall. Guard the version explicitly (`kaish -V`); a stale binary writes
+  nothing to stdout and exits 1, which is indistinguishable from a parse
+  failure if you branch on returncode alone.
+
+  **Worth it?** Re-measured clean against live `kube_ordinal_v9_cal`, 350
+  heredoc commands from the historical pool: 23 fired, and **21/23 (91%)
+  stop firing when the correct body span is removed.** Heredocs are ~28% of
+  firings on live v9_cal traffic, so exclusion removes roughly **a quarter
+  of all firings**. (That 28% comes from 391 rows / 32 firings and is partly
+  self-contaminated — re-measure on ordinary traffic before quoting it. The
+  91% is the solid number.)
+
+  **Open**: non-ASCII unquoted barewords fail to lex — **1.8% of real
+  commands** (`—`, `─`, `→`, `道場`, `は`, `🤖`). Amy's ruling, not ours.
+  **Open**: `-c` argv spans, which kaish would have to add. Payload shapes
+  look over-represented under v9_cal (`-c` at 4.36×, agreeing directionally
+  with 3.65× on raw v9) but **both rest on n≈5 — not enough to ask for it.**
+
 - **Revisit `tau`.** (Amy, 2026-08-16: *"let's keep a note to revisit t"*,
   taken alongside the decision to deploy the calibrated head.) The prior
   correction shipped at **tau=0.5**, and that value was chosen by **matching
