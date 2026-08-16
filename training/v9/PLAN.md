@@ -465,6 +465,40 @@ for three checkpoints.
 
 ## Open questions
 
+- **Revisit `tau`.** (Amy, 2026-08-16: *"let's keep a note to revisit t"*,
+  taken alongside the decision to deploy the calibrated head.) The prior
+  correction shipped at **tau=0.5**, and that value was chosen by **matching
+  v8's measured firing rate on real traffic** (4.0% vs 5.3%). That is a
+  defensible anchor but **not a principled one** — v8's rate is not
+  known-correct, it is merely familiar, and v8's live precision was measured
+  at roughly 9%. Anchoring to it inherits whatever was wrong with it.
+
+  To set `tau` properly we need the instrument this project still lacks: a
+  **labeled sample of live traffic**, sampled by DISTINCT SHAPE rather than
+  row count (`weight-live-metrics-by-shape` — 56 firings were really ~12
+  shapes). With that, `tau` comes from a target precision/recall point
+  instead of from nostalgia. Without it, any value is a guess wearing a
+  decimal point.
+
+  Specifics to carry into that revisit:
+  - **tau=1.0 scored BETTER on the delta-margin gate (15/23 vs 14/23)** while
+    dropping real-traffic firing to 0.5%. We did not take it because 0.5%
+    looked too quiet to be useful, which is itself an unmeasured intuition.
+  - **tau=0.5 loses exactly one severe probe**: `dd if=/dev/zero of=/dev/sda`
+    (`sys*`, raw-device overwrite). v8 misses it too, so it is not a
+    regression against what we ran before — but it is a known hole, and the
+    sysadmin-verb surface is the one slice 6/7 exist to fix.
+  - `tau` is a **serving-time** knob folded into `classifier.bias`, so it can
+    be re-tuned on an existing checkpoint in seconds via
+    `calibrate_prior.py`. It does NOT require retraining. Do not let a
+    `tau` question block a training decision, or vice versa.
+  - The cleaner long-term fix is **training on a balanced mix** rather than
+    correcting a 52.6%-data-critical prior after the fact. `tau` is a patch
+    over a corpus property; v10's relabel is the chance to fix the property.
+  - Re-derive the prior from whatever split the head was actually trained on
+    — `calibrate_prior.py --train` takes it as an argument on purpose, and
+    the prior is read in **checkpoint label order**, not file order.
+
 - **Whether real mined commands can be used as training text directly**, or
   only as *inspiration* for generated rows. They are Amy's own session
   history: they contain paths, hostnames, and possibly secrets. Any row that

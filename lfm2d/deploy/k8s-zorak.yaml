@@ -84,8 +84,34 @@ spec:
             # restarting (no image change — the heads are hostPath data,
             # not baked into the image).
             #
-            # weight_hash f2b2ac2b8b037759717522511db93c92b888ee00677c067b73819af28a0d34d7
-            # (v8 was 65c450b0c06cf00738cbaecbaea71499c1bca7997ded543c66caf09e33db0fba)
+            # PRIOR-CALIBRATED (tau=0.5), same day. The raw v9 fired
+            # data-critical 4.1x as often as v8 on identical inputs (21.7% vs
+            # 5.3% over the same 851 real commands) while RANKING better
+            # (14/23 vs 5/23 delta-margin) -- ranking well and thresholding
+            # badly is what a learned class prior looks like, and v9's
+            # training mix is 52.6% data-critical.
+            #
+            # The correction is a per-class constant in logit space
+            # (b' = b - tau*log(prior)), so it is NOT serving code -- it is
+            # literally a different bias vector. Exactly 1 of 150 tensors
+            # differs from kube_ordinal_v9; the trunk is byte-identical.
+            # Built by training/v9/severity_probes/calibrate_prior.py.
+            #
+            #                severe probes  benign controls  firing  gate
+            #   v8               34/55           0/7          5.3%   5/23
+            #   v9 raw           44/55           2/7         21.0%  14/23
+            #   v9_cal tau=0.5   43/55           0/7          4.0%  14/23
+            #
+            # tau=0.5 was chosen by MATCHING v8's firing rate, which is a
+            # familiar anchor and not a principled one. Amy: "let's keep a
+            # note to revisit t" -- the open question, what it needs, and the
+            # specifics (tau=1.0 gates 15/23; tau=0.5 loses the raw-device
+            # `dd` probe) live in training/v9/PLAN.md "Open questions".
+            # Re-tuning tau needs NO retraining -- re-run calibrate_prior.py.
+            #
+            # weight_hash e57ea1da5067d17edafdd01c5e1dfcccbc1eed3e5bbfc5ed2cb3649472979555
+            # (raw v9    f2b2ac2b8b037759717522511db93c92b888ee00677c067b73819af28a0d34d7)
+            # (v8        65c450b0c06cf00738cbaecbaea71499c1bca7997ded543c66caf09e33db0fba)
             #
             # Switching checkpoints is NOT one line IN GENERAL: v6 spoke a
             # different label vocabulary (informative/mutating/destructive)
@@ -99,13 +125,20 @@ spec:
             # refuses an unknown label and names it, so /v1/cascade would
             # error on every call rather than serve a wrong ranking.
             #
-            # KNOWN, ACCEPTED at cutover: v9 is a genuinely different model,
-            # not a refinement of v8 — 32.9% verdict agreement replaying the
+            # KNOWN, ACCEPTED: v9 is a genuinely different model, not a
+            # refinement of v8 — 32.9% verdict agreement replaying the
             # advisory log, and in local shadow it gained the in-place-edit
             # form (sed -i, python read-replace-write) while losing some
-            # read-only discrimination. Expect the hook to feel different,
-            # noisier on reads, before it feels better.
-            - --classifier-dir=/models/kube_ordinal_v9
+            # read-only discrimination.
+            #
+            # The "expect it noisier on reads" warning that stood here for a
+            # few hours is RETIRED by the calibration above: the two benign
+            # controls that made raw v9 noisy (`cat README.md`, `cargo build`)
+            # both stop firing at tau=0.5, and real-traffic firing drops
+            # 21.0% -> 4.0%. Left as a note rather than deleted because the
+            # underlying fact still holds — this is a different model, and
+            # calibration moved the threshold, not the representation.
+            - --classifier-dir=/models/kube_ordinal_v9_cal
             - --router-dir=/models/LFM2.5-Encoder-350M-Prompt-Router
             # Token-classification head backing /v1/spans and
             # /v1/spans/credentials. A THIRD resident trunk: heads only

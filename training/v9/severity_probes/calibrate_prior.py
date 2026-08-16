@@ -97,6 +97,18 @@ def main():
         if src.exists():
             shutil.copy2(src, args.out / name)
 
+    # safetensors' save_file honours the umask and wrote 0600 here, while the
+    # copy2'd siblings kept the source's 0644. Staged to /tank that way, the
+    # daemon runs as a different uid inside the pod and dies with
+    # "Permission denied (os error 13)" -- which it did, 2026-08-16, one
+    # CrashLoopBackOff before this line existed. A checkpoint is world-
+    # readable data; make the whole directory consistently so rather than
+    # leaving one file's mode to whatever umask happened to be set.
+    args.out.chmod(0o755)
+    for f in args.out.iterdir():
+        if f.is_file():
+            f.chmod(0o644)
+
     print(f'labels     {labels}')
     print(f'counts     {counts}')
     print(f'prior      {[round(p, 4) for p in prior]}')
