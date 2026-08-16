@@ -26,7 +26,31 @@ import torch
 from transformers import AutoConfig, AutoModel, PreTrainedTokenizerFast
 
 
-def load(model_dir: Path, base_dir: Path):
+VALID_DEVICES = ('auto', 'cpu', 'cuda')
+
+
+def resolve_device(requested: str, cuda_available=None) -> str:
+    """Map a --device request onto a torch device string.
+
+    'auto' picks cuda when it is there. An EXPLICIT 'cuda' that is not
+    available raises instead of quietly running on cpu -- a silent fallback
+    here turns an 8k-row replay into an all-night job with no signal that
+    anything went wrong.
+
+    `cuda_available` is injectable so this is testable without a GPU.
+    """
+    if requested not in VALID_DEVICES:
+        raise ValueError(f'--device must be one of {VALID_DEVICES}, got {requested!r}')
+    if cuda_available is None:
+        cuda_available = torch.cuda.is_available()
+    if requested == 'auto':
+        return 'cuda' if cuda_available else 'cpu'
+    if requested == 'cuda' and not cuda_available:
+        raise RuntimeError('--device cuda requested but torch.cuda.is_available() is False')
+    return requested
+
+
+def load(model_dir: Path, base_dir: Path, device: str = 'auto'):
     cfg = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     id2label = {int(k): v for k, v in cfg.id2label.items()}
     labels = [id2label[i] for i in sorted(id2label)]
@@ -41,7 +65,7 @@ def load(model_dir: Path, base_dir: Path):
     trunk.eval()
     W = sd['classifier.weight'].float()
     b = sd['classifier.bias'].float()
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = resolve_device(device)
     trunk.to(device)
     W, b = W.to(device), b.to(device)
     return trunk, tok, W, b, labels, device
@@ -65,9 +89,11 @@ def main():
     ap.add_argument('--base', default='.models/LFM2.5-Encoder-350M', type=Path)
     ap.add_argument('--log', required=True, type=Path)
     ap.add_argument('--batch-size', type=int, default=32)
+    ap.add_argument('--device', choices=VALID_DEVICES, default='auto',
+                    help='auto (default) uses the GPU -- right for a bulk replay')
     args = ap.parse_args()
 
-    trunk, tok, W, b, labels, device = load(args.model, args.base)
+    trunk, tok, W, b, labels, device = load(args.model, args.base, args.device)
     print(f'loaded {args.model.name} on {device}, labels={labels}', file=sys.stderr)
 
     rows = []

@@ -19,8 +19,17 @@ import sys
 import time
 from pathlib import Path
 
+# MUST precede the torch import (OpenMP reads these once, at library init).
+# A long-lived poll loop that scores a few rows a minute has no business
+# holding a spinning thread pool: measured 2026-08-16, torch's default
+# 16-thread ATen pool busy-waited 1.5 cores while COMPLETELY IDLE. PASSIVE
+# makes idle workers sleep; 1 thread is ample for a 350M encoder at this rate.
+os.environ.setdefault('OMP_WAIT_POLICY', 'PASSIVE')
+os.environ.setdefault('OMP_NUM_THREADS', '1')
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from backtest_candidate import load, classify_batch  # noqa: E402
+import torch  # noqa: E402
+from backtest_candidate import VALID_DEVICES, load, classify_batch  # noqa: E402
 
 
 def main():
@@ -30,12 +39,24 @@ def main():
     ap.add_argument('--log', required=True, type=Path)
     ap.add_argument('--out', required=True, type=Path)
     ap.add_argument('--poll-seconds', type=float, default=5.0)
+    ap.add_argument('--device', choices=VALID_DEVICES, default='cpu',
+                    help="default 'cpu' ON PURPOSE: this is a poll loop that "
+                         "scores a handful of rows an hour, and the ROCm HIP "
+                         "runtime busy-waits a thread at 100%% of a core for "
+                         "the whole run. Measured 2026-08-16: 13.5 core-hours "
+                         "burned for 260 forward passes, GPU util 0%%. Pass "
+                         "--device auto only if you know why you want it.")
+    ap.add_argument('--threads', type=int, default=1,
+                    help='ATen intra-op threads (default 1; see the OMP note above)')
     args = ap.parse_args()
+
+    torch.set_num_threads(args.threads)
+    torch.set_num_interop_threads(args.threads)
 
     log_path = args.log.expanduser()
     out_path = args.out.expanduser()
 
-    trunk, tok, W, b, labels, device = load(args.model, args.base)
+    trunk, tok, W, b, labels, device = load(args.model, args.base, args.device)
     print(f'[shadow] loaded {args.model.name} on {device}', flush=True)
 
     if not out_path.exists():
