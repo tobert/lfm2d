@@ -47,7 +47,19 @@ HEREDOC_OPEN = re.compile(r'<<-?\s*(["\']?)(\w+)\1')
 
 # Whole heredoc incl. body, for stripping. Non-greedy body, terminator on
 # its own line. Note `re.M` so ^/$ are line anchors, `re.S` so . spans lines.
-HEREDOC_FULL = re.compile(r'(<<-?\s*(["\']?)(\w+)\2)(.*?)(^\s*\3\s*$)', re.S | re.M)
+#
+# `[^\n]*\n` after the delimiter is LOAD-BEARING and was missing until
+# 2026-08-16. A heredoc body starts after the END OF THE INTRODUCER LINE,
+# not after the delimiter token -- everything between them still belongs to
+# the command. Without it, `git commit -F - <<'EOF' && git push origin main`
+# captured " && git push origin main" as part of the body, so the stripper
+# deleted a real command and hid it from the classifier. That is a false
+# NEGATIVE in a guard, the one direction we cannot accept, and it survived
+# review because every test case put the delimiter at end-of-line.
+# Diagnosed by diffing against kaish's parser (kaish-lead, from the
+# character counts: 13 chars for `&& echo done`, 24 for `&& git push
+# origin main`). Group 1 now spans opener THROUGH that newline.
+HEREDOC_FULL = re.compile(r'(<<-?\s*(["\']?)(\w+)\2[^\n]*\n)(.*?)(^\s*\3\s*$)', re.S | re.M)
 
 INTERPRETERS = r'python3?|perl|ruby|node|deno|bun|php|Rscript|osascript'
 DASH_C = re.compile(rf'\b({INTERPRETERS})\b[^|;&]*\s-c\s')

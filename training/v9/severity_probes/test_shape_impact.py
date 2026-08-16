@@ -51,6 +51,24 @@ def test_strip_replaces_body_but_keeps_framing():
     assert "<<'EOF'" in out and PLACEHOLDER.strip() in out, 'framing was destroyed'
 
 
+def test_strip_keeps_the_rest_of_the_introducer_line():
+    """THE REGRESSION. A body starts after the introducer LINE, not after the
+    delimiter token. Every earlier test put the delimiter at end-of-line, so
+    a stripper that ate ' && git push origin main' as body text passed them
+    all -- deleting a real command and hiding it from the classifier."""
+    cmd = "git commit -F - <<'EOF' && git push origin main\nmsg\nEOF"
+    out = strip_heredoc_bodies(cmd)
+    assert '&& git push origin main' in out, 'the command after && was eaten as body'
+    assert 'msg' not in out, 'the actual body survived'
+
+
+def test_strip_keeps_a_pipeline_on_the_introducer_line():
+    cmd = "cat <<'EOF' | tee out.txt && echo ok\nbody\nEOF"
+    out = strip_heredoc_bodies(cmd)
+    assert 'tee out.txt' in out and 'echo ok' in out, out
+    assert 'body' not in out
+
+
 def test_strip_handles_two_heredocs_in_one_statement():
     cmd = "cat <<'A'\nfirst\nA\ncat <<'B'\nsecond\nB"
     out = strip_heredoc_bodies(cmd)
