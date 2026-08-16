@@ -49,6 +49,23 @@ def test_explicit_cpu_ignores_a_present_gpu():
     assert resolve_device('cpu', cuda_available=True) == 'cpu'
 
 
+def test_cpu_never_asks_torch_whether_cuda_exists():
+    """torch.cuda.is_available() opens /dev/kfd. A cpu-only run must not
+    become a GPU holder just by asking the question."""
+    import torch
+    import backtest_candidate as bc
+    original = torch.cuda.is_available
+
+    def boom():
+        raise AssertionError('resolve_device("cpu") called torch.cuda.is_available()')
+
+    torch.cuda.is_available = boom
+    try:
+        assert bc.resolve_device('cpu') == 'cpu'
+    finally:
+        torch.cuda.is_available = original
+
+
 def test_explicit_cuda_without_a_gpu_raises_not_falls_back():
     raises(RuntimeError, lambda: resolve_device('cuda', cuda_available=False))
 
@@ -60,6 +77,16 @@ def test_explicit_cuda_with_a_gpu_is_honoured():
 def test_garbage_device_raises():
     raises(ValueError, lambda: resolve_device('rocm', cuda_available=True))
     raises(ValueError, lambda: resolve_device('', cuda_available=True))
+
+
+def test_shadow_scorer_sets_omp_before_importing_torch():
+    """OpenMP reads these once at library init. If the setdefault calls ever
+    drift below the torch import they become silently inert -- the exact
+    failure that cost 1.5 cores."""
+    src = Path(__file__).resolve().parent.joinpath('shadow_score.py').read_text()
+    omp = src.index("os.environ.setdefault('OMP_WAIT_POLICY'")
+    imp = src.index('import torch')
+    assert omp < imp, 'OMP_WAIT_POLICY is set after the torch import -- inert'
 
 
 def test_shadow_scorer_defaults_to_cpu():

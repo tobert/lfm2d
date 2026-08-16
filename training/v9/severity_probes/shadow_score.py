@@ -27,6 +27,14 @@ from pathlib import Path
 os.environ.setdefault('OMP_WAIT_POLICY', 'PASSIVE')
 os.environ.setdefault('OMP_NUM_THREADS', '1')
 
+# NOT done, because it was measured and bought nothing: hiding the GPU with
+# HIP_VISIBLE_DEVICES='' before the import. A cpu run still opens /dev/kfd --
+# the checkpoint's trust_remote_code path touches torch.cuda during
+# from_pretrained, and ROCm opens the KFD node to enumerate regardless of
+# visibility masking. But `rocm-smi --showpids` reports the process at
+# **VRAM USED 0**, and loading the model with the mask on vs off gives a VRAM
+# delta of exactly 0. The fd is cosmetic; the core was the whole cost.
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import torch  # noqa: E402
 from backtest_candidate import VALID_DEVICES, load, classify_batch  # noqa: E402

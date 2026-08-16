@@ -41,6 +41,11 @@ def resolve_device(requested: str, cuda_available=None) -> str:
     """
     if requested not in VALID_DEVICES:
         raise ValueError(f'--device must be one of {VALID_DEVICES}, got {requested!r}')
+    if requested == 'cpu':
+        # Short-circuit BEFORE any torch.cuda call: is_available() initializes
+        # HIP and opens /dev/kfd (verified 2026-08-16), so merely asking the
+        # question makes a cpu-only process a GPU holder for its whole life.
+        return 'cpu'
     if cuda_available is None:
         cuda_available = torch.cuda.is_available()
     if requested == 'auto':
