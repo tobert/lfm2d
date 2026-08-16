@@ -76,20 +76,36 @@ spec:
           image: 192.168.1.2:3000/amy/lfm2d:0.1.2
           imagePullPolicy: IfNotPresent
           args:
-            # kube_ordinal_v8 — accepted by Amy 2026-08-11. v6 remains
-            # staged alongside on /tank as the rollback target.
+            # kube_ordinal_v9 — Amy's straight-cutover call 2026-08-16:
+            # "we should deploy v9 or get on v10 and deploy it, it's still
+            # too early to judge against prior models." v8 AND v6 both
+            # remain staged alongside on /tank as rollback targets; roll
+            # back by pointing this one line at kube_ordinal_v8 and
+            # restarting (no image change — the heads are hostPath data,
+            # not baked into the image).
             #
-            # Switching checkpoints is NOT one line: v8 speaks a different
-            # label vocabulary (informative/situation-normal/data-critical)
-            # than v6 (informative/mutating/destructive), so the severe set
-            # must move with it. The severe pair below is what the v8
-            # evaluation actually resolved — see the
-            # `severe_labels_resolved` field in
-            # training/cascade/eval_v8_router_raw.json, not a guess from
-            # the label names. Mismatched labels do not degrade silently:
-            # `cascade::resolve_severe_labels` refuses an unknown label and
-            # names it, so /v1/cascade would error on every call.
-            - --classifier-dir=/models/kube_ordinal_v8
+            # weight_hash f2b2ac2b8b037759717522511db93c92b888ee00677c067b73819af28a0d34d7
+            # (v8 was 65c450b0c06cf00738cbaecbaea71499c1bca7997ded543c66caf09e33db0fba)
+            #
+            # Switching checkpoints is NOT one line IN GENERAL: v6 spoke a
+            # different label vocabulary (informative/mutating/destructive)
+            # than v8/v9 (informative/situation-normal/data-critical), so
+            # for THAT move the severe set must travel with it. It does not
+            # apply to v8→v9: both were verified to carry the identical
+            # vocabulary AND order before this change (v8 read live off
+            # /v1/models, v9 read off its config.json), so the severe pair
+            # below is unchanged and still correct. Mismatched labels do
+            # not degrade silently anyway: `cascade::resolve_severe_labels`
+            # refuses an unknown label and names it, so /v1/cascade would
+            # error on every call rather than serve a wrong ranking.
+            #
+            # KNOWN, ACCEPTED at cutover: v9 is a genuinely different model,
+            # not a refinement of v8 — 32.9% verdict agreement replaying the
+            # advisory log, and in local shadow it gained the in-place-edit
+            # form (sed -i, python read-replace-write) while losing some
+            # read-only discrimination. Expect the hook to feel different,
+            # noisier on reads, before it feels better.
+            - --classifier-dir=/models/kube_ordinal_v9
             - --router-dir=/models/LFM2.5-Encoder-350M-Prompt-Router
             # Token-classification head backing /v1/spans and
             # /v1/spans/credentials. A THIRD resident trunk: heads only
