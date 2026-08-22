@@ -517,6 +517,35 @@ for three checkpoints.
   look over-represented under v9_cal (`-c` at 4.36×, agreeing directionally
   with 3.65× on raw v9) but **both rest on n≈5 — not enough to ask for it.**
 
+  **Amy's ruling, 2026-08-22 — the interpreter-payload class gets handled
+  UPSTREAM, not here:** *"I feel ok with the 'python -c' class of thing for
+  now, I think in our apps we have kaish and can detect that statically,
+  and redirect the python source to a python specialist, all static and
+  super fast, so few will come to our shell classifier. same for ruby etc,
+  we'll use a small llm for quick checks (that will be slow but tolerable
+  for the autonomy tradeoff)."* In kaish-native stacks, `-c`, pipe-into-
+  interpreter, and interpreter-fed heredocs (`python3 <<'PY'` — the
+  dominant flip family in the 08-22 soak review) are detected statically
+  and routed to a language specialist, so they stop reaching this
+  classifier. Consequences: **`-c` argv spans drop in urgency** (ask only
+  if bash-hook traffic still needs them once kaish-native traffic
+  dominates), and heredoc body exclusion remains worth doing mainly for
+  SHELL-facing heredocs (`git commit -F -`, `cat > file`, `sed` scripts)
+  and for today's bash-hook traffic, which has no kaish parser in front of
+  it. The clause-level errors exclusion cannot touch — bare `echo` clauses
+  winning cascades at high confidence, `sed -n` firings (see the
+  `flip-review-2026-08-22` notes) — stay on v10's training-data side.
+
+  **Soak re-measurement, 2026-08-22** (supersedes the n≈5 numbers above,
+  via `shape_impact.py --model-id kube_ordinal_v9_cal` on 14,255 v9_cal
+  rows / 1,214 firings, 08-16→08-22): heredoc **1.73×** (traffic 13.7%,
+  firings 23.6%), interp `-c` **3.72×** (1.0% / 3.7%, n=45 firings),
+  pipe-into-interp **2.77×** (0.5% / 1.4%). All three payload shapes
+  genuinely over-represented; the 08-16 heredoc ratio (2.24×) was
+  self-contaminated as suspected. Heredoc delimiters: 97% quoted/literal,
+  top words PY (876) / EOF (654) / PYEOF (371) — most heredoc traffic IS
+  interpreter source, consistent with Amy's upstream routing absorbing it.
+
 - **Revisit `tau`.** (Amy, 2026-08-16: *"let's keep a note to revisit t"*,
   taken alongside the decision to deploy the calibrated head.) The prior
   correction shipped at **tau=0.5**, and that value was chosen by **matching
@@ -550,6 +579,24 @@ for three checkpoints.
   - Re-derive the prior from whatever split the head was actually trained on
     — `calibrate_prior.py --train` takes it as an argument on purpose, and
     the prior is read in **checkpoint label order**, not file order.
+  - **First soak numbers (2026-08-22, 08-16→08-22 window):** sustained live
+    firing is **6.7–11% per day** — the 4% anchor was a whole-text tau
+    sweep, and live runs the clause cascade. The replay instrument
+    (`clause_replay.py` + `flip_review.py`, this dir) reproduces the pod's
+    recorded verdicts on **15,079/15,079 rows** with daemon-faithful
+    inputs (no truncation — the daemon scores whole clauses; unpadded
+    length-uniform batches — the trunk's convs are unmasked). The two
+    disagreements found along the way were both harness bugs, not model
+    behavior: padded-batch conv leakage (80.3% agreement) and a 128-token
+    truncation the daemon does not have (the shadow scorer carries the
+    same truncation — its verdicts are not comparable with production).
+    **Verdict-level CPU/GPU drift on this workload is below measurement.**
+    A random sample of 15 firings read ~0/15 truly data-critical: bare
+    `echo` clauses winning cascades at high confidence, read-only `sed -n`
+    firings. Those are RANKING failures tau structurally cannot touch —
+    raising tau would kill genuine firings without moving them. tau still
+    needs a labeled-by-shape live sample; the soak's recorded clause texts
+    (advisory log) are that sample's raw material, still unlabeled.
 
 - **Whether real mined commands can be used as training text directly**, or
   only as *inspiration* for generated rows. They are Amy's own session
