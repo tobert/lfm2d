@@ -297,6 +297,30 @@ Experiment worth one ablation: serialize the plan fields into a fixed
 template (`sed | -n 5,8p foo.txt | > out.txt`) vs the rendered string,
 so the model keys on the redirect target without learning `>` from text.
 
+### 6. What the heredocs are, and what a parallel pass would route (2026-08-23)
+
+Amy: *"my thinking is if we see shell in a heredoc body, we run it
+through its own pass in parallel. are some of the commands writing shell
+scripts to exec on the fly?"* Measured on the baseline window via the
+plan's `heredocs[]` (body verbatim + `delimiter` + `literal` +
+`body_offset`, beside the `>` target — the extraction is a plan walk,
+not a regex): **2,281 heredocs — 1,556 (68%) into an interpreter
+(`PY*` delimiters 1,457), 253 git/gh message bodies, 374 written to
+files (170 code, 204 other), 96 `cat`/`tee` to stdout, 2 written to a
+`*.sh`, 0 piped into `bash`/`sh`, 0 `eval`, 0 `source`.** `bash -c` is
+110 of 11,000 distinct commands (1%), and the plan hands that string
+back as a plain arg. So the parallel pass is: interpreter body →
+specialist; `bash -c` arg → plan it as a script, recursively; message
+and file bodies → data, no pass. "Shell in a heredoc" is the rare case.
+
+**Variable in command position is 97% statically bound** in the same
+text (249/256; `K=` alone is 176). Asked kaish-lead whether `--plan` can
+resolve a same-script binding and report real argv with provenance,
+failing closed only on the unbound 3% — if so Group C collapses and the
+"name commands literally" style rule is unnecessary. With that and the
+plan's heredoc exposure, **the minimal style set for lfm2d's benefit is
+Amy's quoting line alone.**
+
 ### 4. What this changes in the plan above
 
 - **Slice 3 (training data) is the whole game, and it is a coverage
