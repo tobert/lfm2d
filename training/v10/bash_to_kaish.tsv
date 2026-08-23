@@ -30,3 +30,6 @@ B	[[ $x =~ ^a ]] && echo m	echo $x | grep -q '^a' && echo m	no =~ regex test
 B	xargs -I{} cp {} dst	xargs -I '{}' cp '{}' dst	bare braces
 C	$K get pods	kubectl get pods	variable in command position; needs K's value
 C	x="$($K -n ns get pod -o name)"	x="$(kubectl -n ns get pod -o name)"	same, inside $( )
+B	rc=$?; [ $rc -ne 0 ] && echo bad	rc=$?; [[ $rc -ne 0 ]] && echo bad	single-bracket test: [ ] is the list literal; [[ ]] or test, mechanical and total
+B	[ -f /etc/passwd ] && echo yes	test -f /etc/passwd && echo yes	same; test builtin shares the operator set
+B	make build; [ $? -ne 0 ] && echo bad	if ! make build; then echo bad; fi	best kaish idiom when the command is adjacent (! is new in 0.16)
