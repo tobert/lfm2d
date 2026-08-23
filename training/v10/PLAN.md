@@ -229,7 +229,7 @@ contract is: **v10 classifies what `kaish --plan` produces.** Bash that
 kaish rejects is out of the model's scope by design — it takes the
 fallback path or escalates — and the 80/20 rule decides which rejects
 kaish itself fixes. kaish-lead's triage of the gap list (2026-08-23,
-kaish 0.16.0): **Group A, kaish contradicts itself** (lexer-level, ~264
+kaish 0.16.0; Group A was later REFUSED by Amy — see the ruling below): **Group A, kaish contradicts itself** (lexer-level, ~264
 rows → ~89.4% planned; grown to ~270+ after the bucket-1 split):
 unquoted `===`/`a==b`, version strings and IPs lexed as floats,
 `x=~/path` fusing into `=~`, `.venv/bin/python` in command position, a
@@ -253,8 +253,36 @@ bisected rows) is **the same bug**, not a cosmetic one — the genuine
 pastes get correct spans, only the wrong fragmentation gets wild ones.
 Tracked in `~/exomemory/issues/kaish.md`.
 
-**If the model becomes kaish-native (Amy's steer), Group A becomes the
-whole list, not moot**: `v=0.16.0` and `git show HEAD:path/f.py` are
+**AMY'S RULING (2026-08-23, via kaish-lead): the lexer fold is refused;
+kaish's language does not change. The answer for the corpus is: quote
+it.** Verified on 0.16: `echo "===" step 3 "==="`, `export X="unix:path=/…"`,
+`git show "HEAD:training/v9/x.py"`, `git diff "HEAD~1"`,
+`--flag="-Cdebuginfo=0"` all plan. All 608 adjacent-words rows — the
+~273 formerly "A", the 186 quote-to-join, the 63 quote-boundary — are
+one rule away. Her reasoning: kaish's rule today is ONE rule with no
+exceptions ("nothing adjacent is joined, quote to join"); a model that
+learns "quote compound words" is right 100% of the time; the fold would
+make it three rules and context-dependent tokenization, and letting a
+bash corpus drive kaish's grammar has no natural stopping point.
+**What kaish will fix: the error span, and only the span** (point at the
+word to quote; filed, unscheduled; changes no outcome). Consequences
+here: `bash_to_kaish.tsv` has no Group A any more (rows re-tagged B,
+the verifier's one invariant is "unquoted fails, quoted twin plans");
+**the Haiku rewrite corpus has one rule to teach, not a per-class
+table**; and the bloom-filter chain gets a static stage for free —
+"does it plan? if not, the error names the word" is self-service.
+
+**Measurement warning**: Amy's global prompt gained *"quote strings and
+spans rather than relying on bare strings and automatic concatenation"*
+at **2026-08-23 15:05 UTC** (`QUOTING_PROMPT_TS = 1787497523` in
+`soak_shapes.py`). Rows after that drift toward plannable for a reason
+that is neither kaish nor the model. `kaish_floor.py` windows to before
+it by default; **baseline: kaish 0.16.0 b27ea4dd, 11,085 rows, 13.0%
+unplannable.** A later floor is comparable only against a later
+baseline taken with the same window.
+
+**If the model becomes kaish-native (Amy's steer), the former Group A
+shapes are still the whole list, not moot**: `v=0.16.0` and `git show HEAD:path/f.py` are
 legal kaish that kaish wrongly rejects, so they hit a first-party caller
 exactly as hard. Group B is what disappears. **Corpus provenance, the
 number kaish-lead asked for before committing to that**: the advisory

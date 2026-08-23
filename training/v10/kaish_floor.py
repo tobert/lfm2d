@@ -7,6 +7,9 @@ AGGREGATES ONLY. Plans every distinct command the live head scored
 kaish's error token, and masks the context around the top two buckets
 (letters->a, digits->0) so the shape is visible and the text is not.
 
+Default window: rows before Amy's "quote strings and spans" prompt change
+(2026-08-23 15:05 UTC), so later runs measure kaish, not the prompt.
+
 Measured 2026-08-23, kaish 0.15.0, 11,000 distinct commands / 11,085 rows:
 86.0% of rows plan; 43,265 simple commands with name/args/redirect-target
 fields. Failure buckets: unquoted `echo === ... ===;` (adjacent-words, 621),
@@ -26,7 +29,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from soak_shapes import DEFAULT_LOG, load_rows, top, winner  # noqa: E402
+from soak_shapes import DEFAULT_LOG, QUOTING_PROMPT_TS, load_rows, top, winner  # noqa: E402
 
 
 def plan(cmd):
@@ -57,9 +60,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--log', type=Path, default=DEFAULT_LOG)
     ap.add_argument('--model-id', required=True)
+    ap.add_argument('--until', type=float, default=QUOTING_PROMPT_TS,
+                    help='only rows with ts < this epoch (default: the moment Amy\'s prompt '
+                         'started nudging Claudes to quote, so the floor measures kaish, not '
+                         'the prompt); pass 0 for no window')
     args = ap.parse_args()
     ver = subprocess.run(['kaish', '--version'], capture_output=True, text=True).stdout.strip()
-    rows = load_rows(args.log, args.model_id)
+    rows = load_rows(args.log, args.model_id, args.until or None)
+    if args.until:
+        print(f'(rows windowed to ts < {args.until:.0f} -- pre quoting-prompt baseline)')
     cmds = list(dict.fromkeys(d['command'] for d in rows))
     print(f'{ver}; distinct commands {len(cmds)} of {len(rows)} rows')
     with ThreadPoolExecutor(8) as ex:

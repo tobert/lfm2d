@@ -131,12 +131,23 @@ def is_payload(clause):
     return bool(HEREDOC_OPEN.search(clause) or DASH_C.search(clause) or PIPE_INTO.search(clause))
 
 
-def load_rows(log, model_id):
+# Amy's global prompt gained "quote strings and spans" at 2026-08-23 15:05
+# UTC. Rows after that drift toward plannable for a reason that has nothing
+# to do with kaish or the model, so any before/after comparison must window
+# on this (kaish-lead's warning, 2026-08-23).
+QUOTING_PROMPT_TS = 1787497523
+
+
+def load_rows(log, model_id, until=None):
+    """Cascade rows scored live by model_id, optionally only those with
+    ts < until (epoch seconds) so a baseline stays a baseline."""
     rows = []
     for line in open(log):
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if until is not None and d.get('ts', 0) >= until:
             continue
         lf = d.get('lfm2d') or {}
         if lf.get('ok') and lf.get('model_id') == model_id and lf.get('endpoint') == 'cascade':
@@ -298,8 +309,12 @@ def main():
     ap.add_argument('--train', type=Path, default=HERE.parent / 'v9' / 'train.jsonl',
                     help='split the head was trained on (prior source, as calibrate_prior.py)')
     ap.add_argument('--taus', default='0.5,0.75,1.0,1.25,1.5')
+    ap.add_argument('--until', type=float, help='only rows with ts < this epoch; '
+                    f'QUOTING_PROMPT_TS={QUOTING_PROMPT_TS} is the pre-prompt-change baseline')
     args = ap.parse_args()
-    rows = load_rows(args.log, args.model_id)
+    rows = load_rows(args.log, args.model_id, args.until)
+    if args.until:
+        print(f'(rows windowed to ts < {args.until:.0f})')
     print(f'== shapes ({args.model_id})')
     table_shapes(rows)
     print()

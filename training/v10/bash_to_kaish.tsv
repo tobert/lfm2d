@@ -2,21 +2,29 @@
 # Verified by bash_to_kaish.py against the kaish on PATH: every bash column
 # must FAIL `kaish --plan` and every kaish column must plan, or the script
 # exits non-zero -- so this table goes stale loudly when kaish changes.
-# Groups are kaish-lead's (2026-08-23): A = kaish contradicts itself (a
-# contiguous unquoted run fragmented; the rewrite is just quoting, and the
-# fix makes the rewrite unnecessary), B = deliberate difference (mechanical
-# rewrite), C = a plan would be confidently wrong (fail closed; rewrite
-# needs the information the text lacks). Synthetic examples only.
-A	echo === step 3 ===	echo "=== step 3 ==="	unquoted run of =
-A	x=~/.cache/foo	x="~/.cache/foo"	= and ~ fuse into =~
-A	v=0.16.0	v="0.16.0"	version string lexed as float
-A	ping 10.0.0.1	ping "10.0.0.1"	IP lexed as float
-A	.venv-train/bin/python x.py	./.venv-train/bin/python x.py	leading-dot path in command position
-A	git show HEAD:training/v9/x.py	git show "HEAD:training/v9/x.py"	colon then slash in one word
-A	git diff HEAD~1	git diff "HEAD~1"	tilde mid-word
-A	export A=unix:path=/run/user/1000/bus	export A="unix:path=/run/user/1000/bus"	second = in a word
-A	cargo build --cfg=-Cdebuginfo=0	cargo build "--cfg=-Cdebuginfo=0"	second = in a --key=value
-A	sed s/^a/b/ f	sed 's/^a/b/' f	unquoted caret
+# Groups: B = kaish deliberately differs from bash and the rewrite is
+# mechanical; C = a plan would be confidently wrong (fail closed; the
+# rewrite needs information the text lacks). Synthetic examples only.
+#
+# Amy's ruling (2026-08-23, via kaish-lead): kaish's language does NOT
+# change for any of these. The rows formerly tagged A (a contiguous
+# unquoted run kaish fragments: `echo ===`, `HEAD:path`, `HEAD~1`,
+# `X=a:b=/c`, `v=0.16.0`, `.venv/bin/x`) are B -- "nothing adjacent is
+# joined, quote to join" is ONE rule with no exceptions, and the fix is
+# to quote the word. Every bash side here will therefore never plan, and
+# every kaish side is the quoted twin. kaish will move its error span to
+# the word that needs quoting (filed, unscheduled); that changes neither
+# column's outcome.
+B	echo === step 3 ===	echo "=== step 3 ==="	unquoted run of =
+B	x=~/.cache/foo	x="~/.cache/foo"	= and ~ fuse into =~
+B	v=0.16.0	v="0.16.0"	version string lexed as float
+B	ping 10.0.0.1	ping "10.0.0.1"	IP lexed as float
+B	.venv-train/bin/python x.py	./.venv-train/bin/python x.py	leading-dot path in command position
+B	git show HEAD:training/v9/x.py	git show "HEAD:training/v9/x.py"	colon then slash in one word
+B	git diff HEAD~1	git diff "HEAD~1"	tilde mid-word
+B	export A=unix:path=/run/user/1000/bus	export A="unix:path=/run/user/1000/bus"	second = in a word
+B	cargo build --cfg=-Cdebuginfo=0	cargo build "--cfg=-Cdebuginfo=0"	second = in a --key=value
+B	sed s/^a/b/ f	sed 's/^a/b/' f	unquoted caret
 B	cat a > $DIR/out.txt	cat a > "$DIR/out.txt"	quote-to-join; plan renders "${DIR}/out.txt"
 B	cp f $FILE.bak	cp f "$FILE.bak"	quote-to-join
 B	export PATH=$HOME/bin:$PATH	export PATH="$HOME/bin:$PATH"	quote-to-join
