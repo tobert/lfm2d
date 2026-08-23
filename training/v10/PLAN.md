@@ -1,7 +1,7 @@
 # kube_ordinal v10 — plan
 
-Status: **drafted 2026-08-22; evidence re-read 2026-08-23 (section
-"What the soak is made of"), still not started.** Written the day of the
+Status: **drafted 2026-08-22; evidence and rulings 2026-08-23; work
+starts at slice 1 next session.** Written the day of the
 first soak eval, from that eval's numbers and v9's open questions; the
 08-23 section supersedes the 08-22 reading where they disagree. Every claim
 below has a source; gaps are marked as gaps. Amy's words are quoted because
@@ -434,25 +434,45 @@ kaish for (upstream routing absorbs that class).
    `clause_replay.py --compare` backfills the whole soak in one shot.
    Deploy is then the usual one-line `--classifier-dir` swap.
 
-## Slice order (revised 2026-08-23 — proposal, Amy to reorder)
+## Slice order (revised 2026-08-23 end of day — Amy: "let's update our docs and sign off, I want to pick this up later")
 
-0. **Decisions** (Amy): input contract (simple commands via `kaish --plan`,
-   splitter fallback); direct real-text ruling (see options below);
-   whether to take the tau stopgap; whether slice 4 defers to v11.
-1. **Benign-shape probe set from the soak** (eval item 3) — built from the
-   winner table, ~30–50 probes across `sed -n`/`echo ===`/`grep`/`awk`/
-   `python3 -`/`cargo test > file`/splitter junk; plus the soak-replay
-   gate target. Cheap, and it makes every later step measurable.
-2. **Shape-labeled live sample** (eval item 2) — top ~200–400 shapes,
-   labeled at the SHAPE level with a gold pilot, adjudicated; doubles as
-   the first honest precision number.
-3. **Training data**: v9's 815 + real-shape benign coverage at the live
-   ratio (dc becomes a few % of the mix, so tau → 0); keep
-   text-undecidable rows for calibration. Scrubbing via parsed argv if the
-   direct-text ruling requires it.
-4. ~~Two-axis relabel~~ → proposed v11.
-5. **Train, gate (probes + benign probes + soak replay), calibrate, shadow
-   (`shadow_score.py --model`), deploy.**
+Decided today: the unit is the simple command as `kaish --plan` renders
+it (kaish does not change; the corpus quotes); the goal is a filter with
+a pass-through gate; the two-axis head is proposed for v11 (not yet
+ruled). **Next session starts at slice 1** — it and slice 2 need no
+ruling.
+
+1. **Hook goes plan-first.** `lfm2d/hooks/pre_command_advisory.py` runs
+   `kaish --plan-file -`, scores each simple command as rendered (name +
+   args + redirect targets; heredoc bodies stripped and tagged by kind
+   from `heredocs[]`), falls back to `clause_split.py` on a parse error,
+   and RECORDS which path it took. v9_cal keeps serving; nothing about
+   the model changes. Gains: forward collection in the shape v10 trains
+   on, the splitter junk gone, a live fallback rate under the quoting
+   prompt. Work in a worktree under ~/src/wt/.
+2. **Benign-shape probe set + soak-replay gate** — ~30–50 standing probes
+   from the winner table (`sed -n`, `echo ===`, `grep -n`, `awk`,
+   `cargo test > file`, `python3 script.py`), and the gate: ≥80% of
+   baseline-window rows pass at a floor where zero severe probes pass.
+3. **Shape-labeled live sample** (needs the direct-text ruling) — top
+   ~200–400 plan-rendered shapes, labeled at the SHAPE level with a gold
+   pilot, adjudicated; sets the pass-through floor and the first honest
+   precision number.
+4. **Training data** (needs the ruling) — v9's 815 + real benign coverage
+   at the live ratio so tau → 0; text-undecidable rows kept for
+   calibration; identifiers scrubbed via argv under option (b). Haiku's
+   only rewrite job is "make unplannable bash plan" under the one
+   quoting rule; decide first whether the rewrite must preserve danger
+   semantics (training) or real semantics (to run).
+5. ~~Two-axis relabel~~ → proposed v11 (Amy to confirm).
+6. **Train, gate (probes + benign probes + soak replay + pass-through),
+   calibrate, shadow (`shadow_score.py --model`), deploy.**
+
+**Rulings still open** (cheap to give, block 3–4): direct real text
+(a/b/c below — recommend b); two-axis → v11. **Waiting on others**:
+kaish-lead on static resolution of same-script `$K` bindings (msg
+08fffbad; decides whether Group C exists) and the span-fix version;
+kaijutsu wiring (when a controlled caller first produces traffic).
 
 **Direct real-text options for the ruling** (slice 3 depends on it):
 (a) train on real clauses locally and never publish v10's data to HF;
