@@ -241,8 +241,29 @@ groups, `until`, `$'…'`, backticks. **Group C, in lfm2d's favour**: a
 variable in command position (`$K get pods`, 177 rows) — a plan would
 report argv `$K`, which is not a fact about the process that runs, so
 **failing closed to the fallback is the correct outcome for a guard**;
-do not ask kaish to "fix" it. Also found: kaish's error span points at
-the word BEFORE the paste in 131/165 bisected rows (reported).
+do not ask kaish to "fix" it. kaish-lead's rulings on the remainder: the 63 `"fix"x`
+quote-adjacent rows are **B by design** (`-m "fix"x` would silently bind
+as two args — argv-splat needs no `$`); the line that separates A from B
+is **"one contiguous run of unquoted word characters"** — bash sees one
+word in `echo ===`, `HEAD:path/f.py`, `X=unix:path=/…`, `HEAD~1`, and
+kaish's lexer manufactures fragments out of it (after the first `=` of
+a `--key=value` the remainder must go opaque, which is the ~45 class);
+and the error span pointing at the word BEFORE the paste (131/165
+bisected rows) is **the same bug**, not a cosmetic one — the genuine
+pastes get correct spans, only the wrong fragmentation gets wild ones.
+Tracked in `~/exomemory/issues/kaish.md`.
+
+**If the model becomes kaish-native (Amy's steer), Group A becomes the
+whole list, not moot**: `v=0.16.0` and `git show HEAD:path/f.py` are
+legal kaish that kaish wrongly rejects, so they hit a first-party caller
+exactly as hard. Group B is what disappears. **Corpus provenance, the
+number kaish-lead asked for before committing to that**: the advisory
+log is **100% Claude Code writing bash into the hook** (29,585 rows,
+all `tool_name == Bash`); kaijutsu carries an `lfm2d` source slot in its
+approval ledger and a "future lfm2d scorer" comment, kaibo nothing —
+**controlled callers are 0% of traffic today.** A kaish-native v10 is
+therefore trained for callers that do not yet exist, and every row of
+its eval still arrives as bash through `kaish --plan` until they do.
 
 Experiment worth one ablation: serialize the plan fields into a fixed
 template (`sed | -n 5,8p foo.txt | > out.txt`) vs the rendered string,
