@@ -122,12 +122,16 @@ async fn real_classifier_serves_readyz_models_and_a_summing_softmax() {
         .iter()
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
-    let mut sorted_labels = labels.clone();
-    sorted_labels.sort();
+    // Exact id order, not a sorted set: v6's id2label is alphabetical, so
+    // `destructive` sits at index 0 — it VIOLATES the ascending-severity
+    // ladder v8+ checkpoints follow (docs/integration.md, invariant 3).
+    // An ordinal-position consumer pointed at v6 would read its most
+    // destructive label as "allow"; this assertion keeps that hazard
+    // visible against the real checkpoint, not just the committed fixture.
     assert_eq!(
-        sorted_labels,
+        labels,
         vec!["destructive".to_string(), "informative".to_string(), "mutating".to_string()],
-        "kube_ordinal_v6's real label set"
+        "kube_ordinal_v6's real label set, in id (alphabetical, NOT severity) order"
     );
 
     // --- /v1/classify: a real forward pass, full 3-label softmax summing to ~1.0 ---
