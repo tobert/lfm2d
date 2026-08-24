@@ -275,6 +275,28 @@ def test_lfm2d_only_bucket_is_reachable(_c):
           f'want lfm2d_only, got {got}')
 
 
+def test_split_path_is_recorded_and_pipelines_cascade(_c):
+    """The live fallback rate is a slice-1 deliverable, so every row must
+    say which extraction produced its clauses — and the deliberate
+    pipeline-split reversal must be visible at the endpoint: a two-member
+    pipeline now cascades (2 clauses) where clause_split sent one. The
+    fallback row's path must say clause_split (kaish rejects the unquoted
+    `===` adjacency)."""
+    cases = [
+        ('cat README.md | grep -n pattern', 'kaish_plan', 'cascade'),
+        ('echo === step ===', 'clause_split', 'classify'),
+    ]
+    bad = []
+    for cmd, want_path, want_ep in cases:
+        with tempfile.TemporaryDirectory() as d:
+            _, rows, _ = run_hook(cmd, Path(d))
+        v = rows[0]['lfm2d'] if rows else {}
+        if v.get('split_path') != want_path or v.get('endpoint') != want_ep:
+            bad.append(f'{cmd!r}: path={v.get("split_path")} ep={v.get("endpoint")}, '
+                       f'want {want_path}/{want_ep}')
+    check('split_path recorded, pipeline takes cascade', not bad, '; '.join(bad))
+
+
 def test_non_bash_does_not_reach_lfm2d(_c):
     """Read/Write/Edit inputs are file paths and file contents. Sending them
     to a network service — and writing them to the advisory log — would widen
@@ -587,6 +609,7 @@ TESTS = [
     test_log_row_is_complete,
     test_disagreement_buckets_are_right,
     test_lfm2d_only_bucket_is_reachable,
+    test_split_path_is_recorded_and_pipelines_cascade,
     test_non_bash_does_not_reach_lfm2d,
     test_approved_retry_does_not_reach_lfm2d,
     test_log_is_not_world_readable,

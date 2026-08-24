@@ -689,7 +689,15 @@ def main():
             # rejects (~13% at the 08-23 floor baseline). Compound
             # commands go to /v1/cascade so the severe clause is ranked
             # instead of diluted; a single clause goes to /v1/classify.
-            plan = plan_clauses(cmd)
+            # Belt to kaish_plan's own suspenders: a raise ANYWHERE in the
+            # plan path would crash the hook before emit(), silently
+            # disabling the regex guard. The fallback must be unreachable
+            # by exception (kaibo review 2026-08-24).
+            try:
+                plan = plan_clauses(cmd)
+            except Exception as _pe:
+                plan = {'ok': False, 'error': f'plan_raise:{type(_pe).__name__}',
+                        'detail': str(_pe)[:200]}
             if plan.get('ok'):
                 split_path = 'kaish_plan'
                 # Dedupe for the wire: an identical clause text scores
@@ -712,7 +720,11 @@ def main():
                 plan_meta = {
                     'kaish_version': plan.get('kaish_version'),
                     'statement_count': plan.get('statement_count'),
-                    'stmt_fallbacks': sum(1 for c in clause_rows if c.get('stmt_fallback')),
+                    # Counted over the PRE-dedupe plan so the fallback rate
+                    # can't be hidden by a duplicate being deduped away;
+                    # the heredocs list below indexes the SENT clauses so
+                    # rows correlate with what was scored.
+                    'stmt_fallbacks': sum(1 for c in planned if c.get('stmt_fallback')),
                     'clauses_planned': len(planned),
                     'clauses_deduped': len(planned) - (len(clause_rows) + truncated),
                     'clauses_truncated': truncated,

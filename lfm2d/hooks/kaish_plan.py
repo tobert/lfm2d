@@ -29,7 +29,12 @@ import os
 import subprocess
 
 KAISH_BIN = os.environ.get('LFM2D_KAISH_BIN', 'kaish')
-PLAN_TIMEOUT_S = float(os.environ.get('LFM2D_KAISH_PLAN_TIMEOUT', '2.0'))
+# 0.5 s bounds what a hung/slow kaish can tax EVERY Bash call before the
+# fallback path takes over (a healthy local plan is ~12 ms, so this is
+# ~40x margin). There is deliberately no kaish circuit breaker yet — the
+# worst sustained case is 0.5 s/call, an order under the lfm2d breaker's
+# motivating cost; revisit if a real kaish outage says otherwise.
+PLAN_TIMEOUT_S = float(os.environ.get('LFM2D_KAISH_PLAN_TIMEOUT', '0.5'))
 
 _KAISH_VERSION = None
 
@@ -86,20 +91,30 @@ def _render_command(c: dict):
     if not parts[0]:
         return None
     for a in c.get('args') or []:
-        if not isinstance(a, dict) or 'plain' not in a:
+        if not isinstance(a, dict) or not isinstance(a.get('plain'), str):
             return None
         parts.append(a['plain'])
     for r in c.get('redirects') or []:
         kind = r.get('kind') or ''
         target = (r.get('target') or {}).get('plain')
+        if not isinstance(target, str):
+            target = None
         if kind.startswith('<<'):
             # The heredoc operator + delimiter stay (they are shape); the
             # body never appears — it isn't in argv to begin with.
             parts.append(f'{kind}{target or ""}')
-        elif target in (None, '', 'null'):
+        elif '&' in kind or not target:
+            # fd-dup forms (2>&1) encode the target in the kind itself;
+            # kaish still emits a placeholder target "null" for them. A
+            # real file named `null` has a plain kind ('>'), so the
+            # discriminator is the kind, never the target's spelling —
+            # `echo hi > null` must keep its target (kaibo review
+            # 2026-08-24 caught the string-match version dropping it).
             parts.append(kind)
         else:
             parts.append(f'{kind} {target}')
+    if not all(isinstance(p, str) for p in parts):
+        return None
     return ' '.join(parts)
 
 
@@ -136,9 +151,22 @@ def plan_clauses(cmd: str) -> dict:
         return {'ok': False, 'error': 'bad_json',
                 'detail': f'exit {proc.returncode}: {proc.stdout[:120]!r} {proc.stderr[:80]!r}'}
 
-    if proc.returncode != 0 or 'errors' in doc:
+    # Everything past the JSON parse runs under one guard: the extraction
+    # walks a structure whose shape is a property of the INSTALLED kaish,
+    # not of this file, and a shape surprise must fall back, never raise —
+    # an unhandled exception here crashes the hook before it can emit the
+    # regex decision, silently disabling the guard (kaibo review
+    # 2026-08-24, the critical finding).
+    try:
+        return _extract(doc, proc.returncode)
+    except Exception as e:
+        return {'ok': False, 'error': f'extract:{type(e).__name__}', 'detail': str(e)[:200]}
+
+
+def _extract(doc: dict, returncode: int) -> dict:
+    if returncode != 0 or 'errors' in doc:
         msgs = '; '.join(e.get('message', '?') for e in doc.get('errors') or [])
-        return {'ok': False, 'error': 'parse', 'detail': msgs[:300] or f'exit {proc.returncode}'}
+        return {'ok': False, 'error': 'parse', 'detail': msgs[:300] or f'exit {returncode}'}
 
     clauses = []
     statements = doc.get('statements') or []

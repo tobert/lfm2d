@@ -20,12 +20,36 @@ absent (they are data, and 68% are interpreter source), pipelines split
 into members (the v10 reversal of the clause_split rule, deliberate),
 and every failure shape falling back loudly instead of guessing.
 """
+import os
 import shutil
+import stat
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kaish_plan  # noqa: E402
 from kaish_plan import plan_clauses  # noqa: E402
+
+
+@contextmanager
+def fake_kaish(stdout: str, exit_code: int = 0):
+    """Swap KAISH_BIN for a shim that prints canned plan JSON — the way to
+    feed plan_clauses a plan shape the installed kaish doesn't produce
+    (yet). The never-raises contract is about FUTURE kaish output, so it
+    can only be tested against shapes we invent."""
+    with tempfile.TemporaryDirectory() as d:
+        shim = Path(d) / 'kaish'
+        shim.write_text('#!/bin/sh\ncat <<\'SHIM_EOF\'\n' + stdout + '\nSHIM_EOF\n'
+                        + f'exit {exit_code}\n')
+        shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
+        old = kaish_plan.KAISH_BIN
+        kaish_plan.KAISH_BIN = str(shim)
+        try:
+            yield
+        finally:
+            kaish_plan.KAISH_BIN = old
 
 assert shutil.which('kaish'), (
     'these are contract tests against the real kaish binary; '
@@ -107,7 +131,6 @@ def main():
     r = plan_clauses('')
     check('empty command fails closed', (r['ok'], r['error']), (False, 'empty'))
 
-    import kaish_plan
     old = kaish_plan.KAISH_BIN
     kaish_plan.KAISH_BIN = '/nonexistent/kaish'
     try:
@@ -115,6 +138,39 @@ def main():
         check('missing binary named', (r['ok'], r['error']), (False, 'kaish_missing'))
     finally:
         kaish_plan.KAISH_BIN = old
+
+    # -- a redirect to a FILE named `null`: the fd-dup placeholder ("2>&1"
+    # carries target "null") must be recognized by the KIND, never by the
+    # target's spelling — kaibo's review caught the string-match version
+    # dropping this target, and the target is the severity signal
+    r = plan_clauses('echo hi > null')
+    check('file named null keeps its target', texts(r), ['echo hi > null'])
+
+    # -- the never-raises contract, against plan shapes the INSTALLED
+    # kaish doesn't emit (yet): the extraction walks a structure owned by
+    # a separately-released binary, and a shape surprise must fall back,
+    # never raise — an exception here would crash the hook before it
+    # emits the regex decision (kaibo review 2026-08-24, critical)
+    with fake_kaish('{"statements":[{"index":0,"plan":{"rendered":"x y",'
+                    '"commands":[{"name":"x","args":[{"plain":null}]}]}}]}'):
+        r = plan_clauses('x y')
+        check('null plain falls back to statement rendering',
+              (r['ok'], texts(r), r['clauses'][0]['stmt_fallback']),
+              (True, ['x y'], True))
+
+    with fake_kaish('null'):
+        r = plan_clauses('ls')
+        check('non-dict top-level JSON fails closed',
+              (r['ok'], r['error'].startswith('extract:')), (False, True))
+
+    with fake_kaish('{"errors":[42]}'):
+        r = plan_clauses('ls')
+        check('malformed errors array fails closed', r['ok'], False)
+
+    with fake_kaish('{"statements":[{"index":0,"plan":{"rendered":"r","commands":[42]}}]}'):
+        r = plan_clauses('ls')
+        check('non-dict command fails closed',
+              (r['ok'], r['error'].startswith('extract:')), (False, True))
 
     print()
     if FAILURES:
