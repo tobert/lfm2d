@@ -504,8 +504,10 @@ ruling.
 6. **Train, gate (probes + benign probes + soak replay + pass-through),
    calibrate, shadow (`shadow_score.py --model`), deploy.**
 
-**Rulings still open** (cheap to give, block 3–4): direct real text
-(a/b/c below — recommend b); two-axis → v11. **Waiting on others**:
+**RULED 2026-08-24 (Amy): direct real text = (b), scrub identifiers
+structurally via the parser's argv and publish the scrubbed set; and the
+two-axis head DEFERS TO v11** — v10 stays three-rung ordinal, everything
+goes to coverage + calibration. Slices 3–4 are unblocked. **Waiting on others**:
 kaish-lead on static resolution of same-script `$K` bindings (msg
 08fffbad; decides whether Group C exists) and the span-fix version.
 **kaijutsu wiring LANDED 2026-08-24**: S50-lfm2d.kai verified against
