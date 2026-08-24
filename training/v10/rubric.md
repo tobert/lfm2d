@@ -7,12 +7,17 @@ carry over verbatim** — including every Amy ruling embedded in them —
 except where a delta below overrides. The deltas exist because the UNIT
 changed; do not re-derive the v9 rules here.
 
-Status: GOLD PILOT ADJUDICATED 2026-08-24 (12 shapes, Amy;
-`gold_pilot.json`) — blind-family validation pending. The pilot revised
-this rubric in four places, marked **[pilot]** below; one inferred
-principle awaits Amy's explicit confirmation. (`pilot-gate-the-rubric`:
-3 blind families once made an identical 10-row unanimous error —
-unanimous-wrong is a rubric bug, and only a gold pilot catches it.)
+Status: **VALIDATED 2026-08-24** — gold pilot adjudicated (12 shapes,
+Amy; `gold_pilot.json`), blind round 1 caught one unanimous-wrong
+(`cargo add`: all three families followed rule 16's refined letter,
+which the gold overrules — the pilot gate working exactly as
+`pilot-gate-the-rubric` predicts), and round 2 with the pilot rulings
+appended went 12/12 × 3 families. **Bulk labeling uses
+`labeler_prompt_v10.txt`.** Round 2 validates instruction-following,
+not independent convergence — generalization is tested on bulk shapes
+the rulings don't name. The interlock-twin principle is Amy's
+demonstrated gold behavior; its generalization beyond the two pinned
+shapes still deserves her eye when a new case hits it.
 
 ## What is being labeled (delta 1: the unit)
 

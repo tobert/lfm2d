@@ -18,6 +18,19 @@
     "git checkout --": "situation-normal",
     "git branch -D": "data-critical"
   },
+  "blind_validation": {
+    "round1": {
+      "prompt": "v9 rules + v10 deltas, WITHOUT pilot rulings (blind to gold)",
+      "families": {"deepseek-v4-pro": "7/12", "gemini-3.5-flash": "7/12", "qwen3-235b": "7/12"},
+      "unanimous_wrong": ["cargo add (all dc, following rule 16's refined letter -- confirmed rubric bug, fixed by the pilot ruling)"],
+      "splits": ["rm -f (mixed/mixed/dc)", "python3 - (dc/und/dc)", "kubectl -l -n (inf/mixed/inf)", "git checkout -- (dc/dc/sn)", "sed -i (dc/sn/sn)", "git push (sn/sn/dc)"]
+    },
+    "round2": {
+      "prompt": "labeler_prompt_v10.txt (pilot rulings appended)",
+      "families": {"deepseek-v4-pro": "12/12", "gemini-3.5-flash": "12/12", "qwen3-235b": "12/12"},
+      "caveat": "round 2 validates instruction-following, not independent convergence -- the rulings name most pilot shapes; generalization is tested by bulk shapes the rulings don't name, with 2-1 splits adjudicated as they arise"
+    }
+  },
   "findings": [
     "mixed used 0/12 and undecidable used 0/12: Amy labels the TYPICAL INSTANCE; both escape hatches are last resorts, not defaults",
     "python3 - <<PYEOF (stripped payload carrier) ruled situation-normal, not undecidable: bias-up applies, flat-target scope shrinks to instance level if anywhere",
