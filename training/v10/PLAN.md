@@ -427,6 +427,17 @@ kaish for (upstream routing absorbs that class).
    the echo-winner rows and read-only firings become standing probes —
    the complement to the severity probes' deliberate out-of-corpus
    philosophy: these are in-corpus shapes the TRAINING mix missed.
+   **Plus a `kj`-verb probe family (2026-08-24, measured by kaijutsu-lead
+   against live `/v1/cascade`, N=16)**: kaijutsu's own destructive verbs
+   are fully out of distribution — `kj context archive <id>` scores
+   0.644 *informative*, and no confidence floor separates it (`git
+   status` 0.598, `cargo test` 0.601 sit between it and real reads).
+   Same measurement re-confirmed the known `dd if=/dev/zero of=/dev/sda`
+   hole at informative 0.540. With kaijutsu's S50-lfm2d hook live as of
+   2026-08-24 (log-mode audit asks either way), the coder context is a
+   first-party caller whose verbs the corpus has never seen —
+   kaijutsu-lead is asked for the canonical kj-verb list with
+   destructiveness semantics to seed probes + training forms.
 4. **Calibration metric** (item 4 above) with the escalation use named.
 5. **Clause-faithful shadow before deploy**: the running shadow scorer
    (`shadow_score.py`, repointed 2026-08-22) scores the v10 candidate
@@ -471,8 +482,14 @@ ruling.
 **Rulings still open** (cheap to give, block 3–4): direct real text
 (a/b/c below — recommend b); two-axis → v11. **Waiting on others**:
 kaish-lead on static resolution of same-script `$K` bindings (msg
-08fffbad; decides whether Group C exists) and the span-fix version;
-kaijutsu wiring (when a controlled caller first produces traffic).
+08fffbad; decides whether Group C exists) and the span-fix version.
+**kaijutsu wiring LANDED 2026-08-24**: S50-lfm2d.kai verified against
+the live daemon end to end (docs/integration.md is the contract; their
+`LFM2D_BENIGN_LABEL` check closes the v6 ladder inversion on their
+side); controlled-caller traffic starts with the coder-context test.
+Eval read path: audit asks via `kj ledger show <id> --signals --json`
+(written in log AND escalate modes); count escalations from
+human-answered asks, scores from audit asks.
 
 **Direct real-text options for the ruling** (slice 3 depends on it):
 (a) train on real clauses locally and never publish v10's data to HF;
