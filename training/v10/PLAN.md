@@ -519,9 +519,11 @@ live 2026-08-24 (three-clause compound: the `kubectl delete` winner
 picked out from between two benign clauses — per-clause scoring beating
 dilution, the shape our eval should see). `auto_reason` reads
 `lfm2d (advisory)` since escalate landed (was `lfm2d (log-only)`).
-Kernel-path note: their first cold call to the daemon exceeded a 5 s
-curl timeout while a warm shell sees 2 ms — they run 15 s now; any
-fleet consumer with a tight budget can hit the same cold-path cliff.
+Timeout note, CORRECTED by Amy 2026-08-24: the >5 s first call that made
+kaijutsu raise their curl budget to 15 s was **zorak's drive being full
+(since fixed)**, not a tailnet/kernel cold path. The surviving lesson is
+client-side: one slow call against a tight budget can open a breaker and
+mute the client for a cooldown, whatever the server-side cause.
 
 **Direct real-text options for the ruling** (slice 3 depends on it):
 (a) train on real clauses locally and never publish v10's data to HF;
