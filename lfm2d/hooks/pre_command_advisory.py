@@ -49,6 +49,14 @@ OTHER KNOWN GAPS
   (informative / situation-normal / data-critical) cannot express it. The
   classifier is a candidate replacement for the rm/find SOFT_BLOCKED and
   WARNED half only. Do not expect it to ever own the git half.
+- PLAN-FIRST since 2026-08-24 (v10 slice 1, kaish_plan.py): clauses come
+  from `kaish --plan` — simple commands rendered canonically, heredoc
+  bodies stripped, pipelines split into members (that last is a
+  deliberate reversal of the no-pipeline-split rule below, which was
+  guarding a v8-era misreading; expect more `sed -n`/`grep` firings on
+  the plan path — that is v10 forward collection, not a regression, and
+  `split_path` on every row keeps the two populations separable). The
+  paragraph below describes the FALLBACK path, kept verbatim.
 - Clause splitting IS wired (2026-08-12, clause_split.py): compound
   commands go to /v1/cascade, which ranks clauses within the statement.
   This is the fix for the measured dilution defect — `rm -rf -- "$d.venv"`
@@ -110,6 +118,23 @@ except Exception as _e:  # the splitter must never be able to break the guard
         stripped = cmd.strip()
         return [stripped] if stripped else []
 
+# Plan-first clause extraction (v10 slice 1, 2026-08-24): `kaish --plan`
+# renders each simple command canonically — heredoc bodies stripped,
+# quoting normalized, redirect targets explicit, pipelines split into
+# members (deliberate reversal of clause_split's no-pipeline rule; see
+# kaish_plan.py's docstring). The regex splitter becomes the RECORDED
+# fallback for bash kaish rejects, so the advisory log carries a live
+# fallback rate (`split_path` on every scored row). Decisions are still
+# the regex's alone; this changes what gets SCORED, not what gets decided.
+try:
+    from kaish_plan import plan_clauses
+    _PLAN_IMPORT_ERROR = None
+except Exception as _e:  # the plan path must never break the guard either
+    _PLAN_IMPORT_ERROR = f'{type(_e).__name__}: {_e}'
+
+    def plan_clauses(cmd: str) -> dict:
+        return {'ok': False, 'error': 'plan_import_error', 'detail': _PLAN_IMPORT_ERROR}
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # lfm2d advisory configuration
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -170,6 +195,12 @@ TIMEOUT_PER_BATCH_ITEM_S = float(os.environ.get('LFM2D_TIMEOUT_PER_BATCH_ITEM', 
 # per-clause truth in the log without the daemon-owned ranking. Raise this
 # once the daemon batches cascade forwards.
 CASCADE_MAX_CLAUSES = int(os.environ.get('LFM2D_CASCADE_MAX_CLAUSES', '20'))
+
+# Upper bound on distinct plan clauses sent to the daemon per row — the
+# plan path's analogue of clause_split's MAX_CLAUSES=64, applied AFTER
+# dedupe. 64 distinct clauses take the classify_batch path (~65 ms/item
+# amortized) and fit the 8 s cap with margin.
+PLAN_MAX_CLAUSES = int(os.environ.get('LFM2D_PLAN_MAX_CLAUSES', '64'))
 
 
 def timeout_for(cmd: str) -> float:
@@ -244,7 +275,9 @@ BLOCKED = {
         (r'\bgit\s+add\s+(-A|--all)\b', 'git add -A/--all', 'Use explicit paths or `git add -p`'),
         (r'\bgit\s+add\s+\.\s*($|[;&|])', 'git add .', 'Use explicit paths or `git add -p`'),
         (r'\bgit\s+commit\s+-[a-zA-Z]*a', 'git commit -a', 'Stage files explicitly first'),
-        (r'\bgit\s+stash\b', 'git stash', 'modifies working tree state across all sessions'),
+        # git stash rule removed 2026-08-24, ported from the dotfiles
+        # baseline (its working copy dropped the a3b6e05 stash rule; the
+        # parity gate caught the drift). Port changes, don't fork.
     ],
 }
 
@@ -651,10 +684,47 @@ def main():
             lfm2d = {'ok': False, 'error': 'circuit_open',
                      'detail': f'{BREAKER_THRESHOLD}+ consecutive failures; not retrying yet'}
         else:
-            # Compound commands go to /v1/cascade so the severe clause is
-            # ranked instead of diluted; a single clause (possibly cleaned
-            # of comments/keywords by the splitter) goes to /v1/classify.
-            clauses = split_clauses(cmd)
+            # Plan-first: `kaish --plan` renders the simple commands; the
+            # regex splitter is the recorded fallback for bash kaish
+            # rejects (~13% at the 08-23 floor baseline). Compound
+            # commands go to /v1/cascade so the severe clause is ranked
+            # instead of diluted; a single clause goes to /v1/classify.
+            plan = plan_clauses(cmd)
+            if plan.get('ok'):
+                split_path = 'kaish_plan'
+                # Dedupe for the wire: an identical clause text scores
+                # identically, so duplicates are pure daemon work — a
+                # degenerate `a && b && a && b …` monster planned 177
+                # clauses (2 distinct) and timed out a batch call at the
+                # cap, backlogging the single worker for the calls behind
+                # it. Then bound like the splitter (MAX_CLAUSES=64) so a
+                # monster with many DISTINCT clauses stays under budget
+                # too; both reductions are recorded on the row.
+                planned = plan['clauses']
+                seen, clause_rows = set(), []
+                for c in planned:
+                    if c['text'] not in seen:
+                        seen.add(c['text'])
+                        clause_rows.append(c)
+                truncated = max(0, len(clause_rows) - PLAN_MAX_CLAUSES)
+                clause_rows = clause_rows[:PLAN_MAX_CLAUSES]
+                clauses = [c['text'] for c in clause_rows]
+                plan_meta = {
+                    'kaish_version': plan.get('kaish_version'),
+                    'statement_count': plan.get('statement_count'),
+                    'stmt_fallbacks': sum(1 for c in clause_rows if c.get('stmt_fallback')),
+                    'clauses_planned': len(planned),
+                    'clauses_deduped': len(planned) - (len(clause_rows) + truncated),
+                    'clauses_truncated': truncated,
+                    'heredocs': [
+                        {'clause_index': i, **c['heredoc']}
+                        for i, c in enumerate(clause_rows) if c.get('heredoc')
+                    ],
+                }
+            else:
+                split_path = 'clause_split'
+                clauses = split_clauses(cmd)
+                plan_meta = None
             if len(clauses) > CASCADE_MAX_CLAUSES:
                 lfm2d = lfm2d_classify_batch(clauses)
             elif len(clauses) >= 2:
@@ -667,6 +737,15 @@ def main():
                     # The splitter stripped comments/keywords; record what
                     # was actually scored so the row can't mislead analysis.
                     lfm2d['sent'] = sent
+            # Which extraction produced the scored clauses, on EVERY row —
+            # the live fallback rate is a slice-1 deliverable, and a row
+            # that doesn't say its path can't be windowed by it later.
+            lfm2d['split_path'] = split_path
+            if plan_meta is not None:
+                lfm2d['plan'] = plan_meta
+            else:
+                lfm2d['plan_error'] = plan.get('error')
+                lfm2d['plan_error_detail'] = plan.get('detail')
             if _SPLIT_IMPORT_ERROR:
                 lfm2d['split_import_error'] = _SPLIT_IMPORT_ERROR
             breaker_record(lfm2d.get('ok', False))

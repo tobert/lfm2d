@@ -236,11 +236,21 @@ def test_log_row_is_complete(_c):
 def test_disagreement_buckets_are_right(_c):
     """Characterization test against the DEPLOYED checkpoint. If this fails
     after a model change, that is the signal working — read the new numbers
-    before editing the expectations."""
+    before editing the expectations.
+
+    2026-08-24, read against kube_ordinal_v9_cal (deployed 08-16): the
+    tau=0.5 prior calibration moved the argmax down across the board, and
+    `kubectl delete namespace prod` now argmaxes situation-normal (dc
+    0.250). Probed for a replacement lfm2d_only command and found NONE
+    that flags reliably (`git clean -fdx` 0.271, `rm /etc/hosts` 0.411,
+    `sed -i …/sshd_config` 0.353, `rm src/main.rs` 0.226) — under the
+    calibrated head no single short command the regex allows argmaxes
+    data-critical. That bucket's LOGIC is now pinned by the stubbed test
+    below instead of by a live command's mood."""
     expected = {
         'ls -la /home': 'agree_clear',
         'rm -rf /var/lib/data': 'agree_flag',
-        'kubectl delete namespace prod': 'lfm2d_only',
+        'kubectl delete namespace prod': 'agree_clear',
     }
     bad = []
     for cmd, want in expected.items():
@@ -250,6 +260,19 @@ def test_disagreement_buckets_are_right(_c):
         if got != want:
             bad.append(f'{cmd!r}: want {want}, got {got}')
     check('disagreement buckets match the deployed model', not bad, '; '.join(bad))
+
+
+def test_lfm2d_only_bucket_is_reachable(_c):
+    """The lfm2d_only bucket (model flags, regex allows — the recall pile)
+    pinned deterministically with a stubbed daemon, since the deployed
+    v9_cal checkpoint no longer produces it on any known stable command
+    (see the characterization test above)."""
+    with stub_lfm2d(v8_response()) as url:
+        with tempfile.TemporaryDirectory() as d:
+            _, rows, _ = run_hook('ls -la /home', Path(d), {'LFM2D_URL': url})
+    got = rows[0]['disagree'] if rows else 'NO ROW'
+    check('lfm2d_only bucket is reachable', got == 'lfm2d_only',
+          f'want lfm2d_only, got {got}')
 
 
 def test_non_bash_does_not_reach_lfm2d(_c):
@@ -563,6 +586,7 @@ TESTS = [
     test_log_row_carries_the_audit_pair,
     test_log_row_is_complete,
     test_disagreement_buckets_are_right,
+    test_lfm2d_only_bucket_is_reachable,
     test_non_bash_does_not_reach_lfm2d,
     test_approved_retry_does_not_reach_lfm2d,
     test_log_is_not_world_readable,
