@@ -12,6 +12,8 @@
 /data
 /training/data
 *.jsonl
+# synthetic standing probes, no real traffic rows (v10 slice 2)
+!training/v10/benign_probes.jsonl
 __pycache__/
 training/v9/relabel/*.log
 .venv-train/
