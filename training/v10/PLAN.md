@@ -70,6 +70,21 @@ dangerous command through as obviously-okay; a false "not sure" is cheap
 firings, and the scores themselves are a product (the next static stage
 consumes them), so calibration (item 4) is load-bearing, not a nicety.
 
+**2026-08-24, the ruling that makes this operational (Amy, via
+kaijutsu-lead, recorded in kaijutsu's docs/issues.md as the expiry of
+their "raise, never lower" rule):** *"shell_write could get that small %
+of go aheads for confidently informative commands soon (when we're happy
+with lfm2d outputs). then we'll have a judge context look at it to let
+more % through, and gradually reduce the amount you or I have to
+approve."* So the pass-through gate is not just an eval framing — the
+confidently-informative band becomes a live AUTO-ALLOW in kaijutsu once
+we're happy with v10. **False negatives are the load-bearing half**: a
+`dd of=/dev/sda` or `kj context archive` misread as informative (both
+measured, both real) is not a missed prompt, it is a candidate
+auto-allow. The severe-probe floor, the dd/kj-verb families in the
+training data, and the calibration metric are what make the go-ahead
+band safe to ship.
+
 **v9_cal measured as a filter** (`soak_shapes.py` "passthrough"): the only
 floor that passes no dangerous probe (dc < 0.15) lets **0.1% of rows**
 through; passing 60% of rows (dc < 0.30) also passes `> /etc/shadow`
@@ -499,7 +514,14 @@ the live daemon end to end (docs/integration.md is the contract; their
 side); controlled-caller traffic starts with the coder-context test.
 Eval read path: audit asks via `kj ledger show <id> --signals --json`
 (written in log AND escalate modes); count escalations from
-human-answered asks, scores from audit asks.
+human-answered asks, scores from audit asks. Escalate mode verified
+live 2026-08-24 (three-clause compound: the `kubectl delete` winner
+picked out from between two benign clauses — per-clause scoring beating
+dilution, the shape our eval should see). `auto_reason` reads
+`lfm2d (advisory)` since escalate landed (was `lfm2d (log-only)`).
+Kernel-path note: their first cold call to the daemon exceeded a 5 s
+curl timeout while a warm shell sees 2 ms — they run 15 s now; any
+fleet consumer with a tight budget can hit the same cold-path cliff.
 
 **Direct real-text options for the ruling** (slice 3 depends on it):
 (a) train on real clauses locally and never publish v10's data to HF;
