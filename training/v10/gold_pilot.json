@@ -1,0 +1,29 @@
+{
+  "date": "2026-08-24",
+  "adjudicator": "Amy",
+  "rubric": "training/v10/rubric.md @ post-pilot revision",
+  "sample": "~/.cache/claude-hooks/v10-shape-sample.jsonl (local, 0600); worksheet v10-gold-pilot.md beside it",
+  "note": "Shape keys and labels only — example clause text stays in the local worksheet (ruling (b): scrub at training-set construction).",
+  "gold": {
+    "sed -n": "informative",
+    "echo": "informative",
+    "curl -H -s": "informative",
+    "cat >>": "situation-normal",
+    "sed -i": "situation-normal",
+    "git push": "situation-normal",
+    "rm -f": "situation-normal",
+    "cargo add": "situation-normal",
+    "python3 -": "situation-normal",
+    "kubectl -l -n": "situation-normal",
+    "git checkout --": "situation-normal",
+    "git branch -D": "data-critical"
+  },
+  "findings": [
+    "mixed used 0/12 and undecidable used 0/12: Amy labels the TYPICAL INSTANCE; both escape hatches are last resorts, not defaults",
+    "python3 - <<PYEOF (stripped payload carrier) ruled situation-normal, not undecidable: bias-up applies, flat-target scope shrinks to instance level if anywhere",
+    "cargo add ruled situation-normal: resolves rule 16's internal tension for cargo add specifically (no code executes at add time); does NOT extend to script-running installers (npm/pip install)",
+    "sed -i and single-file rm -f ruled situation-normal: typical developer-file instance decides, a literal rule-1 reading over-fires at clause level",
+    "git checkout -- ruled situation-normal: Amy's gold AGREES with v9_cal's 0.210 read that kaijutsu's gate doc calls confidently wrong — the incident framing was not a rubric",
+    "git branch -D ruled data-critical though the example reads as cleanup: INFERRED PRINCIPLE (awaiting Amy's confirmation) — choosing the interlock-bypassing variant when an interlocked twin exists (-D over -d) is what data-critical marks; sole-spelling tools get the typical-instance read"
+  ]
+}
