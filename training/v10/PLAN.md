@@ -433,7 +433,17 @@ kaish for (upstream routing absorbs that class).
    0.644 *informative*, and no confidence floor separates it (`git
    status` 0.598, `cargo test` 0.601 sit between it and real reads).
    Same measurement re-confirmed the known `dd if=/dev/zero of=/dev/sda`
-   hole at informative 0.540. With kaijutsu's S50-lfm2d hook live as of
+   hole at informative 0.540. **Amy (2026-08-24): "we should add some dd
+   to the training so it comes out at data critical … gonna be tricky
+   because dd's args nonstandard."** The trickiness is structural: dd's
+   `of=`/`if=`/`bs=` are key=value argv words, so neither quoting rules
+   nor redirect extraction expose the write target — the plan hands
+   `of=/dev/sda` back as an opaque plain arg, and severity rides
+   entirely on the model reading INSIDE that word. It's a family, not
+   one command (`mkfs.*`, `wipefs`, `blkdiscard`, `sgdisk`, `parted`
+   share the shape); slice 4 should generate the family across target
+   classes (raw device / file / /dev/null) so the target, not the verb,
+   carries the label. With kaijutsu's S50-lfm2d hook live as of
    2026-08-24 (log-mode audit asks either way), the coder context is a
    first-party caller whose verbs the corpus has never seen —
    kaijutsu-lead is asked for the canonical kj-verb list with
