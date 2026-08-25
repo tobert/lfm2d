@@ -3,11 +3,12 @@
  "val_fraction": 0.15,
  "sources": {
   "v9": 815,
-  "live": 3996,
-  "live_after_holdout": 3912
+  "rm_devfile": 48,
+  "live": 6196,
+  "live_after_holdout": 6112
  },
- "merged": 4716,
- "held_probe_texts": 7,
+ "merged": 6963,
+ "held_probe_texts": 8,
  "cross_source_dups": 3,
  "instance_over_shape": [
   {
@@ -24,8 +25,8 @@
   }
  ],
  "labels": {
-  "informative": 2729,
-  "situation-normal": 1556,
+  "informative": 4255,
+  "situation-normal": 2277,
   "data-critical": 431
  },
  "labels_by_source": {
@@ -34,14 +35,19 @@
    "situation-normal": 236,
    "data-critical": 429
   },
+  "rm_devfile": {
+   "informative": 0,
+   "situation-normal": 48,
+   "data-critical": 0
+  },
   "live": {
-   "informative": 2580,
-   "situation-normal": 1320,
+   "informative": 4106,
+   "situation-normal": 1993,
    "data-critical": 2
   }
  },
- "train": 4009,
- "val": 707,
+ "train": 5918,
+ "val": 1045,
  "shape_holdout": {
   "shapes": [
    "awk -F",

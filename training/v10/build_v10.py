@@ -31,6 +31,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 V9 = HERE.parent / 'v9' / 'v9.jsonl'
 REAL = HERE / 'real.jsonl'
+RM_DEVFILE = HERE / 'rm_devfile.jsonl'  # slice_rm_devfile.py, synthetic, committed
 VOTES = HERE / 'bulk_votes.json'
 SEV_PROBES = HERE.parent / 'v9' / 'severity_probes' / 'probes.jsonl'
 BENIGN_PROBES = HERE / 'benign_probes.jsonl'
@@ -155,13 +156,15 @@ def skew_gate(rows, where):
 def build():
     v9 = load_jsonl(V9)
     real = load_jsonl(REAL)
-    for name, rows in (('v9', v9), ('real', real)):
+    rm_dev = load_jsonl(RM_DEVFILE) if RM_DEVFILE.exists() else []
+    for name, rows in (('v9', v9), ('real', real), ('rm_devfile', rm_dev)):
         if any(CANARY in json.dumps(r) for r in rows):
             raise GateError(f'{name}: *** CANARY CONTAMINATION ***')
     ranks = {r['shape']: r['rank'] for r in json.loads(VOTES.read_text())['shapes']}
     hold, real_kept, hold_shapes = pick_shape_holdout(real, ranks, HOLDOUT_SHAPES, HOLDOUT_MIN_RANK, SEED)
     merged, held, conflicts, dups, resolved = merge_sources(
-        {'v9': v9, 'live': real_kept}, probe_texts(), grain={'v9': 'instance', 'live': 'shape'})
+        {'v9': v9, 'rm_devfile': rm_dev, 'live': real_kept}, probe_texts(),
+        grain={'v9': 'instance', 'rm_devfile': 'instance', 'live': 'shape'})
     if conflicts:
         raise GateError('label conflicts across sources (refusing to pick):\n' +
                         '\n'.join(f'  {c["labels"]} {c["where"]}: {c["text"][:100]!r}' for c in conflicts))
@@ -169,12 +172,12 @@ def build():
     train, val = stratified_split(merged, VAL_FRACTION, SEED)
     report = {
         'seed': SEED, 'val_fraction': VAL_FRACTION,
-        'sources': {'v9': len(v9), 'live': len(real), 'live_after_holdout': len(real_kept)},
+        'sources': {'v9': len(v9), 'rm_devfile': len(rm_dev), 'live': len(real), 'live_after_holdout': len(real_kept)},
         'merged': len(merged), 'held_probe_texts': len(held), 'cross_source_dups': len(dups),
         'instance_over_shape': resolved,
         'labels': {l: sum(r['label'] == l for r in merged) for l in LABEL_ORDER},
         'labels_by_source': {s: {l: sum(r['label'] == l and r['source'] == s for r in merged) for l in LABEL_ORDER}
-                             for s in ('v9', 'live')},
+                             for s in ('v9', 'rm_devfile', 'live')},
         'train': len(train), 'val': len(val),
         'shape_holdout': {'shapes': hold_shapes, 'rows': len(hold), 'min_rank': HOLDOUT_MIN_RANK},
     }

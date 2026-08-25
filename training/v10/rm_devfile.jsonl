@@ -1,0 +1,48 @@
+{"text": "rm -v crates/d1/src/f1.md", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./assets/Cargo.toml", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -- crates/d1/src/main.rs", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/scripts/f1.ts\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/crates/d1/src/lib.rs\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -- assets/f1.ts", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f assets/f2.py 2> /dev/null", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f scripts/f2.py", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -fv lfm2d/hooks/mod.rs", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "/bin/rm -f lfm2d/hooks/f1.svg", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./docs/f1.yaml", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm notes/f1.ts", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm benches/index.js", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -fv examples/parser.rs", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "/bin/rm -f assets/f1.md", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f lfm2d/hooks/f1.css", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/notes/notes.md\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f scripts/pyproject.toml 2> /dev/null", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm notes/test_f1.py", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm examples/f1.json", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f crates/d2/tests/f1.kai", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/training/v10/mod.rs\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./src/notes.md", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f training/v10/f1.kai 2> /dev/null", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./benches/f1.ts", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f crates/d2/tests/f1.html 2> /dev/null", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -- examples/index.js", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm tests/f1.sh", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -fv notes/README.md", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f assets/f1.json", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./assets/f1.rs", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "/bin/rm -f training/v10/Makefile", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -- crates/d2/tests/index.js", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/crates/d1/src/README.md\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -fv notes/Makefile", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./scripts/index.js", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -- lfm2d/hooks/pyproject.toml", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -- training/v10/pyproject.toml", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/crates/d2/tests/f1.ts\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -v benches/f1.sh", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -v assets/Cargo.toml", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -v lfm2d/hooks/f1.kai", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f \"${D}/scripts/mod.rs\"", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./training/v10/f1.svg", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm -f ./scripts/f1.yaml", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm crates/d1/src/f1.kai", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "/bin/rm -f crates/d1/src/main.rs", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}
+{"text": "rm tests/lib.rs", "label": "situation-normal", "note": "pilot ruling: single-file rm of a developer file (source, scratch, manifest)"}

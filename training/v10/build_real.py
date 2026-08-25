@@ -125,7 +125,9 @@ def main(argv=None):
     ap.add_argument('--log', default=DEFAULT_LOG)
     ap.add_argument('--model-id', required=True)
     ap.add_argument('--until', type=float, default=QUOTING_PROMPT_TS)
-    ap.add_argument('--cap', type=int, default=30, help='max distinct scrubbed rows per shape')
+    ap.add_argument('--cap', type=int, default=100,
+                    help='max distinct scrubbed rows per shape (30 starved the head shapes: '
+                         'candidate A read bare `echo` as data-critical)')
     ap.add_argument('--jobs', type=int, default=8)
     ap.add_argument('--out', default=str(OUT))
     args = ap.parse_args(argv)
