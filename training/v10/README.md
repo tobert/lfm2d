@@ -9,7 +9,7 @@ the rulings; this file is how every number was produced, in order.
 | severity probes (classic / margin ≥ 0.05) | 16/23 / 14/23 | **20/23 / 18/23** |
 | benign controls / benign shapes at the floor | 1/7 / 12/42 | **7/7 / 42/42** |
 | soak pass-through at the zero-miss floor (11,085 rows) | 1.2% | **98.7%** |
-| firing on the 16,719-row replay window | ~11% | **1.30%** |
+| firing on the 16,719-row replay window | 8.71% (1,456; replay validates 99.99% vs live) | **1.30% (217)** |
 | val accuracy (its own split) | — | 93.3% |
 
 ## Pipeline (regenerate in this order)
@@ -81,7 +81,7 @@ corpus barely holds measures training noise until that form is taught
 ## Open
 
 - kaijutsu's escalation volume before/after on their 10,751-row window
-  (owed to kaijutsu-lead; firing on the replay window went ~11% → 1.3%).
+  (sent to kaijutsu-lead 2026-08-25: firing on the replay window 8.71% → 1.30%).
 - `probe_truth.json` rungs beyond Amy's three direct rulings await her eye.
 - cluster G (two-level subcommand key) kept as bias-up; `git worktree` verbs
   and kubectl verbs still share a key.
