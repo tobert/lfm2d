@@ -138,7 +138,7 @@ spec:
             # 21.0% -> 4.0%. Left as a note rather than deleted because the
             # underlying fact still holds — this is a different model, and
             # calibration moved the threshold, not the representation.
-            - --classifier-dir=/models/kube_ordinal_v9_cal
+            - --classifier-dir=/models/kube_ordinal_v10
             - --router-dir=/models/LFM2.5-Encoder-350M-Prompt-Router
             # Token-classification head backing /v1/spans and
             # /v1/spans/credentials. A THIRD resident trunk: heads only
