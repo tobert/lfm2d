@@ -1,3 +1,7 @@
+> **Status 2026-08-25: v10 is LIVE** (`kube_ordinal_v10`, candidate F-e2, `00290df`).
+> Slices 1–4 and 6 are done; slice 5 (two-axis) is v11. Numbers and the
+> regeneration recipe are in `README.md` beside this file.
+
 # kube_ordinal v10 — plan
 
 Status: **drafted 2026-08-22; evidence and rulings 2026-08-23; work
