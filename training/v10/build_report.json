@@ -1,0 +1,71 @@
+{
+ "seed": 20260825,
+ "val_fraction": 0.15,
+ "sources": {
+  "v9": 815,
+  "live": 3996,
+  "live_after_holdout": 3912
+ },
+ "merged": 4716,
+ "held_probe_texts": 7,
+ "cross_source_dups": 3,
+ "instance_over_shape": [
+  {
+   "text": "git worktree list",
+   "label": "informative",
+   "over": [
+    "informative",
+    "situation-normal"
+   ],
+   "where": [
+    "v9[21]",
+    "live[81]"
+   ]
+  }
+ ],
+ "labels": {
+  "informative": 2729,
+  "situation-normal": 1556,
+  "data-critical": 431
+ },
+ "labels_by_source": {
+  "v9": {
+   "informative": 149,
+   "situation-normal": 236,
+   "data-critical": 429
+  },
+  "live": {
+   "informative": 2580,
+   "situation-normal": 1320,
+   "data-critical": 2
+  }
+ },
+ "train": 4009,
+ "val": 707,
+ "shape_holdout": {
+  "shapes": [
+   "awk -F",
+   "cargo check --tests -p",
+   "cargo run",
+   "cargo test",
+   "cargo test --all",
+   "echo --STDERR--",
+   "find -name -not -path",
+   "find -name -type",
+   "gh pr --state",
+   "git branch -D",
+   "git checkout",
+   "git log -- --oneline -1",
+   "git log --oneline -15",
+   "git log --oneline -6",
+   "git worktree --force",
+   "grep -A2",
+   "ls --time-style -la",
+   "mv -f",
+   "read",
+   "timeout >"
+  ],
+  "rows": 84,
+  "min_rank": 200
+ }
+}
