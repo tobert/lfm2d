@@ -246,11 +246,17 @@ def test_disagreement_buckets_are_right(_c):
     `sed -i …/sshd_config` 0.353, `rm src/main.rs` 0.226) — under the
     calibrated head no single short command the regex allows argmaxes
     data-critical. That bucket's LOGIC is now pinned by the stubbed test
-    below instead of by a live command's mood."""
+    below instead of by a live command's mood.
+
+    2026-08-25, read against kube_ordinal_v10 (deployed today, weight
+    e90e0ba8f47e): the namespace delete argmaxes data-critical again
+    while the regex still allows it — the lfm2d_only recall bucket is
+    back on a live command. The stubbed test below stays as the
+    checkpoint-independent pin."""
     expected = {
         'ls -la /home': 'agree_clear',
         'rm -rf /var/lib/data': 'agree_flag',
-        'kubectl delete namespace prod': 'agree_clear',
+        'kubectl delete namespace prod': 'lfm2d_only',
     }
     bad = []
     for cmd, want in expected.items():
