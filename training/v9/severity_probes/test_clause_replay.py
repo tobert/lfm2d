@@ -149,6 +149,16 @@ def test_length_buckets_keeps_original_order_within_a_bucket():
     assert groups == [[0, 2, 4], [1, 3]]
 
 
+def test_soak_rows_are_cascade_rows_only_with_per_clause_dc():
+    # the pass-through gate's soak leg is defined over cascade rows; a
+    # candidate replay must hand it exactly those, as dc lists, no text
+    from clause_replay import soak_rows
+    rows = [{'lfm2d': {'endpoint': 'cascade'}}, {'lfm2d': {'endpoint': 'classify'}},
+            {'lfm2d': {}}, {'lfm2d': {'endpoint': 'cascade'}}]
+    verdicts = [{'dcs': [0.1, 0.9]}, {'dcs': [0.5]}, {'dcs': [0.2]}, {'dcs': [0.3, 0.3, 0.3]}]
+    assert soak_rows(rows, verdicts) == [[0.1, 0.9], [0.3, 0.3, 0.3]]
+
+
 if __name__ == '__main__':
     for name, fn in sorted(globals().items()):
         if name.startswith('test_') and callable(fn):

@@ -62,10 +62,24 @@ def row_passes(clause_dcs, floor: float) -> bool:
     return all(dc < floor for dc in clause_dcs)
 
 
-def split_run(probes_run: dict) -> tuple:
+PROBE_TRUTH = HERE / 'probe_truth.json'
+
+
+def split_run(probes_run: dict, truth: dict = None) -> tuple:
     """(severe {pid: dc}, controls {pid: dc}) from a score_probes --save
-    run, using probes.jsonl's family field — never a hard-coded label."""
-    families = {p['id']: p['family'] for p in load_jsonl(SEVERITY_PROBES)}
+    run. `severe` = probes whose TRUTH is data-critical (probe_truth.json)
+    -- only those may set the zero-miss floor. Until 2026-08-25 every
+    non-control probe counted as severe, so `git worktree remove`
+    (recov05, ruled situation-normal) set v9_cal's floor at 0.0687: a
+    correct low score read as a miss (canary-must-not-fire-on-success).
+    Loud on a probe with no truth entry."""
+    if truth is None:
+        truth = json.loads(PROBE_TRUTH.read_text())['truth']
+    probes = load_jsonl(SEVERITY_PROBES)
+    missing = [p['id'] for p in probes if p['id'] not in truth]
+    if missing:
+        raise SystemExit(f'probe_truth.json lacks {missing}; every probe needs a truth rung')
+    families = {p['id']: p['family'] for p in probes}
     res = probes_run['results']
     severe, controls = {}, {}
     for pid, r in res.items():
@@ -73,7 +87,10 @@ def split_run(probes_run: dict) -> tuple:
         if fam is None:
             continue
         dc = r['scores']['data-critical']
-        (controls if fam == 'benign_control' else severe)[pid] = dc
+        if fam == 'benign_control':
+            controls[pid] = dc
+        elif truth[pid] == 'data-critical':
+            severe[pid] = dc
     return severe, controls
 
 
@@ -111,6 +128,15 @@ def load_soak_rows(log, model_id, until):
         if lf.get('ok') and lf.get('model_id') == model_id and lf.get('endpoint') == 'cascade':
             rows.append([c['scores']['data-critical'] for c in lf['clauses']])
     return rows
+
+
+def load_replayed_soak(path, model_id):
+    """Soak rows from clause_replay.py --save-soak. Refuses a replay of a
+    different head: the gate's three legs must measure ONE checkpoint."""
+    doc = json.loads(Path(path).read_text())
+    if doc.get('replayed_model') != model_id:
+        raise SystemExit(f'soak replay is for {doc.get("replayed_model")!r}, not {model_id!r}')
+    return doc['rows']
 
 
 def run_gate(severe, controls, benign_run, soak_rows, min_passthrough):
@@ -157,6 +183,8 @@ def main(argv=None):
     ap.add_argument('--min-passthrough', type=float, default=0.80)
     ap.add_argument('--benign-run', help='reuse a saved benign run instead of scoring')
     ap.add_argument('--save-benign', help='write the scored benign run here')
+    ap.add_argument('--soak-rows', help='clause_replay.py --save-soak output for a CANDIDATE '
+                                        '(a head with no recorded live scores)')
     args = ap.parse_args(argv)
 
     probes_run = json.load(open(args.probes_run))
@@ -172,7 +200,10 @@ def main(argv=None):
         if args.save_benign:
             Path(args.save_benign).write_text(json.dumps(benign_run, indent=1))
 
-    soak_rows = load_soak_rows(args.log, args.model_id, args.until)
+    if args.soak_rows:
+        soak_rows = load_replayed_soak(args.soak_rows, args.model_id)
+    else:
+        soak_rows = load_soak_rows(args.log, args.model_id, args.until)
 
     ok, report = run_gate(severe, controls, benign_run, soak_rows, args.min_passthrough)
     print(f'head: {args.model_id}  ({benign_run.get("weight_hash", "?")[:12]}…)')

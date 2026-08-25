@@ -225,12 +225,24 @@ def replay(model_dir, base_dir, device, rows, weights, batch_size):
                                                [texts[k] for k in chunk])):
                 probs[j] = p
     del trunk
+    dc_i = labels.index('data-critical')
     verdicts, pos = [], 0
     for endpoint, n in spans:
         v = aggregate_row(endpoint, probs[pos:pos + n], labels, weights)
+        v['dcs'] = [p[dc_i] for p in probs[pos:pos + n]]  # per-clause dc, for the pass-through gate
         pos += n
         verdicts.append(v)
     return labels, verdicts
+
+
+def soak_rows(rows, verdicts):
+    """The pass-through gate's soak input for a replayed checkpoint: one
+    dc list per CASCADE row (the gate's own definition of a soak row —
+    passthrough_gate.load_soak_rows reads the same endpoint from recorded
+    scores). No text: this is the only thing a candidate's replay needs
+    to leave behind."""
+    return [v['dcs'] for r, v in zip(rows, verdicts)
+            if (r['lfm2d'].get('endpoint') or 'classify') == 'cascade']
 
 
 def day_key(ts):
@@ -292,12 +304,19 @@ def main():
                     help="default 'cpu': a bulk replay here shares the box "
                          "with a live shadow scorer and llama-server; check "
                          "rocm-smi before asking for the GPU")
+    ap.add_argument('--until', type=float, default=None,
+                    help='only rows with ts < this (the v10 baseline window: 1787497523)')
+    ap.add_argument('--save-soak', type=Path,
+                    help="write --model's per-clause dc lists for cascade rows (no text) "
+                         "for passthrough_gate.py --soak-rows")
     args = ap.parse_args()
 
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(args.threads)
 
     rows = load_rows(args.log.expanduser(), args.model_id)
+    if args.until is not None:
+        rows = [r for r in rows if r.get('ts', 0) < args.until]
     if not rows:
         print(f'no replayable rows for model_id={args.model_id}', file=sys.stderr)
         return 1
@@ -316,6 +335,13 @@ def main():
                                       replay_labels(args.model), severe_order),
                                   args.batch_size)
     fired_a = report(rows, verdicts_a, args.model.name)
+
+    if args.save_soak:
+        soak = soak_rows(rows, verdicts_a)
+        args.save_soak.write_text(json.dumps({
+            'replayed_model': args.model.name, 'live_model_id': args.model_id,
+            'until': args.until, 'rows': soak}))
+        print(f'\nsaved {len(soak)} cascade rows of per-clause dc for the pass-through gate -> {args.save_soak}')
 
     validate(rows, verdicts_a, args.model.name, args.model_id)
 

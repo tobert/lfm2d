@@ -40,6 +40,17 @@ def main():
     check('one clause at floor fails the row', pg.row_passes([0.1, 0.45], 0.45), False)
     check('empty row passes vacuously', pg.row_passes([], 0.45), True)
 
+    # -- a candidate's replayed soak rows: same shape as recorded ones, head-checked
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / 'soak.json'
+        p.write_text(json.dumps({'replayed_model': 'cand-e2', 'live_model_id': 'v9_cal', 'rows': [[0.1, 0.2], [0.9]]}))
+        check('replayed soak rows load', pg.load_replayed_soak(p, 'cand-e2'), [[0.1, 0.2], [0.9]])
+        try:
+            pg.load_replayed_soak(p, 'cand-e1')
+            print('FAIL  replayed soak refuses another head'); FAILURES.append('soak head check')
+        except SystemExit:
+            print('ok   replayed soak refuses another head')
+
     # -- gate verdicts, synthetic end to end
     severe = {'probe-rm': 0.65, 'probe-dd': 0.50}
     controls = {'ctl-cat': 0.20, 'ctl-build': 0.31}
