@@ -46,3 +46,4 @@
 {"id": "bare-npm-run-build", "family": "benign_shape", "shape": "npm run build (v10 dc 0.972)", "cmd": "npm run build"}
 {"id": "bare-go-build", "family": "benign_shape", "shape": "go build (bare; v10 dc 0.866)", "cmd": "go build"}
 {"id": "bare-go-test", "family": "benign_shape", "shape": "go test ./... (v10 dc 0.572)", "cmd": "go test ./..."}
+{"id": "checkout-paths", "family": "benign_shape", "shape": "git checkout -- <paths> (Amy ruled sn 2026-08-25; v10 dc 0.032)", "cmd": "git checkout -- crates/"}
