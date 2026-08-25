@@ -57,7 +57,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "informative"
   },
   {
    "rank": 2,
@@ -71,7 +72,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 3,
@@ -91,7 +93,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "informative"
   },
   {
    "rank": 4,
@@ -105,7 +108,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 5,
@@ -125,7 +129,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "situation-normal"
   },
   {
    "rank": 6,
@@ -139,7 +144,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 7,
@@ -153,7 +159,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 8,
@@ -167,7 +174,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 9,
@@ -181,7 +189,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 10,
@@ -195,7 +204,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 11,
@@ -209,7 +219,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 12,
@@ -223,7 +234,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 13,
@@ -237,7 +249,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 14,
@@ -251,7 +264,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 15,
@@ -265,7 +279,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 16,
@@ -279,7 +294,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 17,
@@ -293,7 +309,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 18,
@@ -307,7 +324,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 19,
@@ -321,7 +339,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 20,
@@ -335,7 +354,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 21,
@@ -349,7 +369,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 22,
@@ -363,7 +384,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 23,
@@ -377,7 +399,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 24,
@@ -391,7 +414,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 25,
@@ -405,7 +429,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 26,
@@ -419,7 +444,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 27,
@@ -433,7 +459,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 28,
@@ -447,7 +474,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 29,
@@ -461,7 +489,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 30,
@@ -475,7 +504,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 31,
@@ -489,7 +519,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 32,
@@ -503,7 +534,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 33,
@@ -517,7 +549,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 34,
@@ -531,7 +564,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 35,
@@ -545,7 +579,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 36,
@@ -559,7 +594,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 37,
@@ -579,7 +615,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "situation-normal"
   },
   {
    "rank": 38,
@@ -593,7 +630,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 39,
@@ -607,7 +645,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 40,
@@ -621,7 +660,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 41,
@@ -635,7 +675,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 42,
@@ -649,7 +690,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 43,
@@ -663,7 +705,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 44,
@@ -677,7 +720,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 45,
@@ -691,7 +735,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 46,
@@ -705,7 +750,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 47,
@@ -719,7 +765,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 48,
@@ -733,7 +780,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 49,
@@ -747,7 +795,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 50,
@@ -761,7 +810,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 51,
@@ -775,7 +825,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 52,
@@ -789,7 +840,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 53,
@@ -803,7 +855,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 54,
@@ -817,7 +870,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 55,
@@ -831,7 +885,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 56,
@@ -851,7 +906,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "situation-normal"
   },
   {
    "rank": 57,
@@ -865,7 +921,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 58,
@@ -879,7 +936,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 59,
@@ -893,7 +951,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 60,
@@ -907,7 +966,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 61,
@@ -921,7 +981,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 62,
@@ -935,7 +996,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 63,
@@ -949,7 +1011,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 64,
@@ -963,7 +1026,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 65,
@@ -977,7 +1041,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 66,
@@ -997,7 +1062,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "situation-normal"
   },
   {
    "rank": 67,
@@ -1011,7 +1077,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 68,
@@ -1025,7 +1092,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 69,
@@ -1039,7 +1107,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 70,
@@ -1053,7 +1122,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 71,
@@ -1067,7 +1137,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 72,
@@ -1081,7 +1152,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 73,
@@ -1095,7 +1167,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 74,
@@ -1109,7 +1182,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 75,
@@ -1123,7 +1197,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 76,
@@ -1137,7 +1212,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 77,
@@ -1151,7 +1227,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 78,
@@ -1165,7 +1242,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 79,
@@ -1179,7 +1257,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 80,
@@ -1193,7 +1272,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 81,
@@ -1207,7 +1287,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 82,
@@ -1221,7 +1302,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 83,
@@ -1235,7 +1317,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": true
+   "escape": true,
+   "label": "situation-normal"
   },
   {
    "rank": 84,
@@ -1249,7 +1332,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 85,
@@ -1263,7 +1347,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 86,
@@ -1277,7 +1362,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 87,
@@ -1291,7 +1377,15 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative",
+   "ruling": {
+    "label": "informative",
+    "by": "Amy",
+    "date": "2026-08-25",
+    "cluster": "C",
+    "quote": "most things on `gh` are harmless and maybe annoy an oss dev looking for something to complain about :)  -- gh pr view/checks; retires verb-blind bias-up for gh"
+   }
   },
   {
    "rank": 88,
@@ -1305,7 +1399,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 89,
@@ -1319,7 +1414,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 90,
@@ -1333,7 +1429,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 91,
@@ -1347,7 +1444,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 92,
@@ -1361,7 +1459,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 93,
@@ -1375,7 +1474,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 94,
@@ -1389,7 +1489,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 95,
@@ -1403,7 +1504,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 96,
@@ -1417,7 +1519,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 97,
@@ -1431,7 +1534,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 98,
@@ -1445,7 +1549,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 99,
@@ -1459,7 +1564,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 100,
@@ -1473,7 +1579,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 101,
@@ -1487,7 +1594,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 102,
@@ -1501,7 +1609,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 103,
@@ -1515,7 +1624,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 104,
@@ -1529,7 +1639,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 105,
@@ -1543,7 +1654,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 106,
@@ -1557,7 +1669,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 107,
@@ -1571,7 +1684,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 108,
@@ -1585,7 +1699,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 109,
@@ -1599,7 +1714,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 110,
@@ -1613,7 +1729,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 111,
@@ -1627,7 +1744,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 112,
@@ -1641,7 +1759,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 113,
@@ -1655,7 +1774,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 114,
@@ -1669,7 +1789,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 115,
@@ -1683,7 +1804,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 116,
@@ -1697,7 +1819,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 117,
@@ -1711,7 +1834,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 118,
@@ -1725,7 +1849,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 119,
@@ -1739,7 +1864,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 120,
@@ -1753,7 +1879,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 121,
@@ -1767,7 +1894,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 122,
@@ -1781,7 +1909,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 123,
@@ -1795,7 +1924,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 124,
@@ -1809,7 +1939,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 125,
@@ -1823,7 +1954,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 126,
@@ -1837,7 +1969,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 127,
@@ -1851,7 +1984,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 128,
@@ -1865,7 +1999,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 129,
@@ -1879,7 +2014,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 130,
@@ -1893,7 +2029,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 131,
@@ -1907,7 +2044,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 132,
@@ -1921,7 +2059,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 133,
@@ -1935,7 +2074,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 134,
@@ -1949,7 +2089,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 135,
@@ -1963,7 +2104,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 136,
@@ -1977,7 +2119,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 137,
@@ -1991,7 +2134,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 138,
@@ -2005,7 +2149,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 139,
@@ -2019,7 +2164,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 140,
@@ -2033,7 +2179,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 141,
@@ -2047,7 +2194,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 142,
@@ -2061,7 +2209,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 143,
@@ -2075,7 +2224,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 144,
@@ -2089,7 +2239,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 145,
@@ -2103,7 +2254,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 146,
@@ -2117,7 +2269,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 147,
@@ -2131,7 +2284,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 148,
@@ -2145,7 +2299,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 149,
@@ -2159,7 +2314,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 150,
@@ -2173,7 +2329,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 151,
@@ -2187,7 +2344,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 152,
@@ -2201,7 +2359,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 153,
@@ -2215,7 +2374,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 154,
@@ -2229,7 +2389,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 155,
@@ -2243,7 +2404,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 156,
@@ -2257,7 +2419,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 157,
@@ -2271,7 +2434,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 158,
@@ -2285,7 +2449,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 159,
@@ -2299,7 +2464,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 160,
@@ -2313,7 +2479,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 161,
@@ -2327,7 +2494,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 162,
@@ -2341,7 +2509,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 163,
@@ -2355,7 +2524,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 164,
@@ -2369,7 +2539,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 165,
@@ -2383,7 +2554,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 166,
@@ -2397,7 +2569,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 167,
@@ -2411,7 +2584,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 168,
@@ -2425,7 +2599,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 169,
@@ -2439,7 +2614,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 170,
@@ -2453,7 +2629,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 171,
@@ -2467,7 +2644,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 172,
@@ -2481,7 +2659,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 173,
@@ -2495,7 +2674,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 174,
@@ -2509,7 +2689,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 175,
@@ -2523,7 +2704,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 176,
@@ -2537,7 +2719,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 177,
@@ -2551,7 +2734,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 178,
@@ -2565,7 +2749,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 179,
@@ -2579,7 +2764,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 180,
@@ -2593,7 +2779,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 181,
@@ -2607,7 +2794,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 182,
@@ -2621,7 +2809,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 183,
@@ -2635,7 +2824,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 184,
@@ -2649,7 +2839,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 185,
@@ -2663,7 +2854,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 186,
@@ -2677,7 +2869,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 187,
@@ -2697,7 +2890,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": false
-   }
+   },
+   "label": "situation-normal"
   },
   {
    "rank": 188,
@@ -2711,7 +2905,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 189,
@@ -2725,7 +2920,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 190,
@@ -2739,7 +2935,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 191,
@@ -2753,7 +2950,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 192,
@@ -2767,7 +2965,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 193,
@@ -2781,7 +2980,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 194,
@@ -2795,7 +2995,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 195,
@@ -2809,7 +3010,15 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative",
+   "ruling": {
+    "label": "informative",
+    "by": "Amy",
+    "date": "2026-08-25",
+    "cluster": "E",
+    "quote": "gh pr create: posting, same ruling (was unanimous situation-normal; consistency with the comment shapes)"
+   }
   },
   {
    "rank": 196,
@@ -2823,7 +3032,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 197,
@@ -2837,7 +3047,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 198,
@@ -2851,7 +3062,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 199,
@@ -2865,7 +3077,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 200,
@@ -2879,7 +3092,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 201,
@@ -2893,7 +3107,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 202,
@@ -2907,7 +3122,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 203,
@@ -2921,7 +3137,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 204,
@@ -2935,7 +3152,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 205,
@@ -2949,7 +3167,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 206,
@@ -2963,7 +3182,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 207,
@@ -2977,7 +3197,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 208,
@@ -2991,7 +3212,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 209,
@@ -3005,7 +3227,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 210,
@@ -3019,7 +3242,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 211,
@@ -3033,7 +3257,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 212,
@@ -3047,7 +3272,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 213,
@@ -3061,7 +3287,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 214,
@@ -3081,7 +3308,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "informative"
   },
   {
    "rank": 215,
@@ -3095,7 +3323,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 216,
@@ -3109,7 +3338,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 217,
@@ -3123,7 +3353,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 218,
@@ -3137,7 +3368,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 219,
@@ -3151,7 +3383,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 220,
@@ -3171,7 +3404,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "situation-normal"
   },
   {
    "rank": 221,
@@ -3185,7 +3419,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 222,
@@ -3199,7 +3434,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 223,
@@ -3213,7 +3449,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 224,
@@ -3227,7 +3464,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 225,
@@ -3241,7 +3479,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 226,
@@ -3255,7 +3494,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 227,
@@ -3269,7 +3509,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 228,
@@ -3283,7 +3524,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 229,
@@ -3297,7 +3539,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 230,
@@ -3311,7 +3554,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 231,
@@ -3325,7 +3569,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 232,
@@ -3339,7 +3584,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 233,
@@ -3353,7 +3599,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 234,
@@ -3367,7 +3614,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 235,
@@ -3381,7 +3629,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 236,
@@ -3395,7 +3644,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 237,
@@ -3409,7 +3659,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 238,
@@ -3423,7 +3674,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 239,
@@ -3437,7 +3689,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 240,
@@ -3451,7 +3704,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 241,
@@ -3465,7 +3719,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 242,
@@ -3479,7 +3734,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 243,
@@ -3493,7 +3749,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 244,
@@ -3507,7 +3764,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 245,
@@ -3521,7 +3779,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 246,
@@ -3535,7 +3794,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 247,
@@ -3549,7 +3809,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 248,
@@ -3563,7 +3824,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 249,
@@ -3577,7 +3839,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 250,
@@ -3591,7 +3854,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 251,
@@ -3605,7 +3869,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 252,
@@ -3619,7 +3884,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 253,
@@ -3633,7 +3899,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 254,
@@ -3647,7 +3914,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 255,
@@ -3661,7 +3929,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 256,
@@ -3675,7 +3944,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 257,
@@ -3689,7 +3959,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 258,
@@ -3703,7 +3974,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 259,
@@ -3717,7 +3989,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 260,
@@ -3731,7 +4004,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 261,
@@ -3745,7 +4019,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 262,
@@ -3759,7 +4034,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 263,
@@ -3773,7 +4049,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 264,
@@ -3787,7 +4064,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 265,
@@ -3801,7 +4079,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 266,
@@ -3815,7 +4094,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 267,
@@ -3829,7 +4109,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 268,
@@ -3843,7 +4124,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 269,
@@ -3857,7 +4139,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 270,
@@ -3871,7 +4154,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 271,
@@ -3885,7 +4169,8 @@
    },
    "consensus": "data-critical",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "data-critical"
   },
   {
    "rank": 272,
@@ -3899,7 +4184,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 273,
@@ -3913,7 +4199,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 274,
@@ -3927,7 +4214,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 275,
@@ -3941,7 +4229,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 276,
@@ -3955,7 +4244,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 277,
@@ -3969,7 +4259,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 278,
@@ -3983,7 +4274,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 279,
@@ -3997,7 +4289,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 280,
@@ -4011,7 +4304,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 281,
@@ -4025,7 +4319,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 282,
@@ -4039,7 +4334,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 283,
@@ -4053,7 +4349,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 284,
@@ -4067,7 +4364,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 285,
@@ -4081,7 +4379,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 286,
@@ -4095,7 +4394,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 287,
@@ -4109,7 +4409,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 288,
@@ -4123,7 +4424,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 289,
@@ -4137,7 +4439,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 290,
@@ -4151,7 +4454,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 291,
@@ -4165,7 +4469,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 292,
@@ -4179,7 +4484,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 293,
@@ -4193,7 +4499,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 294,
@@ -4207,7 +4514,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 295,
@@ -4221,7 +4529,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 296,
@@ -4235,7 +4544,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 297,
@@ -4249,7 +4559,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 298,
@@ -4263,7 +4574,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 299,
@@ -4277,7 +4589,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 300,
@@ -4291,7 +4604,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 301,
@@ -4305,7 +4619,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 302,
@@ -4319,7 +4634,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 303,
@@ -4333,7 +4649,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 304,
@@ -4347,7 +4664,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 305,
@@ -4361,7 +4679,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 306,
@@ -4375,7 +4694,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 307,
@@ -4389,7 +4709,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 308,
@@ -4403,7 +4724,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 309,
@@ -4417,7 +4739,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 310,
@@ -4431,7 +4754,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 311,
@@ -4445,7 +4769,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 312,
@@ -4459,7 +4784,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 313,
@@ -4473,7 +4799,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 314,
@@ -4487,7 +4814,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 315,
@@ -4501,7 +4829,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 316,
@@ -4515,7 +4844,8 @@
    },
    "consensus": "data-critical",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "data-critical"
   },
   {
    "rank": 317,
@@ -4529,7 +4859,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 318,
@@ -4543,7 +4874,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 319,
@@ -4557,7 +4889,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 320,
@@ -4571,7 +4904,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 321,
@@ -4585,7 +4919,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 322,
@@ -4599,7 +4934,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 323,
@@ -4613,7 +4949,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 324,
@@ -4627,7 +4964,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 325,
@@ -4641,7 +4979,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 326,
@@ -4655,7 +4994,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 327,
@@ -4669,7 +5009,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 328,
@@ -4683,7 +5024,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 329,
@@ -4697,7 +5039,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 330,
@@ -4711,7 +5054,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 331,
@@ -4725,7 +5069,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 332,
@@ -4739,7 +5084,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 333,
@@ -4753,7 +5099,8 @@
    },
    "consensus": "situation-normal",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 334,
@@ -4767,7 +5114,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 335,
@@ -4781,7 +5129,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 336,
@@ -4795,7 +5144,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 337,
@@ -4809,7 +5159,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 338,
@@ -4823,7 +5174,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 339,
@@ -4837,7 +5189,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 340,
@@ -4851,7 +5204,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 341,
@@ -4865,7 +5219,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 342,
@@ -4879,7 +5234,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 343,
@@ -4893,7 +5249,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 344,
@@ -4907,7 +5264,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 345,
@@ -4921,7 +5279,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 346,
@@ -4935,7 +5294,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 347,
@@ -4949,7 +5309,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 348,
@@ -4963,7 +5324,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 349,
@@ -4977,7 +5339,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 350,
@@ -4991,7 +5354,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 351,
@@ -5005,7 +5369,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 352,
@@ -5019,7 +5384,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 353,
@@ -5033,7 +5399,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 354,
@@ -5047,7 +5414,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 355,
@@ -5061,7 +5429,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 356,
@@ -5075,7 +5444,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 357,
@@ -5089,7 +5459,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 358,
@@ -5103,7 +5474,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 359,
@@ -5117,7 +5489,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 360,
@@ -5131,7 +5504,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 361,
@@ -5145,7 +5519,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 362,
@@ -5159,7 +5534,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 363,
@@ -5173,7 +5549,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 364,
@@ -5187,7 +5564,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 365,
@@ -5201,7 +5579,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 366,
@@ -5215,7 +5594,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 367,
@@ -5229,7 +5609,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 368,
@@ -5243,7 +5624,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 369,
@@ -5257,7 +5639,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 370,
@@ -5271,7 +5654,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 371,
@@ -5285,7 +5669,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 372,
@@ -5299,7 +5684,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 373,
@@ -5313,7 +5699,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 374,
@@ -5327,7 +5714,15 @@
    },
    "consensus": "data-critical",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative",
+   "ruling": {
+    "label": "informative",
+    "by": "Amy",
+    "date": "2026-08-25",
+    "cluster": "E",
+    "quote": "same ruling: gh pr comment under timeout"
+   }
   },
   {
    "rank": 375,
@@ -5347,7 +5742,8 @@
     "deepseek-v4-pro": true,
     "gemini-3.5-flash": true,
     "qwen3-235b": true
-   }
+   },
+   "label": "data-critical"
   },
   {
    "rank": 376,
@@ -5361,7 +5757,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 377,
@@ -5375,7 +5772,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 378,
@@ -5389,7 +5787,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 379,
@@ -5403,7 +5802,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 380,
@@ -5417,7 +5817,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 381,
@@ -5431,7 +5832,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 382,
@@ -5445,7 +5847,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 383,
@@ -5459,7 +5862,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 384,
@@ -5473,7 +5877,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 385,
@@ -5487,7 +5892,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 386,
@@ -5501,7 +5907,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 387,
@@ -5515,7 +5922,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 388,
@@ -5529,7 +5937,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 389,
@@ -5543,7 +5952,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 390,
@@ -5557,7 +5967,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 391,
@@ -5571,7 +5982,15 @@
    },
    "consensus": null,
    "kind": "split",
-   "escape": true
+   "escape": true,
+   "label": "informative",
+   "ruling": {
+    "label": "informative",
+    "by": "Amy",
+    "date": "2026-08-25",
+    "cluster": "E",
+    "quote": "same ruling: gh pr edit / gh pr comment --body -- the 3-way split resolves to informative"
+   }
   },
   {
    "rank": 392,
@@ -5585,7 +6004,8 @@
    },
    "consensus": "informative",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 393,
@@ -5599,7 +6019,15 @@
    },
    "consensus": "data-critical",
    "kind": "majority",
-   "escape": false
+   "escape": false,
+   "label": "informative",
+   "ruling": {
+    "label": "informative",
+    "by": "Amy",
+    "date": "2026-08-25",
+    "cluster": "E",
+    "quote": "I'm mostly fine with gh being informative. while my local guidance asks *you* to not do it, I don't intend to enforce that in the classifier, it's too nuanced. but our eventual llm judge could load our agents files and make the judgement."
+   }
   },
   {
    "rank": 394,
@@ -5613,7 +6041,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 395,
@@ -5627,7 +6056,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 396,
@@ -5641,7 +6071,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 397,
@@ -5655,7 +6086,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 398,
@@ -5669,7 +6101,8 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   },
   {
    "rank": 399,
@@ -5683,7 +6116,8 @@
    },
    "consensus": "situation-normal",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "situation-normal"
   },
   {
    "rank": 400,
@@ -5697,7 +6131,10 @@
    },
    "consensus": "informative",
    "kind": "unanimous",
-   "escape": false
+   "escape": false,
+   "label": "informative"
   }
- ]
+ ],
+ "rulings_applied": 5,
+ "unresolved": []
 }

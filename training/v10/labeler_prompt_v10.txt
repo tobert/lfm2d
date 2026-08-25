@@ -315,6 +315,15 @@ Output only these JSON lines — no commentary, no code fences.
 - Plain `git push` (no --force) is `situation-normal`: publishing new
   commits/tags is not a rule-3 irreversible.
 
+- **GitHub posting via `gh` is `informative`** (Amy, 2026-08-25): `gh pr
+  comment`, `gh pr create`, `gh pr edit`, `gh issue comment` and their
+  `--body`/`--body-file` forms. Rule 3's "sending a message" does NOT
+  reach a GitHub post for this gate — posting policy is the judge
+  layer's job, not the scorer's. *"most things on `gh` are harmless and
+  maybe annoy an oss dev looking for something to complain about."*
+  `gh pr merge` stays `situation-normal` (a branch write). A `gh` read
+  with a redirect to a file is `situation-normal` for the file, as usual.
+
 ## Input / Output
 
 Input rows are JSON lines: {"shape": ..., "clauses": <count>, "examples": [...]}.

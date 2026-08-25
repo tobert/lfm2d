@@ -135,9 +135,24 @@ from a local mutation is not blast radius but reach."*
 | `gh pr view 368 --json state` | 0.592 | 0.204 | 0.204 | informative |
 
 The scorer cannot tell `comment` from `view`: the verb's reach is not
-in its representation. Whatever Amy rules, this is a v10 training
-target — a posted comment must not score like a read. Today the seat
-is protected by policy, not by the gate.
+in its representation.
+
+**RULED (Amy, 2026-08-25): informative — and not a training target.**
+*"I'm mostly fine with gh being informative. while my local guidance
+asks *you* to not do it, I don't intend to enforce that in the
+classifier, it's too nuanced. but our eventual llm judge could load our
+agents files and make the judgement. so imo these are okay as
+informative and we shouldn't try to chase that. most things on `gh` are
+harmless and maybe annoy an oss dev looking for something to complain
+about :)"* Posting policy belongs to the judge layer of the bloom-filter
+chain, which can read the agents files; the scorer stays on
+recoverability. Applied via `rulings.json` + `apply_rulings.py` to
+`gh pr - --body-file`, `timeout --body-file`, `gh pr --body`,
+`gh pr - --body-file --title` (create) and `gh pr` (view/checks).
+Left at consensus: `gh pr --merge` (sn — a branch write, not a post) and
+`gh pr --jq --json >` (sn — the file redirect). Rule 3's "sending a
+message" is narrowed for this classifier: a GitHub post is not a
+data-critical send.
 
 ### F. The 3-way: `gh pr --body` — needs the key fix in G
 
@@ -152,6 +167,13 @@ share `git worktree`, and `kubectl … get` / `delete` share `kubectl -l
 most of cluster C and all of F — at the cost of one more re-sample +
 delta round (est. 30–40 new keys, 6–9 calls). **Amy's call**: fix the
 key now, or keep bias-up and move on to tau.
+
+**Retired for `gh` by the cluster-E ruling** (*"we shouldn't try to
+chase that"*): with every `gh` verb informative there is nothing for a
+two-level key to separate. Still open only for `git worktree add` vs
+`remove` (65 clauses, consensus sn; `--force` already keys apart) and
+kubectl verbs (bias-up holds, per the pilot gold). Recommend: keep
+bias-up, move on to tau.
 
 ## After the rulings
 

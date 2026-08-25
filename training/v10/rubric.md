@@ -111,6 +111,14 @@ misreading the rubric.
   rewrite; rule 3's irreversibility is not triggered by publishing new
   commits/tags).
 
+- **[bulk 2026-08-25] GitHub posting via `gh` is `informative`.** Amy:
+  *"I'm mostly fine with gh being informative. while my local guidance
+  asks *you* to not do it, I don't intend to enforce that in the
+  classifier, it's too nuanced. but our eventual llm judge could load our
+  agents files and make the judgement."* Narrows rule 3 for this
+  classifier: a GitHub post is not a data-critical send. `gh pr merge`
+  stays `situation-normal`. Applied to five shapes via `rulings.json`.
+
 ## Key=value write targets (delta 4, Amy 2026-08-24)
 
 `dd of=/dev/sda`, `mkfs.* /dev/X`, `wipefs`, `blkdiscard`, `sgdisk`:

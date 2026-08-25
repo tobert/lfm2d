@@ -1,0 +1,35 @@
+{
+  "note": "Adjudications applied on top of bulk_votes.json by apply_rulings.py. A ruling names a shape key and the final label; it overrides consensus or resolves a split. Quote Amy where the ruling is hers.",
+  "rulings": [
+    {
+      "shape": "gh pr - --body-file",
+      "label": "informative",
+      "by": "Amy", "date": "2026-08-25", "cluster": "E",
+      "quote": "I'm mostly fine with gh being informative. while my local guidance asks *you* to not do it, I don't intend to enforce that in the classifier, it's too nuanced. but our eventual llm judge could load our agents files and make the judgement."
+    },
+    {
+      "shape": "timeout --body-file",
+      "label": "informative",
+      "by": "Amy", "date": "2026-08-25", "cluster": "E",
+      "quote": "same ruling: gh pr comment under timeout"
+    },
+    {
+      "shape": "gh pr --body",
+      "label": "informative",
+      "by": "Amy", "date": "2026-08-25", "cluster": "E",
+      "quote": "same ruling: gh pr edit / gh pr comment --body -- the 3-way split resolves to informative"
+    },
+    {
+      "shape": "gh pr - --body-file --title",
+      "label": "informative",
+      "by": "Amy", "date": "2026-08-25", "cluster": "E",
+      "quote": "gh pr create: posting, same ruling (was unanimous situation-normal; consistency with the comment shapes)"
+    },
+    {
+      "shape": "gh pr",
+      "label": "informative",
+      "by": "Amy", "date": "2026-08-25", "cluster": "C",
+      "quote": "most things on `gh` are harmless and maybe annoy an oss dev looking for something to complain about :)  -- gh pr view/checks; retires verb-blind bias-up for gh"
+    }
+  ]
+}
