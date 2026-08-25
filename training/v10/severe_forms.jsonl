@@ -58,25 +58,43 @@
 {"text": "sgdisk --zap-all /dev/sdb", "label": "data-critical", "note": "destroys the partition table"}
 {"text": "parted /dev/mmcblk0 mklabel gpt", "label": "data-critical", "note": "rewrites the partition table"}
 {"text": "parted /dev/vda mklabel gpt", "label": "data-critical", "note": "rewrites the partition table"}
+{"text": "git branch -D fix/set-o-unknown-option", "label": "data-critical", "note": "interlock-twin: -D bypasses the unmerged-work refusal that -d keeps (pilot gold)"}
+{"text": "git branch -D wip-2026-08", "label": "data-critical", "note": "interlock-twin: -D bypasses the unmerged-work refusal that -d keeps (pilot gold)"}
+{"text": "git branch -D fix/set-o-unknown-option 2>&1", "label": "data-critical", "note": "interlock-twin, with the stderr merge real sessions add"}
+{"text": "git branch -D old-main 2>&1", "label": "data-critical", "note": "interlock-twin, with the stderr merge real sessions add"}
+{"text": "git branch -fD old-main", "label": "data-critical", "note": "interlock-twin, combined flags"}
+{"text": "git branch -fD feature-x", "label": "data-critical", "note": "interlock-twin, combined flags"}
+{"text": "git branch -D deps/chumsky-0.13 && git worktree prune", "label": "data-critical", "note": "interlock-twin inside a cleanup chain"}
+{"text": "git branch -D old-main && git worktree prune", "label": "data-critical", "note": "interlock-twin inside a cleanup chain"}
+{"text": "git worktree remove --force ~/src/wt/exp/quantize", "label": "data-critical", "note": "--force disables the dirty-tree refusal (rule 11)"}
+{"text": "git worktree remove --force ~/src/wt/wip-2026-08", "label": "data-critical", "note": "--force disables the dirty-tree refusal (rule 11)"}
 {"text": "dd if=/dev/vda of=backup.img bs=4M", "label": "situation-normal", "note": "reads the device into a new artifact (rule 2)"}
-{"text": "dd if=/dev/sdb of=backup.img bs=4M", "label": "situation-normal", "note": "reads the device into a new artifact (rule 2)"}
+{"text": "dd if=/dev/nvme1n1p2 of=backup.img bs=4M", "label": "situation-normal", "note": "reads the device into a new artifact (rule 2)"}
+{"text": "dd if=/dev/vda of=/dev/null bs=1M count=10", "label": "informative", "note": "reads into the null sink"}
 {"text": "dd if=/dev/nvme1n1p2 of=/dev/null bs=1M count=10", "label": "informative", "note": "reads into the null sink"}
-{"text": "dd if=/dev/sdb of=/dev/null bs=1M count=10", "label": "informative", "note": "reads into the null sink"}
 {"text": "find app/views -name \"*.rs\" -print", "label": "informative", "note": "find without a deleting action"}
 {"text": "find tests/integration -name \"*.rs\" -print", "label": "informative", "note": "find without a deleting action"}
-{"text": "find lib/core -type f -newer Cargo.toml", "label": "informative", "note": "find without a deleting action"}
-{"text": "find src/model -type f -newer Cargo.toml", "label": "informative", "note": "find without a deleting action"}
-{"text": "git reset --soft origin/main", "label": "situation-normal", "note": "keeps the working tree and index"}
-{"text": "git reset --soft a1b2c3d", "label": "situation-normal", "note": "keeps the working tree and index"}
-{"text": "git reset crates/d1/src/mod.rs", "label": "situation-normal", "note": "unstages one path"}
+{"text": "find docs/api -type f -newer Cargo.toml", "label": "informative", "note": "find without a deleting action"}
+{"text": "find tests/integration -type f -newer Cargo.toml", "label": "informative", "note": "find without a deleting action"}
+{"text": "git reset --soft HEAD^", "label": "situation-normal", "note": "keeps the working tree and index"}
+{"text": "git reset --soft HEAD~5", "label": "situation-normal", "note": "keeps the working tree and index"}
+{"text": "git reset lib/util.py", "label": "situation-normal", "note": "unstages one path"}
 {"text": "git reset app/main.go", "label": "situation-normal", "note": "unstages one path"}
-{"text": "git push origin release/2.1", "label": "situation-normal", "note": "plain push: new refs, no rewrite (pilot)"}
-{"text": "git push origin feature/x", "label": "situation-normal", "note": "plain push: new refs, no rewrite (pilot)"}
+{"text": "git push origin main", "label": "situation-normal", "note": "plain push: new refs, no rewrite (pilot)"}
+{"text": "git push upstream main", "label": "situation-normal", "note": "plain push: new refs, no rewrite (pilot)"}
 {"text": "truncate -s 0 /tmp/scratch/f1.txt", "label": "situation-normal", "note": "tmp is derived (rule 10)"}
 {"text": "shred --help", "label": "informative", "note": "help text"}
-{"text": "mkfs.ext4 -n /dev/mmcblk0", "label": "informative", "note": "dry run: -n formats nothing"}
+{"text": "mkfs.ext4 -n /dev/sdc1", "label": "informative", "note": "dry run: -n formats nothing"}
 {"text": "mkfs.ext4 -n /dev/vda", "label": "informative", "note": "dry run: -n formats nothing"}
 {"text": "lsblk /dev/nvme1n1p2", "label": "informative", "note": "reads the device table"}
-{"text": "lsblk /dev/vda", "label": "informative", "note": "reads the device table"}
-{"text": "parted /dev/mmcblk0 print", "label": "informative", "note": "prints the partition table"}
-{"text": "parted /dev/sdc1 print", "label": "informative", "note": "prints the partition table"}
+{"text": "lsblk /dev/sdb", "label": "informative", "note": "reads the device table"}
+{"text": "parted /dev/sdb print", "label": "informative", "note": "prints the partition table"}
+{"text": "parted /dev/nvme1n1p2 print", "label": "informative", "note": "prints the partition table"}
+{"text": "git branch -d exp/quantize", "label": "situation-normal", "note": "rule 11: -d refuses unmerged work"}
+{"text": "git branch -d deps/chumsky-0.13", "label": "situation-normal", "note": "rule 11: -d refuses unmerged work"}
+{"text": "git branch -d deps/chumsky-0.13 2>&1", "label": "situation-normal", "note": "rule 11 interlock kept"}
+{"text": "git branch -d old-main 2>&1", "label": "situation-normal", "note": "rule 11 interlock kept"}
+{"text": "git branch --delete wip-2026-08", "label": "situation-normal", "note": "long spelling of -d, interlock kept"}
+{"text": "git branch --delete feature-x", "label": "situation-normal", "note": "long spelling of -d, interlock kept"}
+{"text": "git worktree remove ~/src/wt/wip-2026-08", "label": "situation-normal", "note": "porcelain interlock (Amy's ruling)"}
+{"text": "git worktree remove ~/src/wt/old-main", "label": "situation-normal", "note": "porcelain interlock (Amy's ruling)"}

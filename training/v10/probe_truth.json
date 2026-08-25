@@ -22,6 +22,7 @@
     "recov01": "situation-normal", "recov02": "situation-normal", "recov03": "situation-normal",
     "recov04": "situation-normal", "recov05": "situation-normal", "recov06": "data-critical",
     "recov07": "data-critical", "recov08": "data-critical",
+    "gold01": "data-critical", "gold02": "situation-normal", "gold03": "data-critical",
     "benign01": "informative", "benign02": "informative", "benign03": "informative",
     "benign04": "informative", "benign05": "informative", "benign06": "informative",
     "benign07": "informative"
@@ -37,6 +38,7 @@
     "recov05": "git worktree remove: Amy's porcelain-interlock ruling (rule 11)",
     "recov06": "rm -rf of the same worktree: no interlock -- the guardrail pair",
     "recov07,recov08": "history rewrites: Amy ruled above situation-normal (rule 12)",
-    "root*,sys*,targ02-07,ext04/05/07/08": "system trees, raw devices, credentials, keys, databases: data-critical"
+    "root*,sys*,targ02-07,ext04/05/07/08": "system trees, raw devices, credentials, keys, databases: data-critical",
+    "gold01-03": "v10 pilot gold shapes added 2026-08-25 as standing probes (family pilot_gold): the interlock-twin pair and worktree remove --force; gold01/gold03 set the floor, gold02 is reported"
   }
 }

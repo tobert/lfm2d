@@ -1,0 +1,384 @@
+{
+ "model_id": "kube_ordinal_v10E_candraw-e2",
+ "weight_hash": "417314ab967740527f6ec25e157c1c32e17ee566bf965466828d4db834e40d38",
+ "results": {
+  "sedn-range": {
+   "cmd": "sed -n 5,12p src/main.rs",
+   "scores": {
+    "data-critical": 3.415931e-05,
+    "informative": 0.9997693,
+    "situation-normal": 0.00019649156
+   },
+   "top": "informative"
+  },
+  "sedn-single": {
+   "cmd": "sed -n 243p lfm2d/src/server.rs",
+   "scores": {
+    "data-critical": 3.2536893e-05,
+    "informative": 0.9993799,
+    "situation-normal": 0.00058757485
+   },
+   "top": "informative"
+  },
+  "sedn-pattern": {
+   "cmd": "sed -n '/fn main/,/^}/p' src/lib.rs",
+   "scores": {
+    "data-critical": 0.0036339061,
+    "informative": 0.9481727,
+    "situation-normal": 0.0481934
+   },
+   "top": "informative"
+  },
+  "sedn-last": {
+   "cmd": "sed -n '$p' Cargo.toml",
+   "scores": {
+    "data-critical": 0.0016462313,
+    "informative": 0.99456054,
+    "situation-normal": 0.0037932908
+   },
+   "top": "informative"
+  },
+  "echo-banner-eq": {
+   "cmd": "echo \"=== step 3: rebuild ===\"",
+   "scores": {
+    "data-critical": 0.016951123,
+    "informative": 0.9314556,
+    "situation-normal": 0.05159334
+   },
+   "top": "informative"
+  },
+  "echo-banner-dash": {
+   "cmd": "echo \"--- results ---\"",
+   "scores": {
+    "data-critical": 0.0032493826,
+    "informative": 0.9889858,
+    "situation-normal": 0.007764903
+   },
+   "top": "informative"
+  },
+  "echo-plain": {
+   "cmd": "echo done",
+   "scores": {
+    "data-critical": 0.029466264,
+    "informative": 0.91946155,
+    "situation-normal": 0.05107228
+   },
+   "top": "informative"
+  },
+  "echo-var": {
+   "cmd": "echo \"$HOME\"",
+   "scores": {
+    "data-critical": 0.006575551,
+    "informative": 0.9884024,
+    "situation-normal": 0.005022064
+   },
+   "top": "informative"
+  },
+  "echo-sep": {
+   "cmd": "echo ===",
+   "scores": {
+    "data-critical": 0.20897798,
+    "informative": 0.31746578,
+    "situation-normal": 0.47355622
+   },
+   "top": "situation-normal"
+  },
+  "grep-n": {
+   "cmd": "grep -n TODO src/lib.rs",
+   "scores": {
+    "data-critical": 3.7563805e-06,
+    "informative": 0.99998975,
+    "situation-normal": 6.4042283e-06
+   },
+   "top": "informative"
+  },
+  "grep-rn": {
+   "cmd": "grep -rn 'fn cascade' lfm2d/src/",
+   "scores": {
+    "data-critical": 7.0568966e-08,
+    "informative": 0.9999994,
+    "situation-normal": 5.223708e-07
+   },
+   "top": "informative"
+  },
+  "grep-hoE": {
+   "cmd": "grep -hoE '^[A-Z_]+=' .env.example",
+   "scores": {
+    "data-critical": 1.0851539e-06,
+    "informative": 0.99999785,
+    "situation-normal": 1.107773e-06
+   },
+   "top": "informative"
+  },
+  "grep-c": {
+   "cmd": "grep -c 'def test' training/v10/test_soak_shapes.py",
+   "scores": {
+    "data-critical": 5.349383e-07,
+    "informative": 0.9999943,
+    "situation-normal": 5.239979e-06
+   },
+   "top": "informative"
+  },
+  "awk-nr": {
+   "cmd": "awk 'NR==12,NR==20' training/v10/PLAN.md",
+   "scores": {
+    "data-critical": 2.6769929e-05,
+    "informative": 0.9998696,
+    "situation-normal": 0.000103534214
+   },
+   "top": "informative"
+  },
+  "awk-print": {
+   "cmd": "awk '{print $1}' /tmp/report.tsv",
+   "scores": {
+    "data-critical": 0.0005194163,
+    "informative": 0.99633443,
+    "situation-normal": 0.0031461571
+   },
+   "top": "informative"
+  },
+  "awk-sum": {
+   "cmd": "awk '{s+=$2} END {print s}' timings.txt",
+   "scores": {
+    "data-critical": 0.00014894936,
+    "informative": 0.9987369,
+    "situation-normal": 0.0011141454
+   },
+   "top": "informative"
+  },
+  "wc-l": {
+   "cmd": "wc -l src/*.rs",
+   "scores": {
+    "data-critical": 2.5937756e-05,
+    "informative": 0.9999702,
+    "situation-normal": 3.76915e-06
+   },
+   "top": "informative"
+  },
+  "cat-file": {
+   "cmd": "cat README.md",
+   "scores": {
+    "data-critical": 0.00015806936,
+    "informative": 0.99831164,
+    "situation-normal": 0.0015303021
+   },
+   "top": "informative"
+  },
+  "head-c": {
+   "cmd": "head -c 2000 tests/fixtures/kube_ordinal_v9_cal.config.json",
+   "scores": {
+    "data-critical": 0.00015186418,
+    "informative": 0.9982253,
+    "situation-normal": 0.0016229262
+   },
+   "top": "informative"
+  },
+  "tail-n": {
+   "cmd": "tail -20 signoff.md",
+   "scores": {
+    "data-critical": 2.16623e-05,
+    "informative": 0.99995196,
+    "situation-normal": 2.6365416e-05
+   },
+   "top": "informative"
+  },
+  "ls-la": {
+   "cmd": "ls -la training/v10/",
+   "scores": {
+    "data-critical": 1.6040835e-06,
+    "informative": 0.9999604,
+    "situation-normal": 3.797789e-05
+   },
+   "top": "informative"
+  },
+  "find-name": {
+   "cmd": "find . -name '*.rs' -newer Cargo.toml",
+   "scores": {
+    "data-critical": 0.02532699,
+    "informative": 0.9663005,
+    "situation-normal": 0.008372452
+   },
+   "top": "informative"
+  },
+  "cargo-test-redir": {
+   "cmd": "cargo test --workspace > /tmp/test-output.txt",
+   "scores": {
+    "data-critical": 0.001128253,
+    "informative": 7.965433e-05,
+    "situation-normal": 0.9987921
+   },
+   "top": "situation-normal"
+  },
+  "cargo-build-tail": {
+   "cmd": "cargo build 2>&1 | tail -1",
+   "scores": {
+    "data-critical": 0.0008081795,
+    "informative": 0.026356535,
+    "situation-normal": 0.9728353
+   },
+   "top": "situation-normal"
+  },
+  "cargo-check": {
+   "cmd": "cargo check --workspace",
+   "scores": {
+    "data-critical": 0.08054488,
+    "informative": 0.45250058,
+    "situation-normal": 0.46695462
+   },
+   "top": "situation-normal"
+  },
+  "python3-script": {
+   "cmd": "python3 training/v10/soak_shapes.py --model-id kube_ordinal_v9_cal",
+   "scores": {
+    "data-critical": 0.016318804,
+    "informative": 0.15793642,
+    "situation-normal": 0.8257448
+   },
+   "top": "situation-normal"
+  },
+  "python3-m": {
+   "cmd": "python3 -m json.tool config.json",
+   "scores": {
+    "data-critical": 0.016409101,
+    "informative": 0.07745423,
+    "situation-normal": 0.90613663
+   },
+   "top": "situation-normal"
+  },
+  "git-status": {
+   "cmd": "git status --short",
+   "scores": {
+    "data-critical": 6.2569948e-06,
+    "informative": 0.9999819,
+    "situation-normal": 1.1925278e-05
+   },
+   "top": "informative"
+  },
+  "git-log": {
+   "cmd": "git log --oneline -5",
+   "scores": {
+    "data-critical": 4.4499984e-07,
+    "informative": 0.99999213,
+    "situation-normal": 7.3351807e-06
+   },
+   "top": "informative"
+  },
+  "git-diff": {
+   "cmd": "git diff --stat HEAD",
+   "scores": {
+    "data-critical": 2.2024142e-05,
+    "informative": 0.9997675,
+    "situation-normal": 0.00021044213
+   },
+   "top": "informative"
+  },
+  "git-show": {
+   "cmd": "git show \"HEAD:training/v10/PLAN.md\"",
+   "scores": {
+    "data-critical": 0.00032992565,
+    "informative": 0.973375,
+    "situation-normal": 0.026295131
+   },
+   "top": "informative"
+  },
+  "curl-get": {
+   "cmd": "curl -s http://localhost:8088/v1/models",
+   "scores": {
+    "data-critical": 8.927689e-05,
+    "informative": 0.9997366,
+    "situation-normal": 0.000174174
+   },
+   "top": "informative"
+  },
+  "jq-select": {
+   "cmd": "jq -r '.ts' /tmp/rows.jsonl",
+   "scores": {
+    "data-critical": 0.004321266,
+    "informative": 0.9666618,
+    "situation-normal": 0.029016852
+   },
+   "top": "informative"
+  },
+  "ps-grep": {
+   "cmd": "ps aux | grep lfm2d",
+   "scores": {
+    "data-critical": 1.2970724e-05,
+    "informative": 0.99997854,
+    "situation-normal": 8.491544e-06
+   },
+   "top": "informative"
+  },
+  "which-bin": {
+   "cmd": "which kaish",
+   "scores": {
+    "data-critical": 0.056308437,
+    "informative": 0.7919443,
+    "situation-normal": 0.15174718
+   },
+   "top": "informative"
+  },
+  "du-sh": {
+   "cmd": "du -sh target/",
+   "scores": {
+    "data-critical": 2.3142758e-05,
+    "informative": 0.9999461,
+    "situation-normal": 3.0761446e-05
+   },
+   "top": "informative"
+  },
+  "diff-files": {
+   "cmd": "diff -u /tmp/a.json /tmp/b.json",
+   "scores": {
+    "data-critical": 0.00061279186,
+    "informative": 0.982271,
+    "situation-normal": 0.017116241
+   },
+   "top": "informative"
+  },
+  "sort-uniq": {
+   "cmd": "sort names.txt | uniq -c | sort -rn",
+   "scores": {
+    "data-critical": 0.43384495,
+    "informative": 0.49952504,
+    "situation-normal": 0.06663002
+   },
+   "top": "informative"
+  },
+  "junk-frag-p": {
+   "cmd": "p",
+   "scores": {
+    "data-critical": 0.030410804,
+    "informative": 0.9101846,
+    "situation-normal": 0.05940455
+   },
+   "top": "informative"
+  },
+  "junk-frag-flags": {
+   "cmd": "-n -l",
+   "scores": {
+    "data-critical": 0.0036470313,
+    "informative": 0.99099874,
+    "situation-normal": 0.005354277
+   },
+   "top": "informative"
+  },
+  "mkdir-p": {
+   "cmd": "mkdir -p /tmp/scratch/run3",
+   "scores": {
+    "data-critical": 0.00025986347,
+    "informative": 3.9736216e-05,
+    "situation-normal": 0.9997004
+   },
+   "top": "situation-normal"
+  },
+  "touch-file": {
+   "cmd": "touch /tmp/marker",
+   "scores": {
+    "data-critical": 0.0020833204,
+    "informative": 0.00047439898,
+    "situation-normal": 0.99744225
+   },
+   "top": "situation-normal"
+  }
+ }
+}
