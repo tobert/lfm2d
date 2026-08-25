@@ -153,7 +153,7 @@ def skew_gate(rows, where):
         raise GateError(f'{where}: {top_label} is {top / n:.0%} (> {MAX_SINGLE_LABEL_SHARE:.0%}) — shortcut risk')
 
 
-def build():
+def build(holdout_shapes=HOLDOUT_SHAPES):
     v9 = load_jsonl(V9)
     real = load_jsonl(REAL)
     rm_dev = load_jsonl(RM_DEVFILE) if RM_DEVFILE.exists() else []
@@ -161,7 +161,7 @@ def build():
         if any(CANARY in json.dumps(r) for r in rows):
             raise GateError(f'{name}: *** CANARY CONTAMINATION ***')
     ranks = {r['shape']: r['rank'] for r in json.loads(VOTES.read_text())['shapes']}
-    hold, real_kept, hold_shapes = pick_shape_holdout(real, ranks, HOLDOUT_SHAPES, HOLDOUT_MIN_RANK, SEED)
+    hold, real_kept, hold_shapes = pick_shape_holdout(real, ranks, holdout_shapes, HOLDOUT_MIN_RANK, SEED)
     merged, held, conflicts, dups, resolved = merge_sources(
         {'v9': v9, 'rm_devfile': rm_dev, 'live': real_kept}, probe_texts(),
         grain={'v9': 'instance', 'rm_devfile': 'instance', 'live': 'shape'})
@@ -192,17 +192,26 @@ def dump(rows, path, keys=None):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--check', action='store_true')
+    ap.add_argument('--full', action='store_true',
+                    help='no shape holdout: every labeled shape trains. The holdout build measures '
+                         'unseen-shape generalization (unseen data-critical shapes fall to '
+                         'situation-normal); the head that SHIPS must have seen them. Writes '
+                         '*_full.jsonl and build_report_full.json.')
     args = ap.parse_args(argv)
     try:
-        merged, hold, train, val, report = build()
+        merged, hold, train, val, report = build(0 if args.full else HOLDOUT_SHAPES)
     except GateError as e:
         print(f'GATE: {e}', file=sys.stderr)
         return 1
+    sfx = '_full' if args.full else ''
     outputs = [
-        dump(merged, OUT), dump(hold, HOLDOUT),
-        dump(train, TRAIN, ('text', 'label')), dump(val, VAL, ('text', 'label')),
-        (REPORT, json.dumps(report, indent=1) + '\n'),
+        dump(merged, OUT.with_name(f'v10{sfx}.jsonl')), dump(hold, HOLDOUT),
+        dump(train, TRAIN.with_name(f'train{sfx}.jsonl'), ('text', 'label')),
+        dump(val, VAL.with_name(f'val{sfx}.jsonl'), ('text', 'label')),
+        (REPORT.with_name(f'build_report{sfx}.json'), json.dumps(report, indent=1) + '\n'),
     ]
+    if args.full:
+        outputs = [o for o in outputs if o[0] != HOLDOUT]
     if args.check:
         bad = [str(p) for p, body in outputs if not p.exists() or p.read_text() != body]
         print('CHECK: ' + ('identical' if not bad else f'DIFFERS: {bad}'))

@@ -1,0 +1,56 @@
+{
+ "seed": 20260825,
+ "val_fraction": 0.15,
+ "sources": {
+  "v9": 815,
+  "rm_devfile": 48,
+  "live": 6196,
+  "live_after_holdout": 6196
+ },
+ "merged": 7047,
+ "held_probe_texts": 8,
+ "cross_source_dups": 3,
+ "instance_over_shape": [
+  {
+   "text": "git worktree list",
+   "label": "informative",
+   "over": [
+    "informative",
+    "situation-normal"
+   ],
+   "where": [
+    "v9[21]",
+    "live[81]"
+   ]
+  }
+ ],
+ "labels": {
+  "informative": 4309,
+  "situation-normal": 2295,
+  "data-critical": 443
+ },
+ "labels_by_source": {
+  "v9": {
+   "informative": 149,
+   "situation-normal": 236,
+   "data-critical": 429
+  },
+  "rm_devfile": {
+   "informative": 0,
+   "situation-normal": 48,
+   "data-critical": 0
+  },
+  "live": {
+   "informative": 4160,
+   "situation-normal": 2011,
+   "data-critical": 14
+  }
+ },
+ "train": 5991,
+ "val": 1056,
+ "shape_holdout": {
+  "shapes": [],
+  "rows": 0,
+  "min_rank": 200
+ }
+}
