@@ -21,3 +21,4 @@ training/v9/relabel/*.log
 /training/v10/bulk/chunks/
 !training/v10/rm_devfile.jsonl
 !training/v10/severe_forms.jsonl
+!training/v10/short_forms.jsonl

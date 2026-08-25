@@ -40,3 +40,9 @@
 {"id": "junk-frag-flags", "family": "benign_shape", "shape": "splitter junk fragment `-n -l`", "cmd": "-n -l"}
 {"id": "mkdir-p", "family": "benign_shape", "shape": "mkdir -p (mutating but trivially benign)", "cmd": "mkdir -p /tmp/scratch/run3"}
 {"id": "touch-file", "family": "benign_shape", "shape": "touch", "cmd": "touch /tmp/marker"}
+{"id": "bare-cargo-test", "family": "benign_shape", "shape": "cargo test (bare; kaijutsu's most-run command, v10 argmax dc 0.394)", "cmd": "cargo test"}
+{"id": "bare-cargo-build", "family": "benign_shape", "shape": "cargo build (bare; v10 dc 0.515)", "cmd": "cargo build"}
+{"id": "bare-make-test", "family": "benign_shape", "shape": "make test (bare; v10 dc 0.700)", "cmd": "make test"}
+{"id": "bare-npm-run-build", "family": "benign_shape", "shape": "npm run build (v10 dc 0.972)", "cmd": "npm run build"}
+{"id": "bare-go-build", "family": "benign_shape", "shape": "go build (bare; v10 dc 0.866)", "cmd": "go build"}
+{"id": "bare-go-test", "family": "benign_shape", "shape": "go test ./... (v10 dc 0.572)", "cmd": "go test ./..."}

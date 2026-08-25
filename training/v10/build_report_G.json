@@ -5,13 +5,13 @@
   "v9": 815,
   "rm_devfile": 0,
   "severe_forms": 100,
-  "short_forms": 0,
+  "short_forms": 85,
   "live": 3996,
   "live_after_holdout": 3996
  },
- "merged": 4895,
- "held_probe_texts": 9,
- "cross_source_dups": 6,
+ "merged": 4970,
+ "held_probe_texts": 15,
+ "cross_source_dups": 10,
  "instance_over_shape": [
   {
    "text": "git worktree list",
@@ -27,8 +27,8 @@
   }
  ],
  "labels": {
-  "informative": 2795,
-  "situation-normal": 1590,
+  "informative": 2811,
+  "situation-normal": 1649,
   "data-critical": 510
  },
  "labels_by_source": {
@@ -48,8 +48,8 @@
    "data-critical": 68
   },
   "short_forms": {
-   "informative": 0,
-   "situation-normal": 0,
+   "informative": 16,
+   "situation-normal": 59,
    "data-critical": 0
   },
   "live": {
@@ -58,8 +58,8 @@
    "data-critical": 14
   }
  },
- "train": 4162,
- "val": 733,
+ "train": 4225,
+ "val": 745,
  "shape_holdout": {
   "shapes": [],
   "rows": 0,
@@ -69,7 +69,7 @@
   "real": "real_cap30.jsonl",
   "rm_slice": false,
   "severe_slice": true,
-  "short_slice": false,
+  "short_slice": true,
   "full": true
  }
 }
