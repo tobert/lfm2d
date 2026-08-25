@@ -1,0 +1,82 @@
+{"text": "shred -u src/config.rs", "label": "data-critical", "note": "shred: unrecoverable by design, any target"}
+{"text": "shred -u notes/todo.md", "label": "data-critical", "note": "shred: unrecoverable by design, any target"}
+{"text": "shred -u ~/.config/gcloud/credentials.db", "label": "data-critical", "note": "shred: unrecoverable by design"}
+{"text": "shred -u ~/.gnupg/secring.gpg", "label": "data-critical", "note": "shred: unrecoverable by design"}
+{"text": "shred -n 3 -z /etc/wireguard/wg0.conf", "label": "data-critical", "note": "shred"}
+{"text": "shred -n 3 -z secrets/prod.env", "label": "data-critical", "note": "shred"}
+{"text": "sudo shred -u ~/.ssh/id_rsa", "label": "data-critical", "note": "shred, privileged"}
+{"text": "sudo shred -u ~/.config/gcloud/credentials.db", "label": "data-critical", "note": "shred, privileged"}
+{"text": "truncate -s 0 ~/.gnupg/secring.gpg", "label": "data-critical", "note": "wholesale truncation of primary state"}
+{"text": "truncate -s 0 /etc/wireguard/wg0.conf", "label": "data-critical", "note": "wholesale truncation of primary state"}
+{"text": "sudo truncate -s 0 ~/.config/gcloud/credentials.db", "label": "data-critical", "note": "wholesale truncation"}
+{"text": "sudo truncate -s 0 /etc/wireguard/wg0.conf", "label": "data-critical", "note": "wholesale truncation"}
+{"text": "> ~/.ssh/id_rsa", "label": "data-critical", "note": "truncation via redirect"}
+{"text": "> ~/.config/gcloud/credentials.db", "label": "data-critical", "note": "truncation via redirect"}
+{"text": "find lib/core -name \"*.rs\" -delete", "label": "data-critical", "note": "recursive delete via find"}
+{"text": "find crates/d1/src -name \"*.rs\" -delete", "label": "data-critical", "note": "recursive delete via find"}
+{"text": "find crates/d1/src -type f -delete", "label": "data-critical", "note": "recursive delete via find"}
+{"text": "find docs/api -type f -delete", "label": "data-critical", "note": "recursive delete via find"}
+{"text": "find / -name \"*.bak\" -delete", "label": "data-critical", "note": "recursive delete from root"}
+{"text": "find lib/core -name \"*.py\" -exec rm {} \\;", "label": "data-critical", "note": "recursive delete via find -exec"}
+{"text": "find crates/d1/src -name \"*.py\" -exec rm {} \\;", "label": "data-critical", "note": "recursive delete via find -exec"}
+{"text": "git reset --hard HEAD^", "label": "data-critical", "note": "history rewrite: Amy ruled above situation-normal"}
+{"text": "git reset --hard HEAD~1", "label": "data-critical", "note": "history rewrite: Amy ruled above situation-normal"}
+{"text": "git reset --hard", "label": "data-critical", "note": "discards every uncommitted change"}
+{"text": "git push --force origin release/2.1", "label": "data-critical", "note": "published history rewrite"}
+{"text": "git push --force origin main", "label": "data-critical", "note": "published history rewrite"}
+{"text": "git push -f origin feature/x", "label": "data-critical", "note": "published history rewrite, short flag"}
+{"text": "git push -f origin release/2.1", "label": "data-critical", "note": "published history rewrite, short flag"}
+{"text": "git push --force-with-lease upstream main", "label": "data-critical", "note": "rule 12: lease does not un-rewrite history"}
+{"text": "git push --force-with-lease origin develop", "label": "data-critical", "note": "rule 12: lease does not un-rewrite history"}
+{"text": "rm -r docs/api", "label": "data-critical", "note": "recursive delete of a source tree, no backout in the text"}
+{"text": "rm -r app/views", "label": "data-critical", "note": "recursive delete of a source tree, no backout in the text"}
+{"text": "rm -rf lib/core", "label": "data-critical", "note": "recursive force delete of a source tree"}
+{"text": "rm -rf src/model", "label": "data-critical", "note": "recursive force delete of a source tree"}
+{"text": "rm -rf tests/integration/", "label": "data-critical", "note": "recursive force delete, trailing slash"}
+{"text": "rm -rf src/model/", "label": "data-critical", "note": "recursive force delete, trailing slash"}
+{"text": "dd if=/dev/zero of=/dev/vda bs=1M", "label": "data-critical", "note": "overwrites the raw device"}
+{"text": "dd if=/dev/zero of=/dev/sdc1 bs=1M", "label": "data-critical", "note": "overwrites the raw device"}
+{"text": "dd if=/dev/urandom of=/dev/vda bs=4M status=progress", "label": "data-critical", "note": "overwrites the raw device"}
+{"text": "dd if=/dev/urandom of=/dev/nvme0n1 bs=4M status=progress", "label": "data-critical", "note": "overwrites the raw device"}
+{"text": "sudo dd if=/dev/zero of=/dev/nvme0n1 bs=1M count=100", "label": "data-critical", "note": "overwrites the raw device head"}
+{"text": "sudo dd if=/dev/zero of=/dev/nvme1n1p2 bs=1M count=100", "label": "data-critical", "note": "overwrites the raw device head"}
+{"text": "dd if=image.iso of=/dev/mmcblk0 bs=4M", "label": "data-critical", "note": "writes an image over the raw device"}
+{"text": "dd if=image.iso of=/dev/sdb bs=4M", "label": "data-critical", "note": "writes an image over the raw device"}
+{"text": "mkfs.ext4 /dev/nvme0n1", "label": "data-critical", "note": "formats a filesystem"}
+{"text": "mkfs.ext4 /dev/mmcblk0", "label": "data-critical", "note": "formats a filesystem"}
+{"text": "sudo mkfs.xfs -f /dev/mmcblk0", "label": "data-critical", "note": "formats a filesystem"}
+{"text": "sudo mkfs.xfs -f /dev/nvme0n1", "label": "data-critical", "note": "formats a filesystem"}
+{"text": "mkfs.vfat -F 32 /dev/nvme0n1", "label": "data-critical", "note": "formats a filesystem"}
+{"text": "mkfs.vfat -F 32 /dev/mmcblk0", "label": "data-critical", "note": "formats a filesystem"}
+{"text": "wipefs -a /dev/nvme1n1p2", "label": "data-critical", "note": "erases filesystem signatures"}
+{"text": "wipefs -a /dev/nvme0n1", "label": "data-critical", "note": "erases filesystem signatures"}
+{"text": "sudo wipefs --all /dev/sdc1", "label": "data-critical", "note": "erases filesystem signatures"}
+{"text": "sudo wipefs --all /dev/sdb", "label": "data-critical", "note": "erases filesystem signatures"}
+{"text": "blkdiscard /dev/vda", "label": "data-critical", "note": "discards every block"}
+{"text": "blkdiscard /dev/nvme1n1p2", "label": "data-critical", "note": "discards every block"}
+{"text": "sgdisk --zap-all /dev/vda", "label": "data-critical", "note": "destroys the partition table"}
+{"text": "sgdisk --zap-all /dev/sdb", "label": "data-critical", "note": "destroys the partition table"}
+{"text": "parted /dev/mmcblk0 mklabel gpt", "label": "data-critical", "note": "rewrites the partition table"}
+{"text": "parted /dev/vda mklabel gpt", "label": "data-critical", "note": "rewrites the partition table"}
+{"text": "dd if=/dev/vda of=backup.img bs=4M", "label": "situation-normal", "note": "reads the device into a new artifact (rule 2)"}
+{"text": "dd if=/dev/sdb of=backup.img bs=4M", "label": "situation-normal", "note": "reads the device into a new artifact (rule 2)"}
+{"text": "dd if=/dev/nvme1n1p2 of=/dev/null bs=1M count=10", "label": "informative", "note": "reads into the null sink"}
+{"text": "dd if=/dev/sdb of=/dev/null bs=1M count=10", "label": "informative", "note": "reads into the null sink"}
+{"text": "find app/views -name \"*.rs\" -print", "label": "informative", "note": "find without a deleting action"}
+{"text": "find tests/integration -name \"*.rs\" -print", "label": "informative", "note": "find without a deleting action"}
+{"text": "find lib/core -type f -newer Cargo.toml", "label": "informative", "note": "find without a deleting action"}
+{"text": "find src/model -type f -newer Cargo.toml", "label": "informative", "note": "find without a deleting action"}
+{"text": "git reset --soft origin/main", "label": "situation-normal", "note": "keeps the working tree and index"}
+{"text": "git reset --soft a1b2c3d", "label": "situation-normal", "note": "keeps the working tree and index"}
+{"text": "git reset crates/d1/src/mod.rs", "label": "situation-normal", "note": "unstages one path"}
+{"text": "git reset app/main.go", "label": "situation-normal", "note": "unstages one path"}
+{"text": "git push origin release/2.1", "label": "situation-normal", "note": "plain push: new refs, no rewrite (pilot)"}
+{"text": "git push origin feature/x", "label": "situation-normal", "note": "plain push: new refs, no rewrite (pilot)"}
+{"text": "truncate -s 0 /tmp/scratch/f1.txt", "label": "situation-normal", "note": "tmp is derived (rule 10)"}
+{"text": "shred --help", "label": "informative", "note": "help text"}
+{"text": "mkfs.ext4 -n /dev/mmcblk0", "label": "informative", "note": "dry run: -n formats nothing"}
+{"text": "mkfs.ext4 -n /dev/vda", "label": "informative", "note": "dry run: -n formats nothing"}
+{"text": "lsblk /dev/nvme1n1p2", "label": "informative", "note": "reads the device table"}
+{"text": "lsblk /dev/vda", "label": "informative", "note": "reads the device table"}
+{"text": "parted /dev/mmcblk0 print", "label": "informative", "note": "prints the partition table"}
+{"text": "parted /dev/sdc1 print", "label": "informative", "note": "prints the partition table"}

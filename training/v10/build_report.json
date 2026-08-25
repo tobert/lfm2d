@@ -4,6 +4,7 @@
  "sources": {
   "v9": 815,
   "rm_devfile": 48,
+  "severe_forms": 0,
   "live": 6196,
   "live_after_holdout": 6112
  },
@@ -40,6 +41,11 @@
    "situation-normal": 48,
    "data-critical": 0
   },
+  "severe_forms": {
+   "informative": 0,
+   "situation-normal": 0,
+   "data-critical": 0
+  },
   "live": {
    "informative": 4106,
    "situation-normal": 1993,
@@ -73,5 +79,11 @@
   ],
   "rows": 84,
   "min_rank": 200
+ },
+ "variant": {
+  "real": "real.jsonl",
+  "rm_slice": true,
+  "severe_slice": false,
+  "full": false
  }
 }

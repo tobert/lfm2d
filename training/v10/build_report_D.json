@@ -3,12 +3,13 @@
  "val_fraction": 0.15,
  "sources": {
   "v9": 815,
-  "rm_devfile": 48,
-  "live": 6196,
-  "live_after_holdout": 6196
+  "rm_devfile": 0,
+  "severe_forms": 0,
+  "live": 3996,
+  "live_after_holdout": 3996
  },
- "merged": 7047,
- "held_probe_texts": 8,
+ "merged": 4800,
+ "held_probe_texts": 7,
  "cross_source_dups": 3,
  "instance_over_shape": [
   {
@@ -25,8 +26,8 @@
   }
  ],
  "labels": {
-  "informative": 4309,
-  "situation-normal": 2295,
+  "informative": 2783,
+  "situation-normal": 1574,
   "data-critical": 443
  },
  "labels_by_source": {
@@ -37,25 +38,31 @@
   },
   "rm_devfile": {
    "informative": 0,
-   "situation-normal": 48,
+   "situation-normal": 0,
+   "data-critical": 0
+  },
+  "severe_forms": {
+   "informative": 0,
+   "situation-normal": 0,
    "data-critical": 0
   },
   "live": {
-   "informative": 4160,
-   "situation-normal": 2011,
+   "informative": 2634,
+   "situation-normal": 1338,
    "data-critical": 14
   }
  },
- "train": 5991,
- "val": 1056,
+ "train": 4081,
+ "val": 719,
  "shape_holdout": {
   "shapes": [],
   "rows": 0,
   "min_rank": 200
  },
  "variant": {
-  "real": "real.jsonl",
-  "rm_slice": true,
+  "real": "real_cap30.jsonl",
+  "rm_slice": false,
+  "severe_slice": false,
   "full": true
  }
 }

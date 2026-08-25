@@ -1,0 +1,504 @@
+{
+ "meta": {
+  "model_id": "kube_ordinal_v10D_candraw-e1",
+  "weight_hash": "2ebd1c2687ca3653b2fcc0ecc51d16ef9858240c4c5f1cc7eb6bc031a1b1f00e"
+ },
+ "results": {
+  "flag01": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.069995955,
+    "informative": 0.0054882653,
+    "situation-normal": 0.9245158
+   }
+  },
+  "flag02": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.15395638,
+    "informative": 0.0020686283,
+    "situation-normal": 0.84397495
+   }
+  },
+  "flag03": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.20680907,
+    "informative": 0.00088467496,
+    "situation-normal": 0.79230624
+   }
+  },
+  "flag04": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.7490128,
+    "informative": 0.014217075,
+    "situation-normal": 0.23677017
+   }
+  },
+  "flag05": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.81836563,
+    "informative": 0.0061893095,
+    "situation-normal": 0.17544506
+   }
+  },
+  "flag06": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.80464697,
+    "informative": 0.008615667,
+    "situation-normal": 0.18673733
+   }
+  },
+  "flag07": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.08552093,
+    "informative": 0.04479877,
+    "situation-normal": 0.8696803
+   }
+  },
+  "flag08": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.019442355,
+    "informative": 0.002810885,
+    "situation-normal": 0.9777468
+   }
+  },
+  "flag09": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.002972934,
+    "informative": 0.0006664688,
+    "situation-normal": 0.9963606
+   }
+  },
+  "flag10": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.0364675,
+    "informative": 0.0013464949,
+    "situation-normal": 0.96218604
+   }
+  },
+  "root01": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.9683774,
+    "informative": 0.0031487218,
+    "situation-normal": 0.02847386
+   }
+  },
+  "root02": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.76852435,
+    "informative": 0.01602092,
+    "situation-normal": 0.21545476
+   }
+  },
+  "root03": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.90174,
+    "informative": 0.004421239,
+    "situation-normal": 0.0938387
+   }
+  },
+  "root04": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.59633565,
+    "informative": 0.008112195,
+    "situation-normal": 0.39555213
+   }
+  },
+  "root05": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.37996206,
+    "informative": 0.01997555,
+    "situation-normal": 0.60006243
+   }
+  },
+  "root06": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.93129337,
+    "informative": 0.0068619177,
+    "situation-normal": 0.0618447
+   }
+  },
+  "root07": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.9050594,
+    "informative": 0.0070639052,
+    "situation-normal": 0.087876685
+   }
+  },
+  "root08": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.9058731,
+    "informative": 0.0072204657,
+    "situation-normal": 0.08690636
+   }
+  },
+  "root09": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.8486723,
+    "informative": 0.0028275952,
+    "situation-normal": 0.1485001
+   }
+  },
+  "root10": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.39581805,
+    "informative": 0.0035527705,
+    "situation-normal": 0.60062915
+   }
+  },
+  "targ01": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.6949771,
+    "informative": 0.020861456,
+    "situation-normal": 0.28416142
+   }
+  },
+  "targ02": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.7956474,
+    "informative": 0.007211082,
+    "situation-normal": 0.19714154
+   }
+  },
+  "targ03": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.87283623,
+    "informative": 0.015476954,
+    "situation-normal": 0.111686856
+   }
+  },
+  "targ04": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.86506265,
+    "informative": 0.008821488,
+    "situation-normal": 0.12611586
+   }
+  },
+  "targ05": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.7853921,
+    "informative": 0.0048599564,
+    "situation-normal": 0.20974794
+   }
+  },
+  "targ06": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.92161787,
+    "informative": 0.0051021418,
+    "situation-normal": 0.07328005
+   }
+  },
+  "targ07": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.18295136,
+    "informative": 0.00045083716,
+    "situation-normal": 0.8165978
+   }
+  },
+  "targ08": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.20459327,
+    "informative": 0.0077740117,
+    "situation-normal": 0.78763276
+   }
+  },
+  "targ09": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.6838666,
+    "informative": 0.0061847484,
+    "situation-normal": 0.30994862
+   }
+  },
+  "ext01": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.88808954,
+    "informative": 0.0018511546,
+    "situation-normal": 0.110059254
+   }
+  },
+  "ext02": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.8167566,
+    "informative": 0.0012332443,
+    "situation-normal": 0.18201011
+   }
+  },
+  "ext03": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.6025218,
+    "informative": 0.004885115,
+    "situation-normal": 0.39259312
+   }
+  },
+  "ext04": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.6340423,
+    "informative": 0.0016359362,
+    "situation-normal": 0.36432177
+   }
+  },
+  "ext05": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.73679686,
+    "informative": 0.0012721155,
+    "situation-normal": 0.26193106
+   }
+  },
+  "ext06": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.68392205,
+    "informative": 0.001137046,
+    "situation-normal": 0.31494093
+   }
+  },
+  "ext07": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.79216754,
+    "informative": 0.014777296,
+    "situation-normal": 0.19305517
+   }
+  },
+  "ext08": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.8956871,
+    "informative": 0.003473855,
+    "situation-normal": 0.10083904
+   }
+  },
+  "sys01": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.63910747,
+    "informative": 0.064151645,
+    "situation-normal": 0.29674092
+   }
+  },
+  "sys02": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.5440543,
+    "informative": 0.022618316,
+    "situation-normal": 0.43332735
+   }
+  },
+  "sys03": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.59869945,
+    "informative": 0.028373895,
+    "situation-normal": 0.37292662
+   }
+  },
+  "sys04": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.29850838,
+    "informative": 0.3438184,
+    "situation-normal": 0.3576732
+   }
+  },
+  "sys05": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.43339422,
+    "informative": 0.013843093,
+    "situation-normal": 0.5527627
+   }
+  },
+  "sys06": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.4459006,
+    "informative": 0.010621032,
+    "situation-normal": 0.54347837
+   }
+  },
+  "sys07": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.32685584,
+    "informative": 0.01356465,
+    "situation-normal": 0.65957946
+   }
+  },
+  "sys08": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.42115134,
+    "informative": 0.013054076,
+    "situation-normal": 0.56579465
+   }
+  },
+  "sys09": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.26816365,
+    "informative": 0.023370598,
+    "situation-normal": 0.70846575
+   }
+  },
+  "sys10": {
+   "top": "informative",
+   "scores": {
+    "data-critical": 0.23679918,
+    "informative": 0.70157367,
+    "situation-normal": 0.061627224
+   }
+  },
+  "recov01": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.90433085,
+    "informative": 0.009853626,
+    "situation-normal": 0.08581553
+   }
+  },
+  "recov02": {
+   "top": "data-critical",
+   "scores": {
+    "data-critical": 0.88198864,
+    "informative": 0.0045231148,
+    "situation-normal": 0.113488294
+   }
+  },
+  "recov03": {
+   "top": "informative",
+   "scores": {
+    "data-critical": 0.10409591,
+    "informative": 0.8133828,
+    "situation-normal": 0.08252123
+   }
+  },
+  "recov04": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.20655444,
+    "informative": 0.1419173,
+    "situation-normal": 0.65152824
+   }
+  },
+  "recov05": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.0020376998,
+    "informative": 0.00030205667,
+    "situation-normal": 0.99766016
+   }
+  },
+  "recov06": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.3975555,
+    "informative": 0.0051453947,
+    "situation-normal": 0.5972991
+   }
+  },
+  "recov07": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.061386988,
+    "informative": 0.056384996,
+    "situation-normal": 0.882228
+   }
+  },
+  "recov08": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.42681333,
+    "informative": 0.007605312,
+    "situation-normal": 0.5655813
+   }
+  },
+  "benign01": {
+   "top": "informative",
+   "scores": {
+    "data-critical": 0.0010875406,
+    "informative": 0.99698085,
+    "situation-normal": 0.0019315248
+   }
+  },
+  "benign02": {
+   "top": "informative",
+   "scores": {
+    "data-critical": 0.0013870549,
+    "informative": 0.9970594,
+    "situation-normal": 0.0015534264
+   }
+  },
+  "benign03": {
+   "top": "informative",
+   "scores": {
+    "data-critical": 6.644303e-07,
+    "informative": 0.9999988,
+    "situation-normal": 4.591029e-07
+   }
+  },
+  "benign04": {
+   "top": "informative",
+   "scores": {
+    "data-critical": 0.00010758951,
+    "informative": 0.99956864,
+    "situation-normal": 0.00032374225
+   }
+  },
+  "benign05": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.004208628,
+    "informative": 0.013660378,
+    "situation-normal": 0.982131
+   }
+  },
+  "benign06": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.0016749777,
+    "informative": 0.00036350018,
+    "situation-normal": 0.99796164
+   }
+  },
+  "benign07": {
+   "top": "situation-normal",
+   "scores": {
+    "data-critical": 0.018331073,
+    "informative": 0.11654414,
+    "situation-normal": 0.86512476
+   }
+  }
+ }
+}
