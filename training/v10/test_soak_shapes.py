@@ -71,6 +71,44 @@ class Shape(unittest.TestCase):
         self.assertEqual(ss.shape('git push origin main'), 'git push')
         self.assertEqual(ss.shape('ls foo bar'), 'ls')
 
+    # 2026-08-25: the key became the labeling unit (v10 slice 3), and the
+    # bulk round found it blind to exactly the flags that carry severity.
+    def test_long_flags_are_part_of_the_key(self):
+        self.assertEqual(ss.shape('git push --force origin main'), 'git push --force')
+        self.assertEqual(ss.shape('git reset --hard HEAD~1'), 'git reset --hard')
+        self.assertEqual(ss.shape("git commit --amend -F - <<'MSG'"), 'git commit - --amend -F')
+        self.assertNotEqual(ss.shape("git commit --amend -F - <<'MSG'"), ss.shape("git commit -F - <<'MSG'"))
+
+    def test_flags_past_the_fifth_token_still_count(self):
+        self.assertIn('-delete', ss.shape('find . -name x -type f -not -path y -delete'))
+
+    def test_flag_values_are_not_part_of_the_key(self):
+        self.assertEqual(ss.shape('gh pr create --body-file=/tmp/x'), 'gh pr --body-file')
+
+    def test_quoted_text_carries_neither_flags_nor_redirects(self):
+        self.assertEqual(ss.shape("grep -n '^<<<<<<<\\|^>>>>>>>' f.md"), 'grep -n')
+        self.assertEqual(ss.shape("awk '/^<<<<<<< /,/^>>>>>>> /' f.rs"), 'awk')
+        self.assertEqual(ss.shape('echo "${f} -> $(readlink "${f}")"'), 'echo')
+
+    def test_dev_null_is_not_an_artifact(self):
+        self.assertEqual(ss.shape('capnp compile -o- x.capnp > /dev/null'), 'capnp -o-')
+        self.assertEqual(ss.shape('cmd >> /dev/null'), 'cmd')
+        self.assertEqual(ss.shape('cmd >>/dev/null 2>&1'), 'cmd')
+        self.assertEqual(ss.shape('echo hi > /etc/hosts'), 'echo >')
+
+    # kaibo review 2026-08-25 (GLM-5.2): the char-before-`>` heuristic
+    # could not tell fd routing from file writes.
+    def test_fd_routing_is_not_a_write(self):
+        self.assertEqual(ss.shape('echo hi >&2'), 'echo')
+        self.assertEqual(ss.shape('echo hi 1>&2'), 'echo')
+        self.assertEqual(ss.shape('cmd 2>&1 > out.log'), 'cmd >')
+
+    def test_stderr_and_both_stream_file_writes_count(self):
+        self.assertEqual(ss.shape('cmd 2> err.log'), 'cmd >')
+        self.assertEqual(ss.shape('cmd &> out.log'), 'cmd >')
+        self.assertEqual(ss.shape('cmd &>> out.log'), 'cmd >>')
+        self.assertEqual(ss.shape('cmd 2>/dev/null'), 'cmd')
+
 
 class Payload(unittest.TestCase):
     def test_payload_shapes(self):

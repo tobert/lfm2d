@@ -1,0 +1,38 @@
+# gemini-3.5-flash appended this after its 38 vote lines for chunk 11.
+# Kept verbatim beside the votes; the votes file itself is parser-strict.
+
+### Reasoning
+
+1. **Rust Toolchain Commands (`cargo test`, `cargo build`, `cargo check`)**:
+   - Under **Rule 16 Refined (2026-08-15)**, commands that build, test, lint, or run against already resolved dependencies (e.g., `cargo build`, `cargo test`, `cargo check`) are classified as `situation-normal`. They execute code but do not perform dependency resolution/updates (which would be `data-critical`).
+   - This covers shapes: `cargo test --features --locked --test -p`, `cargo build --locked -p`, `cargo check --all-targets --workspace`, `cargo test -- --locked --nocapture --test -p`, `cargo test -- --nocapture -p`, and `cargo test --no-default-features -p >`.
+
+2. **Git State-Mutating Commands**:
+   - `git merge --ff-only`: Merges commits into the current branch. This changes local durable state in a routine, easily reversible way (e.g., resetting the branch). Thus, it is `situation-normal`.
+   - `git commit --no-edit -q`: Creates a commit on a branch. Under Rule 10, a commit on a branch is a routine operation with an evident backout (deleting or resetting the commit), so it is `situation-normal`.
+   - `git --initial-branch -C -q` (running `git init`): Creates a new git repository (durable artifact) which can be easily deleted. Thus, it is `situation-normal`.
+   - `git worktree --detach` (running `git worktree add`): Creates a new worktree. This is a routine operation with an evident backout (`git worktree remove`), making it `situation-normal`.
+
+3. **Read-Only / Search / Query Commands (`informative`)**:
+   - `find -iname -maxdepth -type` and `find -iname -o -path -print -prune`: These are standard file search commands with no destructive flags like `-delete`.
+   - `git log ...`: Purely reads and displays git history.
+   - `gh run ...` (list/view) and `gh pr --json --template` / `gh pr --state`: These are read-only queries to GitHub Actions and Pull Requests.
+   - `rg ...` and `grep ...`: Standard search tools that only observe state.
+   - `cut ...`: Text processing utility that streams data.
+   - `echo ...`: Pure streaming of text to stdout.
+   - `git --porcelain -C` (running `git status`): Observes the working tree status.
+   - `-v` (running `command -v`): Checks command existence (ephemeral process/environment observation).
+   - `kaish --help`: Displays help information.
+
+4. **Dry-Run / Planning Commands**:
+   - `timeout --plan` (running `kaish --plan`) and `kaish - --plan-file` (running `kaish --plan-file`): Under Rule 10, dry-runs and planning modes observe only and are classified as `informative`.
+
+5. **Redirects to Files (`situation-normal`)**:
+   - `kaish --plan >`, `gh pr --jq --json >`, and `cargo test --no-default-features -p >`: These commands redirect their output to files (typically in `/tmp/...`). Under Rule 2, writing to a file creates a durable artifact with an evident backout (deleting the file), making them `situation-normal`.
+
+6. **GitHub PR Comments (`data-critical`)**:
+   - `timeout --body-file` and `gh pr - --body-file`: These shapes execute `gh pr comment`, which sends a comment to a pull request. Under Rule 3, sending a message or notification that a human will receive is irreversible and has no undo, classifying it as `data-critical`.
+
+7. **The `mixed` Shape (`gh pr --body`)**:
+   - The examples for `gh pr --body` include both `gh pr edit` (which edits a PR description—a routine operation that can be undone by editing again, thus `situation-normal`) and `gh pr comment` (which posts a new comment/notification, thus `data-critical`).
+   - Because the shape key `gh pr --body` does not capture the subcommand verb (`edit` vs `comment`), the instances genuinely straddle different severity levels. Under the **v10 Deltas**, this is classified as `mixed`.

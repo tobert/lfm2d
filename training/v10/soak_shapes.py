@@ -101,9 +101,20 @@ def argv0(clause):
     return a
 
 
+QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+FLAG = re.compile(r'^(--?[A-Za-z0-9][-A-Za-z0-9]*|--?)(=.*)?$')
+
+
 def shape(clause):
-    """argv0 + subcommand (for the verbs that have one) + short flags + redirect kind."""
-    t = clause.strip()
+    """argv0 + subcommand (for the verbs that have one) + flags + redirect kind.
+
+    Quoted spans are blanked before anything is read: a conflict-marker
+    pattern is not a `>>` redirect and "a -> b" is not a flag. Every flag
+    counts, whatever its length — the key is the v10 labeling unit, and a
+    key that cannot see `--force`, `--amend` or `--hard` labels the wrong
+    thing (2026-08-25). `=value` is stripped; `> /dev/null` is no artifact.
+    """
+    t = QUOTED.sub('""', clause.strip())
     toks = t.split()
     if not toks:
         return '<empty>'
@@ -113,18 +124,37 @@ def shape(clause):
     if i >= len(toks):
         return 'assign'
     a = toks[i].rsplit('/', 1)[-1]
-    flags = tuple(sorted({x for x in toks[i + 1:i + 6] if x.startswith('-') and len(x) < 6}))
+    flags = set()
+    for x in toks[i + 1:]:
+        m = FLAG.match(x)
+        if m:
+            flags.add(m.group(1))
+    flags = tuple(sorted(flags))
     sub = ''
     if a in ('git', 'cargo', 'kubectl', 'gh', 'docker', 'systemctl', 'npm', 'pip', 'uv', 'kaish') \
             and i + 1 < len(toks) and not toks[i + 1].startswith('-'):
         sub = toks[i + 1]
-    if '>>' in t:
-        redir = '>>'
-    elif re.search(r'(^|[^>2&])>(?!>)\s*\S', t):
-        redir = '>'
-    else:
-        redir = ''
-    return ' '.join(x for x in (a, sub, ' '.join(flags), redir) if x)
+    return ' '.join(x for x in (a, sub, ' '.join(flags), redirect_class(t)) if x)
+
+
+# One output redirection: optional fd digits, the operator, then either a
+# dup target (`&1`) or a word. `<` is excluded on the left so heredoc
+# markers and `<>` never match.
+REDIRECT = re.compile(r'(?<![<>])(\d*)(&?>>?)\s*(&\d+|\S+)?')
+
+
+def redirect_class(text):
+    """'>>' if the command appends to a durable file, '>' if it writes one,
+    '' otherwise. fd routing (`2>&1`, `>&2`) and null sinks (`> /dev/null`,
+    `2>/dev/null`) leave nothing behind and are not writes."""
+    cls = ''
+    for _fd, op, target in REDIRECT.findall(text):
+        if not target or target.startswith('&') or target.startswith('/dev/null'):
+            continue
+        if op.endswith('>>'):
+            return '>>'
+        cls = '>'
+    return cls
 
 
 def is_payload(clause):

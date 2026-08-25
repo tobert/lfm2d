@@ -1,0 +1,5703 @@
+{
+ "date": "2026-08-25",
+ "prompt": "training/v10/labeler_prompt_v10.txt",
+ "sample": "~/.cache/claude-hooks/v10-shape-sample-r3.jsonl",
+ "families": [
+  "deepseek-v4-pro",
+  "gemini-3.5-flash",
+  "qwen3-235b"
+ ],
+ "summary": {
+  "shapes": 400,
+  "kinds": {
+   "unanimous": 367,
+   "majority": 32,
+   "split": 1
+  },
+  "consensus_labels": {
+   "informative": 241,
+   "situation-normal": 153,
+   "data-critical": 5
+  },
+  "share_by_consensus": {
+   "informative": 0.78772,
+   "situation-normal": 0.16988,
+   "data-critical": 0.00087,
+   "(split)": 0.00014
+  },
+  "gold_canary": {
+   "deepseek-v4-pro": "10/10",
+   "gemini-3.5-flash": "10/10",
+   "qwen3-235b": "9/10"
+  },
+  "escape_votes": 2,
+  "orphan_shapes": 138,
+  "revotes": {
+   "deepseek-v4-pro": 56,
+   "gemini-3.5-flash": 56,
+   "qwen3-235b": 56
+  }
+ },
+ "shapes": [
+  {
+   "rank": 1,
+   "shape": "echo",
+   "clauses": 6810,
+   "share": 0.15375,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "informative",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 2,
+   "shape": "cd",
+   "clauses": 6719,
+   "share": 0.15169,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 3,
+   "shape": "sed -n",
+   "clauses": 2316,
+   "share": 0.05229,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "informative",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 4,
+   "shape": "grep -n",
+   "clauses": 2177,
+   "share": 0.04915,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 5,
+   "shape": "python3 -",
+   "clauses": 1553,
+   "share": 0.03506,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "situation-normal",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 6,
+   "shape": "grep -E",
+   "clauses": 1029,
+   "share": 0.02323,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 7,
+   "shape": "head -20",
+   "clauses": 815,
+   "share": 0.0184,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 8,
+   "shape": "head",
+   "clauses": 792,
+   "share": 0.01788,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 9,
+   "shape": "grep -rn",
+   "clauses": 733,
+   "share": 0.01655,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 10,
+   "shape": "cat",
+   "clauses": 500,
+   "share": 0.01129,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 11,
+   "shape": "wc -l",
+   "clauses": 451,
+   "share": 0.01018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 12,
+   "shape": "git status --short",
+   "clauses": 444,
+   "share": 0.01002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 13,
+   "shape": "grep --include -rn",
+   "clauses": 442,
+   "share": 0.00998,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 14,
+   "shape": "grep -A -n",
+   "clauses": 408,
+   "share": 0.00921,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 15,
+   "shape": "grep -v",
+   "clauses": 393,
+   "share": 0.00887,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 16,
+   "shape": "ls",
+   "clauses": 385,
+   "share": 0.00869,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 17,
+   "shape": "head -5",
+   "clauses": 372,
+   "share": 0.0084,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 18,
+   "shape": "head -30",
+   "clauses": 358,
+   "share": 0.00808,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 19,
+   "shape": "grep -c",
+   "clauses": 338,
+   "share": 0.00763,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 20,
+   "shape": "git add",
+   "clauses": 327,
+   "share": 0.00738,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 21,
+   "shape": "head -3",
+   "clauses": 298,
+   "share": 0.00673,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 22,
+   "shape": "tail -1",
+   "clauses": 287,
+   "share": 0.00648,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 23,
+   "shape": "head -10",
+   "clauses": 284,
+   "share": 0.00641,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 24,
+   "shape": "tail -2",
+   "clauses": 278,
+   "share": 0.00628,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 25,
+   "shape": "awk",
+   "clauses": 271,
+   "share": 0.00612,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 26,
+   "shape": "git log --oneline -1",
+   "clauses": 268,
+   "share": 0.00605,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 27,
+   "shape": "cargo test --test -p",
+   "clauses": 260,
+   "share": 0.00587,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 28,
+   "shape": "cp",
+   "clauses": 255,
+   "share": 0.00576,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 29,
+   "shape": "head -40",
+   "clauses": 254,
+   "share": 0.00573,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 30,
+   "shape": "cat >",
+   "clauses": 236,
+   "share": 0.00533,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 31,
+   "shape": "tail -5",
+   "clauses": 202,
+   "share": 0.00456,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 32,
+   "shape": "tail -3",
+   "clauses": 194,
+   "share": 0.00438,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 33,
+   "shape": "head -60",
+   "clauses": 193,
+   "share": 0.00436,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 34,
+   "shape": "cargo test --lib -p",
+   "clauses": 191,
+   "share": 0.00431,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 35,
+   "shape": "head -12",
+   "clauses": 181,
+   "share": 0.00409,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 36,
+   "shape": "head -8",
+   "clauses": 179,
+   "share": 0.00404,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 37,
+   "shape": "sed -i",
+   "clauses": 170,
+   "share": 0.00384,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "situation-normal",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 38,
+   "shape": "cargo test -p",
+   "clauses": 169,
+   "share": 0.00382,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 39,
+   "shape": "cargo build -p",
+   "clauses": 167,
+   "share": 0.00377,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 40,
+   "shape": "printf",
+   "clauses": 166,
+   "share": 0.00375,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 41,
+   "shape": "grep -A -E",
+   "clauses": 160,
+   "share": 0.00361,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 42,
+   "shape": "grep -i",
+   "clauses": 159,
+   "share": 0.00359,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 43,
+   "shape": "assign",
+   "clauses": 158,
+   "share": 0.00357,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 44,
+   "shape": "timeout",
+   "clauses": 158,
+   "share": 0.00357,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 45,
+   "shape": "tail -20",
+   "clauses": 157,
+   "share": 0.00354,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 46,
+   "shape": "git diff --stat",
+   "clauses": 157,
+   "share": 0.00354,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 47,
+   "shape": "grep -cE",
+   "clauses": 155,
+   "share": 0.0035,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 48,
+   "shape": "grep -rln",
+   "clauses": 151,
+   "share": 0.00341,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 49,
+   "shape": "grep",
+   "clauses": 150,
+   "share": 0.00339,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 50,
+   "shape": "kaish -c",
+   "clauses": 146,
+   "share": 0.0033,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 51,
+   "shape": "ls -la",
+   "clauses": 144,
+   "share": 0.00325,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 52,
+   "shape": "cargo test --all >",
+   "clauses": 138,
+   "share": 0.00312,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 53,
+   "shape": "tail -30",
+   "clauses": 136,
+   "share": 0.00307,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 54,
+   "shape": "sleep",
+   "clauses": 135,
+   "share": 0.00305,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 55,
+   "shape": "probe",
+   "clauses": 134,
+   "share": 0.00303,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 56,
+   "shape": "cat >>",
+   "clauses": 133,
+   "share": 0.003,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "situation-normal",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 57,
+   "shape": "rg -n",
+   "clauses": 125,
+   "share": 0.00282,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 58,
+   "shape": "tail -60",
+   "clauses": 122,
+   "share": 0.00275,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 59,
+   "shape": "cargo build",
+   "clauses": 122,
+   "share": 0.00275,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 60,
+   "shape": "cargo clippy --all --all-targets >",
+   "clauses": 119,
+   "share": 0.00269,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 61,
+   "shape": "head -6",
+   "clauses": 117,
+   "share": 0.00264,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 62,
+   "shape": "python3 -c",
+   "clauses": 110,
+   "share": 0.00248,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 63,
+   "shape": "git commit - -F",
+   "clauses": 105,
+   "share": 0.00237,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 64,
+   "shape": "head -4",
+   "clauses": 101,
+   "share": 0.00228,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 65,
+   "shape": "tail -40",
+   "clauses": 99,
+   "share": 0.00224,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 66,
+   "shape": "git push",
+   "clauses": 98,
+   "share": 0.00221,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "situation-normal",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 67,
+   "shape": "head -1",
+   "clauses": 97,
+   "share": 0.00219,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 68,
+   "shape": "python3",
+   "clauses": 96,
+   "share": 0.00217,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 69,
+   "shape": "head -50",
+   "clauses": 93,
+   "share": 0.0021,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 70,
+   "shape": "git commit - -F -q",
+   "clauses": 88,
+   "share": 0.00199,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 71,
+   "shape": "cargo test --all --locked >",
+   "clauses": 84,
+   "share": 0.0019,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 72,
+   "shape": "cargo test --test -p >",
+   "clauses": 84,
+   "share": 0.0019,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 73,
+   "shape": "head -25",
+   "clauses": 81,
+   "share": 0.00183,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 74,
+   "shape": "git log --oneline -3",
+   "clauses": 80,
+   "share": 0.00181,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 75,
+   "shape": "head -2",
+   "clauses": 79,
+   "share": 0.00178,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 76,
+   "shape": "cargo doc --no-deps --workspace >",
+   "clauses": 74,
+   "share": 0.00167,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 77,
+   "shape": "git diff",
+   "clauses": 71,
+   "share": 0.0016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 78,
+   "shape": "git diff --",
+   "clauses": 71,
+   "share": 0.0016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 79,
+   "shape": "git status --porcelain",
+   "clauses": 70,
+   "share": 0.00158,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 80,
+   "shape": "timeout -c",
+   "clauses": 69,
+   "share": 0.00156,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 81,
+   "shape": "git status",
+   "clauses": 66,
+   "share": 0.00149,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 82,
+   "shape": "find -iname",
+   "clauses": 65,
+   "share": 0.00147,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 83,
+   "shape": "git worktree",
+   "clauses": 65,
+   "share": 0.00147,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "mixed"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": true
+  },
+  {
+   "rank": 84,
+   "shape": "sort",
+   "clauses": 64,
+   "share": 0.00144,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 85,
+   "shape": "git log --oneline",
+   "clauses": 64,
+   "share": 0.00144,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 86,
+   "shape": "git commit -- -m -q",
+   "clauses": 61,
+   "share": 0.00138,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 87,
+   "shape": "gh pr",
+   "clauses": 60,
+   "share": 0.00135,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 88,
+   "shape": "tail -8",
+   "clauses": 58,
+   "share": 0.00131,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 89,
+   "shape": "head -80",
+   "clauses": 57,
+   "share": 0.00129,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 90,
+   "shape": "echo >",
+   "clauses": 57,
+   "share": 0.00129,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 91,
+   "shape": "grep -A -rn",
+   "clauses": 57,
+   "share": 0.00129,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 92,
+   "shape": "tail -4",
+   "clauses": 55,
+   "share": 0.00124,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 93,
+   "shape": "kaish --plan",
+   "clauses": 55,
+   "share": 0.00124,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 94,
+   "shape": "tail -6",
+   "clauses": 54,
+   "share": 0.00122,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 95,
+   "shape": "grep -iE",
+   "clauses": 53,
+   "share": 0.0012,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 96,
+   "shape": "git log --oneline -2",
+   "clauses": 52,
+   "share": 0.00117,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 97,
+   "shape": "git push -u",
+   "clauses": 51,
+   "share": 0.00115,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 98,
+   "shape": "head -15",
+   "clauses": 50,
+   "share": 0.00113,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 99,
+   "shape": "printf >",
+   "clauses": 49,
+   "share": 0.00111,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 100,
+   "shape": "mkdir -p",
+   "clauses": 47,
+   "share": 0.00106,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 101,
+   "shape": "cargo build --workspace",
+   "clauses": 47,
+   "share": 0.00106,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 102,
+   "shape": "grep -i -n",
+   "clauses": 45,
+   "share": 0.00102,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 103,
+   "shape": "tail -15",
+   "clauses": 45,
+   "share": 0.00102,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 104,
+   "shape": "cut -f1",
+   "clauses": 44,
+   "share": 0.00099,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 105,
+   "shape": "git log --oneline -5",
+   "clauses": 44,
+   "share": 0.00099,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 106,
+   "shape": "head -14",
+   "clauses": 44,
+   "share": 0.00099,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 107,
+   "shape": "tr",
+   "clauses": 43,
+   "share": 0.00097,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 108,
+   "shape": "cargo test --locked --no-default-features -p >",
+   "clauses": 43,
+   "share": 0.00097,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 109,
+   "shape": "tail -10",
+   "clauses": 42,
+   "share": 0.00095,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 110,
+   "shape": "tee",
+   "clauses": 42,
+   "share": 0.00095,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 111,
+   "shape": "tail -80",
+   "clauses": 42,
+   "share": 0.00095,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 112,
+   "shape": "git commit -- -F -q",
+   "clauses": 42,
+   "share": 0.00095,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 113,
+   "shape": "find -name",
+   "clauses": 41,
+   "share": 0.00093,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 114,
+   "shape": "tail -25",
+   "clauses": 40,
+   "share": 0.0009,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 115,
+   "shape": "grep --include -rln",
+   "clauses": 40,
+   "share": 0.0009,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 116,
+   "shape": "cargo clippy --all-targets",
+   "clauses": 40,
+   "share": 0.0009,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 117,
+   "shape": "sed",
+   "clauses": 40,
+   "share": 0.0009,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 118,
+   "shape": "timeout -p",
+   "clauses": 40,
+   "share": 0.0009,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 119,
+   "shape": "gh pr --merge",
+   "clauses": 40,
+   "share": 0.0009,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 120,
+   "shape": "cargo insta --check >",
+   "clauses": 39,
+   "share": 0.00088,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 121,
+   "shape": "git diff -- --stat",
+   "clauses": 39,
+   "share": 0.00088,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 122,
+   "shape": "git worktree -b",
+   "clauses": 39,
+   "share": 0.00088,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 123,
+   "shape": "gh pr --json -q",
+   "clauses": 38,
+   "share": 0.00086,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 124,
+   "shape": "tail -12",
+   "clauses": 37,
+   "share": 0.00084,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 125,
+   "shape": "cargo test --workspace",
+   "clauses": 37,
+   "share": 0.00084,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 126,
+   "shape": "uniq -c",
+   "clauses": 37,
+   "share": 0.00084,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 127,
+   "shape": "git show --stat",
+   "clauses": 37,
+   "share": 0.00084,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 128,
+   "shape": "git log --format -1",
+   "clauses": 37,
+   "share": 0.00084,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 129,
+   "shape": "rg -v",
+   "clauses": 35,
+   "share": 0.00079,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 130,
+   "shape": "grep -A -B -n",
+   "clauses": 35,
+   "share": 0.00079,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 131,
+   "shape": "rg",
+   "clauses": 34,
+   "share": 0.00077,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 132,
+   "shape": "cargo clippy --all --all-targets",
+   "clauses": 34,
+   "share": 0.00077,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 133,
+   "shape": "seq",
+   "clauses": 34,
+   "share": 0.00077,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 134,
+   "shape": "cargo test --features --test -p",
+   "clauses": 34,
+   "share": 0.00077,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 135,
+   "shape": "tail -100",
+   "clauses": 32,
+   "share": 0.00072,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 136,
+   "shape": "gh pr --jq --json",
+   "clauses": 32,
+   "share": 0.00072,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 137,
+   "shape": "echo >>",
+   "clauses": 31,
+   "share": 0.0007,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 138,
+   "shape": "systemctl --user",
+   "clauses": 31,
+   "share": 0.0007,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 139,
+   "shape": "find -iname -maxdepth",
+   "clauses": 31,
+   "share": 0.0007,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 140,
+   "shape": "rg -i",
+   "clauses": 30,
+   "share": 0.00068,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 141,
+   "shape": "git commit -m",
+   "clauses": 30,
+   "share": 0.00068,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 142,
+   "shape": "cargo test --locked -p",
+   "clauses": 30,
+   "share": 0.00068,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 143,
+   "shape": "git fetch -q",
+   "clauses": 30,
+   "share": 0.00068,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 144,
+   "shape": "sort -u",
+   "clauses": 29,
+   "share": 0.00065,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 145,
+   "shape": "git fetch --quiet",
+   "clauses": 29,
+   "share": 0.00065,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 146,
+   "shape": "cargo test -- --lib --nocapture -p >",
+   "clauses": 28,
+   "share": 0.00063,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 147,
+   "shape": "ps",
+   "clauses": 27,
+   "share": 0.00061,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 148,
+   "shape": "cargo clippy -- --all-targets --locked -D -p",
+   "clauses": 27,
+   "share": 0.00061,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 149,
+   "shape": "cat -n",
+   "clauses": 27,
+   "share": 0.00061,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 150,
+   "shape": "timeout --lib -p",
+   "clauses": 27,
+   "share": 0.00061,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 151,
+   "shape": "grep -nE",
+   "clauses": 27,
+   "share": 0.00061,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 152,
+   "shape": "git commit - -- -F -q",
+   "clauses": 26,
+   "share": 0.00059,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 153,
+   "shape": "grep -A6 -E",
+   "clauses": 26,
+   "share": 0.00059,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 154,
+   "shape": "grep -n -r",
+   "clauses": 26,
+   "share": 0.00059,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 155,
+   "shape": "cargo doc --no-deps --workspace",
+   "clauses": 25,
+   "share": 0.00056,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 156,
+   "shape": "git commit -m -q",
+   "clauses": 25,
+   "share": 0.00056,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 157,
+   "shape": "git branch --show-current",
+   "clauses": 25,
+   "share": 0.00056,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 158,
+   "shape": "diff",
+   "clauses": 24,
+   "share": 0.00054,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 159,
+   "shape": "sort -rn",
+   "clauses": 24,
+   "share": 0.00054,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 160,
+   "shape": "git add -u",
+   "clauses": 24,
+   "share": 0.00054,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 161,
+   "shape": "cargo clippy --all-targets -p",
+   "clauses": 23,
+   "share": 0.00052,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 162,
+   "shape": "cargo build --bin -p",
+   "clauses": 22,
+   "share": 0.0005,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 163,
+   "shape": "cargo check -p",
+   "clauses": 22,
+   "share": 0.0005,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 164,
+   "shape": "head -100",
+   "clauses": 22,
+   "share": 0.0005,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 165,
+   "shape": "date",
+   "clauses": 22,
+   "share": 0.0005,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 166,
+   "shape": "grep -A",
+   "clauses": 22,
+   "share": 0.0005,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 167,
+   "shape": "grep -B -n",
+   "clauses": 22,
+   "share": 0.0005,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 168,
+   "shape": "kubectl -l -n -o",
+   "clauses": 21,
+   "share": 0.00047,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 169,
+   "shape": "bash -c",
+   "clauses": 21,
+   "share": 0.00047,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 170,
+   "shape": "head -35",
+   "clauses": 21,
+   "share": 0.00047,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 171,
+   "shape": "cargo build --release -p",
+   "clauses": 21,
+   "share": 0.00047,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 172,
+   "shape": "git fetch",
+   "clauses": 21,
+   "share": 0.00047,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 173,
+   "shape": "export",
+   "clauses": 20,
+   "share": 0.00045,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 174,
+   "shape": "rm",
+   "clauses": 20,
+   "share": 0.00045,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 175,
+   "shape": "grep -oE",
+   "clauses": 20,
+   "share": 0.00045,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 176,
+   "shape": "cargo test -- --lib -p",
+   "clauses": 20,
+   "share": 0.00045,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 177,
+   "shape": "head -c",
+   "clauses": 20,
+   "share": 0.00045,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 178,
+   "shape": "git show --",
+   "clauses": 20,
+   "share": 0.00045,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 179,
+   "shape": "xargs -l",
+   "clauses": 19,
+   "share": 0.00043,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 180,
+   "shape": "cargo test --tests -p",
+   "clauses": 19,
+   "share": 0.00043,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 181,
+   "shape": "grep -vE",
+   "clauses": 19,
+   "share": 0.00043,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 182,
+   "shape": "git rev-parse --short",
+   "clauses": 19,
+   "share": 0.00043,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 183,
+   "shape": "git push -q",
+   "clauses": 19,
+   "share": 0.00043,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 184,
+   "shape": "git -C",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 185,
+   "shape": "cargo test -- --nocapture --test -p",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 186,
+   "shape": "cargo test --lib -p >",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 187,
+   "shape": "rm -f",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false,
+   "gold": "situation-normal",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": false
+   }
+  },
+  {
+   "rank": 188,
+   "shape": "head -16",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 189,
+   "shape": "git merge-base --is-ancestor",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 190,
+   "shape": "timeout --lib",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 191,
+   "shape": "cargo +1.98 -- --all --all-targets --locked -D",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 192,
+   "shape": "cargo test --locked --test -p >",
+   "clauses": 18,
+   "share": 0.00041,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 193,
+   "shape": "cat -A",
+   "clauses": 17,
+   "share": 0.00038,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 194,
+   "shape": "tail -150",
+   "clauses": 17,
+   "share": 0.00038,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 195,
+   "shape": "gh pr - --body-file --title",
+   "clauses": 17,
+   "share": 0.00038,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 196,
+   "shape": "timeout --json -q",
+   "clauses": 17,
+   "share": 0.00038,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 197,
+   "shape": "grep -aE",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 198,
+   "shape": "grep -A2 -n",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 199,
+   "shape": "python3 -c >",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 200,
+   "shape": "kubectl -- -c -n",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 201,
+   "shape": "cargo build --target -p >",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 202,
+   "shape": "b",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 203,
+   "shape": "cargo check --all-targets -p",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 204,
+   "shape": "cargo test --workspace >",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 205,
+   "shape": "git add -A",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 206,
+   "shape": "git log --oneline -4",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 207,
+   "shape": "git stash",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 208,
+   "shape": "cargo run --example -p",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 209,
+   "shape": "timeout >",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 210,
+   "shape": "git diff --diff-filter --name-only",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 211,
+   "shape": "timeout --features -p",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 212,
+   "shape": "timeout --test",
+   "clauses": 16,
+   "share": 0.00036,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 213,
+   "shape": "pwd",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 214,
+   "shape": "curl -H -s",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "informative",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 215,
+   "shape": "git status -s",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 216,
+   "shape": "cargo test --all",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 217,
+   "shape": "cargo run",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 218,
+   "shape": "git --short -C",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 219,
+   "shape": "xargs -ln",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 220,
+   "shape": "git checkout --",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "situation-normal",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 221,
+   "shape": "rustfmt --edition",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 222,
+   "shape": "git merge",
+   "clauses": 15,
+   "share": 0.00034,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 223,
+   "shape": "git diff --check",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 224,
+   "shape": "grep -A2",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 225,
+   "shape": "find -name -path",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 226,
+   "shape": "cargo test",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 227,
+   "shape": "find -name -o -path -print -prune",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 228,
+   "shape": "git log --oneline -6",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 229,
+   "shape": "which",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 230,
+   "shape": "git rev-list --count",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 231,
+   "shape": "ls -d",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 232,
+   "shape": "git status -sb",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 233,
+   "shape": "cargo test --lib",
+   "clauses": 14,
+   "share": 0.00032,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 234,
+   "shape": "capnp -o-",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 235,
+   "shape": "mv -f",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 236,
+   "shape": "grep -A3",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 237,
+   "shape": "cargo clippy -- --all-targets -D -p",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 238,
+   "shape": "timeout --test -p",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 239,
+   "shape": "rg -rn",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 240,
+   "shape": "du -sh",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 241,
+   "shape": "journalctl --no-pager --since --user -u",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 242,
+   "shape": "grep -c -i",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 243,
+   "shape": "head -18",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 244,
+   "shape": "head -70",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 245,
+   "shape": "find -type",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 246,
+   "shape": "grep --include -l -rn",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 247,
+   "shape": "grep -o",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 248,
+   "shape": "diff -q",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 249,
+   "shape": "grep -A8 -E",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 250,
+   "shape": "git restore --source --worktree",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 251,
+   "shape": "jq -r",
+   "clauses": 13,
+   "share": 0.00029,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 252,
+   "shape": "mktemp -d",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 253,
+   "shape": "find -name -not -path",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 254,
+   "shape": "cargo build --bin -p >",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 255,
+   "shape": "git log -- --oneline -5",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 256,
+   "shape": "head -24",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 257,
+   "shape": "head -120",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 258,
+   "shape": "git log --date --format -1",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 259,
+   "shape": "git commit -F-",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 260,
+   "shape": "git merge --no-commit --no-ff >",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 261,
+   "shape": "cargo test -- --nocapture --test -p >",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 262,
+   "shape": "timeout --locked -p",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 263,
+   "shape": "pgrep -f",
+   "clauses": 12,
+   "share": 0.00027,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 264,
+   "shape": "grep -iv",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 265,
+   "shape": "grep -ac",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 266,
+   "shape": "cargo test --locked --no-default-features -p",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 267,
+   "shape": "cargo test --test -p -q",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 268,
+   "shape": "git branch -d",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 269,
+   "shape": "grep -A20 -n",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 270,
+   "shape": "rg -A",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 271,
+   "shape": "git worktree --force",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "data-critical",
+    "gemini-3.5-flash": "data-critical",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "data-critical",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 272,
+   "shape": "grep -B3 -n",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 273,
+   "shape": "cargo build -q",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 274,
+   "shape": "curl -s",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 275,
+   "shape": "grep -A4 -E",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 276,
+   "shape": "cargo build -p >",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 277,
+   "shape": "grep -viE",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 278,
+   "shape": "timeout --merge",
+   "clauses": 11,
+   "share": 0.00025,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 279,
+   "shape": "sort >",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 280,
+   "shape": "awk -F",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 281,
+   "shape": "grep -A5 -E",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 282,
+   "shape": "cargo test -- --lib --nocapture -p",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 283,
+   "shape": "git log --oneline -8",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 284,
+   "shape": "tail -14",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 285,
+   "shape": "git log --oneline -15",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 286,
+   "shape": "tail -50",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 287,
+   "shape": "timeout --all-targets -p",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 288,
+   "shape": "git merge --no-edit",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 289,
+   "shape": "gh pr --json",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 290,
+   "shape": "git rev-parse",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 291,
+   "shape": "cargo test --locked --test -p",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 292,
+   "shape": "cargo test --no-fail-fast -p",
+   "clauses": 10,
+   "share": 0.00023,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 293,
+   "shape": "echo -n",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 294,
+   "shape": "mv",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 295,
+   "shape": "ls -R",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 296,
+   "shape": "find -iname -not -path",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 297,
+   "shape": "rg -c",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 298,
+   "shape": "grep -q",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 299,
+   "shape": "cargo check --tests -p",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 300,
+   "shape": "ls --time-style -la",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 301,
+   "shape": "head -45",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 302,
+   "shape": "git --oneline -1 -C",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 303,
+   "shape": "find -iname -o",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 304,
+   "shape": "grep --include -rniE",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 305,
+   "shape": "grep -B1",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 306,
+   "shape": "grep -m1",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 307,
+   "shape": "cargo test --no-run -p",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 308,
+   "shape": "cargo insta --check",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 309,
+   "shape": "git checkout",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 310,
+   "shape": "git switch",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 311,
+   "shape": "grep -A6 -n",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 312,
+   "shape": "grep -rl",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 313,
+   "shape": "git commit --no-edit",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 314,
+   "shape": "cargo clippy -- --all --all-targets -D >",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 315,
+   "shape": "cargo test --features --locked --test -p",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 316,
+   "shape": "git rebase",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "data-critical",
+    "gemini-3.5-flash": "data-critical",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "data-critical",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 317,
+   "shape": "git merge --ff-only",
+   "clauses": 9,
+   "share": 0.0002,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 318,
+   "shape": "kill",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 319,
+   "shape": "mkdir",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 320,
+   "shape": "git -C -m -q",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 321,
+   "shape": "git init -q",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 322,
+   "shape": "find -iname -maxdepth -type",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 323,
+   "shape": "grep -aoE",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 324,
+   "shape": "touch",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 325,
+   "shape": "grep -oP",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 326,
+   "shape": "cargo build -p -q",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 327,
+   "shape": "stat -c",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 328,
+   "shape": "sed -e -i",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 329,
+   "shape": "grep -A3 -n",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 330,
+   "shape": "tr -d",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 331,
+   "shape": "hostname",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 332,
+   "shape": "git switch -c",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 333,
+   "shape": "timeout --plan",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 334,
+   "shape": "kaish - --plan-file",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 335,
+   "shape": "head -150",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 336,
+   "shape": "echo --STDERR--",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 337,
+   "shape": "cargo build --locked -p",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 338,
+   "shape": "gh run --json -q",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 339,
+   "shape": "git log -- --oneline -3",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 340,
+   "shape": "gh run --json --limit -q",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 341,
+   "shape": "rg --type -n",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 342,
+   "shape": "gh run --branch --jq --json --limit",
+   "clauses": 8,
+   "share": 0.00018,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 343,
+   "shape": "cargo check --all-targets --workspace",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 344,
+   "shape": "true",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 345,
+   "shape": "printf >>",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 346,
+   "shape": "git ls-files",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 347,
+   "shape": "git branch",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 348,
+   "shape": "grep -l",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 349,
+   "shape": "grep -in",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 350,
+   "shape": "cut -c1-80",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 351,
+   "shape": "grep --include -A -rn",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 352,
+   "shape": "git mv",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 353,
+   "shape": "git log -- --oneline -1",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 354,
+   "shape": "read",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 355,
+   "shape": "grep --include -rin",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 356,
+   "shape": "git commit --no-edit -q",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 357,
+   "shape": "head -26",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 358,
+   "shape": "git switch -q",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 359,
+   "shape": "git checkout -q",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 360,
+   "shape": "df -h",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 361,
+   "shape": "script -qc",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 362,
+   "shape": "head -200",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 363,
+   "shape": "kaish --plan >",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 364,
+   "shape": "grep -A12 -n",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 365,
+   "shape": "cargo test -- --locked --nocapture --test -p",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 366,
+   "shape": "gh pr --json --template",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 367,
+   "shape": "link",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 368,
+   "shape": "grep -A -a",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 369,
+   "shape": "set -e",
+   "clauses": 7,
+   "share": 0.00016,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 370,
+   "shape": "git --initial-branch -C -q",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 371,
+   "shape": "git --porcelain -C",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 372,
+   "shape": "head -90",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 373,
+   "shape": "cargo test -- --nocapture -p",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 374,
+   "shape": "timeout --body-file",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "data-critical",
+    "gemini-3.5-flash": "data-critical",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "data-critical",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 375,
+   "shape": "git branch -D",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "data-critical",
+    "gemini-3.5-flash": "data-critical",
+    "qwen3-235b": "data-critical"
+   },
+   "consensus": "data-critical",
+   "kind": "unanimous",
+   "escape": false,
+   "gold": "data-critical",
+   "gold_hits": {
+    "deepseek-v4-pro": true,
+    "gemini-3.5-flash": true,
+    "qwen3-235b": true
+   }
+  },
+  {
+   "rank": 376,
+   "shape": "grep -ci",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 377,
+   "shape": "grep -A -B",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 378,
+   "shape": "find -path",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 379,
+   "shape": "git log -- --all --oneline -S",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 380,
+   "shape": "git log -- --oneline -S",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 381,
+   "shape": "find -iname -o -path -print -prune",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 382,
+   "shape": "git worktree --detach",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 383,
+   "shape": "find -name -type",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 384,
+   "shape": "grep -A6",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 385,
+   "shape": "grep -A4",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 386,
+   "shape": "head -22",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 387,
+   "shape": "basename",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 388,
+   "shape": "grep --include -rni",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 389,
+   "shape": "gh pr --state",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 390,
+   "shape": "gh run --branch --json --limit -q",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 391,
+   "shape": "gh pr --body",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "data-critical",
+    "gemini-3.5-flash": "mixed",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": null,
+   "kind": "split",
+   "escape": true
+  },
+  {
+   "rank": 392,
+   "shape": "-v",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 393,
+   "shape": "gh pr - --body-file",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "data-critical",
+    "gemini-3.5-flash": "data-critical",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "data-critical",
+   "kind": "majority",
+   "escape": false
+  },
+  {
+   "rank": 394,
+   "shape": "gh pr --jq --json >",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 395,
+   "shape": "kaish --help",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 396,
+   "shape": "rg -A -n",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 397,
+   "shape": "git remote -v",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 398,
+   "shape": "grep -A5 -n",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 399,
+   "shape": "cargo test --no-default-features -p >",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "situation-normal",
+    "gemini-3.5-flash": "situation-normal",
+    "qwen3-235b": "situation-normal"
+   },
+   "consensus": "situation-normal",
+   "kind": "unanimous",
+   "escape": false
+  },
+  {
+   "rank": 400,
+   "shape": "git show",
+   "clauses": 6,
+   "share": 0.00014,
+   "votes": {
+    "deepseek-v4-pro": "informative",
+    "gemini-3.5-flash": "informative",
+    "qwen3-235b": "informative"
+   },
+   "consensus": "informative",
+   "kind": "unanimous",
+   "escape": false
+  }
+ ]
+}

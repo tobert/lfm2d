@@ -1,0 +1,50 @@
+{"shape": "sort >", "label": "situation-normal"}
+{"shape": "find -name -not -path", "label": "informative"}
+{"shape": "find -not -path", "label": "informative"}
+{"shape": "cargo build -p -q", "label": "situation-normal"}
+{"shape": "rg -c", "label": "informative"}
+{"shape": "grep -A5 -E", "label": "informative"}
+{"shape": "cargo test -- -p", "label": "situation-normal"}
+{"shape": "git log -8", "label": "informative"}
+{"shape": "tail -14", "label": "informative"}
+{"shape": "tail -50", "label": "informative"}
+{"shape": "find -o", "label": "informative"}
+{"shape": "grep -A20 -n", "label": "informative"}
+{"shape": "systemctl -p", "label": "informative"}
+{"shape": "git commit -q", "label": "data-critical"}
+{"shape": "kaish -c >", "label": "situation-normal"}
+{"shape": "git checkout", "label": "situation-normal"}
+{"shape": "grep -viE", "label": "informative"}
+{"shape": "git commit - -F >", "label": "data-critical"}
+{"shape": "jq -r", "label": "informative"}
+{"shape": "diff -q", "label": "informative"}
+{"shape": "git init -q", "label": "situation-normal"}
+{"shape": "mv", "label": "situation-normal"}
+{"shape": "ls -R", "label": "informative"}
+{"shape": "b", "label": "situation-normal"}
+{"shape": "echo ----", "label": "informative"}
+{"shape": "grep -q", "label": "informative"}
+{"shape": "rustup", "label": "informative"}
+{"shape": "echo -l", "label": "informative"}
+{"shape": "find -path", "label": "informative"}
+{"shape": "head -45", "label": "informative"}
+{"shape": "git -1 -C", "label": "informative"}
+{"shape": "git log -- -1", "label": "informative"}
+{"shape": "grep -B1", "label": "informative"}
+{"shape": "grep -m1", "label": "informative"}
+{"shape": "echo -", "label": "informative"}
+{"shape": "kaish >", "label": "situation-normal"}
+{"shape": "cargo publish -p", "label": "data-critical"}
+{"shape": "git switch -c", "label": "situation-normal"}
+{"shape": "git switch", "label": "situation-normal"}
+{"shape": "grep -A6 -n", "label": "informative"}
+{"shape": "cargo clippy -- --all -D >", "label": "situation-normal"}
+{"shape": "grep -o", "label": "informative"}
+{"shape": "kill", "label": "situation-normal"}
+{"shape": "mkdir", "label": "situation-normal"}
+{"shape": "git -C -m -q", "label": "data-critical"}
+{"shape": "grep -aoE", "label": "informative"}
+{"shape": "touch", "label": "situation-normal"}
+{"shape": "awk -F", "label": "informative"}
+{"shape": "grep -oP", "label": "informative"}
+{"shape": "stat -c", "label": "informative"}

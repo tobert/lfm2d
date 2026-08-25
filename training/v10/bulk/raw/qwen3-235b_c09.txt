@@ -1,0 +1,50 @@
+{"shape": "git status --short", "label": "informative"}
+{"shape": "grep --include -rn", "label": "informative"}
+{"shape": "git log --oneline -1", "label": "informative"}
+{"shape": "cargo test --test -p", "label": "situation-normal"}
+{"shape": "git diff --stat", "label": "informative"}
+{"shape": "cargo clippy --all --all-targets >", "label": "situation-normal"}
+{"shape": "cargo test --all --locked >", "label": "situation-normal"}
+{"shape": "cargo test --test -p >", "label": "situation-normal"}
+{"shape": "git log --oneline -3", "label": "informative"}
+{"shape": "cargo doc --no-deps --workspace >", "label": "situation-normal"}
+{"shape": "git status --porcelain", "label": "informative"}
+{"shape": "find -iname", "label": "informative"}
+{"shape": "git log --oneline", "label": "informative"}
+{"shape": "git commit -- -m -q", "label": "data-critical"}
+{"shape": "kaish --plan", "label": "informative"}
+{"shape": "git log --oneline -2", "label": "informative"}
+{"shape": "cargo build --workspace", "label": "situation-normal"}
+{"shape": "cut -f1", "label": "informative"}
+{"shape": "git log --oneline -5", "label": "informative"}
+{"shape": "cargo test --locked --no-default-features -p >", "label": "situation-normal"}
+{"shape": "grep --include -rln", "label": "informative"}
+{"shape": "cargo clippy --all-targets", "label": "situation-normal"}
+{"shape": "gh pr --merge", "label": "data-critical"}
+{"shape": "cargo insta --check >", "label": "situation-normal"}
+{"shape": "git diff -- --stat", "label": "informative"}
+{"shape": "gh pr --json -q", "label": "informative"}
+{"shape": "cargo test --workspace", "label": "situation-normal"}
+{"shape": "git show --stat", "label": "informative"}
+{"shape": "git log --format -1", "label": "informative"}
+{"shape": "cargo clippy --all --all-targets", "label": "situation-normal"}
+{"shape": "cargo test --features --test -p", "label": "situation-normal"}
+{"shape": "gh pr --jq --json", "label": "informative"}
+{"shape": "systemctl --user", "label": "situation-normal"}
+{"shape": "find -iname -maxdepth", "label": "informative"}
+{"shape": "cargo test --locked -p", "label": "situation-normal"}
+{"shape": "git fetch --quiet", "label": "informative"}
+{"shape": "cargo test -- --lib --nocapture -p >", "label": "situation-normal"}
+{"shape": "cargo clippy -- --all-targets --locked -D -p", "label": "situation-normal"}
+{"shape": "timeout --lib -p", "label": "situation-normal"}
+{"shape": "cargo doc --no-deps --workspace", "label": "situation-normal"}
+{"shape": "git branch --show-current", "label": "informative"}
+{"shape": "cargo clippy --all-targets -p", "label": "situation-normal"}
+{"shape": "kubectl -l -n -o", "label": "informative"}
+{"shape": "cargo build --release -p", "label": "situation-normal"}
+{"shape": "cargo test --tests -p", "label": "situation-normal"}
+{"shape": "git rev-parse --short", "label": "informative"}
+{"shape": "cargo test -- --nocapture --test -p", "label": "situation-normal"}
+{"shape": "git merge-base --is-ancestor", "label": "informative"}
+{"shape": "cargo +1.98 -- --all --all-targets --locked -D", "label": "situation-normal"}
+{"shape": "cargo test --locked --test -p >", "label": "situation-normal"}

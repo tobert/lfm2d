@@ -17,3 +17,5 @@
 __pycache__/
 training/v9/relabel/*.log
 .venv-train/
+# v10 bulk-label chunks: real clause text, local only (bulk_label.py)
+/training/v10/bulk/chunks/

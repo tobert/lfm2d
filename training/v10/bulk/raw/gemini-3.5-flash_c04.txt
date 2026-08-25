@@ -1,0 +1,50 @@
+{"shape": "grep -nE", "label": "informative"}
+{"shape": "python3 -c >", "label": "situation-normal"}
+{"shape": "diff", "label": "informative"}
+{"shape": "sort -rn", "label": "informative"}
+{"shape": "git add -u", "label": "situation-normal"}
+{"shape": "cargo test -- --lib -p", "label": "situation-normal"}
+{"shape": "git show --", "label": "informative"}
+{"shape": "cargo run -p", "label": "situation-normal"}
+{"shape": "cargo build --bin -p >", "label": "situation-normal"}
+{"shape": "head -100", "label": "informative"}
+{"shape": "date", "label": "informative"}
+{"shape": "grep -A", "label": "informative"}
+{"shape": "git merge-base", "label": "informative"}
+{"shape": "git commit - -- -F -q", "label": "situation-normal"}
+{"shape": "head -35", "label": "informative"}
+{"shape": "grep -A -B -n", "label": "informative"}
+{"shape": "export", "label": "informative"}
+{"shape": "rm", "label": "situation-normal"}
+{"shape": "echo -c", "label": "informative"}
+{"shape": "cargo test --lib", "label": "situation-normal"}
+{"shape": "find -type", "label": "informative"}
+{"shape": "head -c", "label": "informative"}
+{"shape": "grep -n >>", "label": "informative"}
+{"shape": "grep -c >>", "label": "informative"}
+{"shape": "cargo +1.98 --all >", "label": "situation-normal"}
+{"shape": "xargs -l", "label": "informative"}
+{"shape": "grep -oE", "label": "informative"}
+{"shape": "rg -rn", "label": "informative"}
+{"shape": "grep -vE", "label": "informative"}
+{"shape": "gh pr >", "label": "situation-normal"}
+{"shape": "git push -q", "label": "situation-normal"}
+{"shape": "cargo clippy --all", "label": "situation-normal"}
+{"shape": "rm -f", "label": "situation-normal"}
+{"shape": "git rev-list", "label": "informative"}
+{"shape": "head -16", "label": "informative"}
+{"shape": "timeout --lib", "label": "situation-normal"}
+{"shape": "cat -A", "label": "informative"}
+{"shape": "find -name -path", "label": "informative"}
+{"shape": "cargo test >", "label": "situation-normal"}
+{"shape": "tail -150", "label": "informative"}
+{"shape": "grep -aE", "label": "informative"}
+{"shape": "bash -c", "label": "situation-normal"}
+{"shape": "cargo run", "label": "situation-normal"}
+{"shape": "git log -4", "label": "informative"}
+{"shape": "rustfmt", "label": "situation-normal"}
+{"shape": "grep -A2 -n", "label": "informative"}
+{"shape": "kubectl -- -n", "label": "situation-normal"}
+{"shape": "pwd", "label": "informative"}
+{"shape": "curl -H -s", "label": "informative"}
+{"shape": "cargo check", "label": "situation-normal"}
