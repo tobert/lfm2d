@@ -34,7 +34,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 HOOK = HERE / 'pre_command_advisory.py'
-LFM2D_URL = os.environ.get('LFM2D_URL', 'http://lfm2d-1.taila4abc.ts.net:8088')
+LFM2D_URL = os.environ.get('LFM2D_URL', 'http://127.0.0.1:8088')  # loopback: same default as the hook
 
 PASS, FAIL = [], []
 

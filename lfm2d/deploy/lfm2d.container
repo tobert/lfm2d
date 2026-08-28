@@ -40,12 +40,12 @@ Nice=10
 # the TCP stack entirely. The socket directory must exist and be
 # writable by the container's runtime user — %t is the runtime dir.
 Volume=%t/lfm2d:/run/lfm2d:rw,Z
-# The severe set belongs to the checkpoint, not to the daemon: v8's
+# The severe set belongs to the checkpoint, not to the daemon: v8+'s
 # labels are informative/situation-normal/data-critical, and the built-in
 # default severe set is v6's vocabulary. Move both lines together or
 # /v1/cascade refuses every request.
 Exec=/usr/local/bin/lfm2d \
-    --classifier-dir /models/kube_ordinal_v8 \
+    --classifier-dir /models/kube_ordinal_v10 \
     --router-dir /models/LFM2.5-Encoder-350M-Prompt-Router \
     --cascade-route shell --cascade-route k8s \
     --cascade-severe-label situation-normal \
@@ -63,7 +63,7 @@ PublishPort=127.0.0.1:8088:8088
 # LFM2D_ROUTER_DIR, LFM2D_CASCADE_ROUTES, LFM2D_SOCKET_PATH,
 # LFM2D_BIND_ADDR, ...) — set via Environment= if you prefer config over
 # a long Exec= line:
-# Environment=LFM2D_CLASSIFIER_DIR=/models/kube_ordinal_v6
+# Environment=LFM2D_CLASSIFIER_DIR=/models/kube_ordinal_v10
 # Environment=LFM2D_ROUTER_DIR=/models/LFM2.5-Encoder-350M-Prompt-Router
 # Environment=LFM2D_CASCADE_ROUTES=shell,k8s
 # Environment=LFM2D_BIND_ADDR=0.0.0.0:8088

@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
-# Swap Amy's PreToolUse Bash hook to the lfm2d advisory one, or back.
+# Wire the lfm2d advisory PreToolUse hook into ~/.claude/settings.json.
 #
-#   install.sh            # show what is installed now
-#   install.sh install    # point settings at the advisory hook
-#   install.sh uninstall  # point it back at the dotfiles hook
+#   install.sh             # show what is installed now
+#   install.sh bootstrap   # FRESH machine: add the hook entry (no prior hook)
+#   install.sh install     # SWAP the dotfiles regex hook for the advisory one
+#   install.sh uninstall   # undo `install` (restore the swapped-out command)
 #
-# The advisory hook makes the SAME decisions as the dotfiles hook -- that is
-# gated by test_parity.py, 33 cases byte-for-byte -- and additionally asks
-# lfm2d for a second opinion which it only writes to a log. Rollback is this
-# script with `uninstall`, or editing one string in settings.json.
+# Two ways in, deliberately separate:
+#
+# `install` is a parity-gated SWAP. It replaces the dotfiles regex hook
+# with the advisory one, which makes the SAME decisions -- gated by
+# test_parity.py, 33 cases byte-for-byte -- and additionally asks lfm2d
+# for a second opinion that it only writes to a log. It refuses when
+# there is no dotfiles baseline to gate against or no existing hook entry
+# to swap.
+#
+# `bootstrap` is for a machine that has never had a hook: it ADDS the
+# entry (creating settings.json if needed) and refuses if any recognized
+# hook is already wired -- that machine wants `install`. There is no
+# parity gate because there is no baseline; the regex rules are embedded
+# verbatim in the hook, so the decisions are the dotfiles decisions either
+# way. The daemon endpoint is written INTO the command string from
+# LFM2D_URL (default loopback), because the hook's own default is loopback
+# and a remote daemon is this machine's configuration, not the code's.
+#
+# Rollback for either is one string in settings.json; a timestamped backup
+# is taken before any edit. Tested in test_hook_config.py against a temp HOME.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # python3, not `python`: both are 3.14.6 here, but the tests were run under
 # python3 and a guard should not inherit whatever `python` resolves to later.
-ADVISORY_CMD="python3 $REPO/lfm2d/hooks/pre_command_advisory.py"
 ADVISORY="$REPO/lfm2d/hooks/pre_command_advisory.py"
+ADVISORY_CMD="python3 $ADVISORY"
 # The settings entry points at ~/.claude/hooks/pre-command.py, which is a
 # symlink into dotfiles (verified identical). The parity gate runs against
 # the dotfiles path; the settings string is what we restore.
@@ -25,10 +42,15 @@ SETTINGS="$HOME/.claude/settings.json"
 # `uninstall` restores what was there rather than what this script guesses
 # was there.
 PREVIOUS="$HOME/.claude/.lfm2d-hook-previous"
+# Hook timeout in seconds -- the hook's own per-call budget is capped at 8 s
+# for the longest commands (LFM2D_TIMEOUT_CAP) but advisory mode fails open,
+# so 5 s here bounds what a wedged daemon can cost a Bash call.
+HOOK_TIMEOUT=5
 
 die() { echo "error: $*" >&2; exit 1; }
 
 current_command() {
+  [ -f "$SETTINGS" ] || { echo ''; return; }
   python3 - "$SETTINGS" <<'PY'
 import json, sys
 try:
@@ -68,31 +90,87 @@ print(f'set -> {new}')
 PY
 }
 
-preflight() {
-  [ -f "$SETTINGS" ]  || die "no settings at $SETTINGS"
-  [ -f "$ADVISORY" ]  || die "advisory hook missing at $ADVISORY"
-  [ -f "$BASELINE" ]  || die "dotfiles hook missing at $BASELINE"
-  python3 -c "import json;json.load(open('$SETTINGS'))" \
-    || die "$SETTINGS is not valid JSON -- fix that before swapping a guard"
+# Add a PreToolUse/Bash group carrying the advisory hook to settings.json,
+# creating the file if absent. Every other key is preserved verbatim.
+add_entry() {
+  python3 - "$SETTINGS" "$1" "$HOOK_TIMEOUT" <<'PY'
+import json, os, sys
+path, cmd, timeout = sys.argv[1], sys.argv[2], int(sys.argv[3])
+if os.path.exists(path):
+    with open(path) as f:
+        s = json.load(f)
+else:
+    s = {}
+hooks = s.setdefault('hooks', {})
+pre = hooks.setdefault('PreToolUse', [])
+pre.append({'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': cmd, 'timeout': timeout}]})
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, 'w') as f:
+    json.dump(s, f, indent=2)
+    f.write('\n')
+print(f'added -> {cmd}')
+PY
+}
+
+settings_valid_json() {
+  python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$SETTINGS" 2>/dev/null
+}
+
+backup_settings() {
+  cp -p "$SETTINGS" "$SETTINGS.bak-$(date +%Y%m%d-%H%M%S)"
+}
+
+# What every subcommand needs: the hook itself, and a settings file that is
+# JSON if it exists. Whether a settings file or a dotfiles baseline must
+# ALSO exist depends on the subcommand, so those checks live there.
+preflight_common() {
+  [ -f "$ADVISORY" ] || die "advisory hook missing at $ADVISORY"
+  if [ -f "$SETTINGS" ] && ! settings_valid_json; then
+    die "$SETTINGS is not valid JSON -- fix that before touching a guard"
+  fi
 }
 
 case "${1:-status}" in
   status)
-    preflight
+    preflight_common
     cur="$(current_command)"
-    echo "settings: $SETTINGS"
+    echo "settings: $SETTINGS$([ -f "$SETTINGS" ] || echo '  (absent)')"
     echo "hook:     ${cur:-<none found>}"
     case "$cur" in
       *pre_command_advisory.py*) echo "state:    ADVISORY (lfm2d second opinion, logged not enforced)" ;;
       *pre-command.py*)          echo "state:    BASELINE (regex only)" ;;
+      '')                        echo "state:    NONE -- 'bootstrap' for a fresh machine, 'install' to swap a dotfiles hook" ;;
       *)                         echo "state:    unrecognized" ;;
     esac
     echo
     echo "advisory log: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-hooks/lfm2d-advisory.jsonl"
     ;;
 
+  bootstrap)
+    preflight_common
+    cur="$(current_command)"
+    case "$cur" in
+      *pre_command_advisory.py*) die "already wired: $cur -- nothing to do" ;;
+      '') ;;
+      *)  die "a hook is already wired ($cur); use 'install' to swap it, not bootstrap" ;;
+    esac
+    url="${LFM2D_URL:-http://127.0.0.1:8088}"
+    cmd="LFM2D_URL=$url $ADVISORY_CMD"
+    if [ -f "$SETTINGS" ]; then
+      backup_settings
+    fi
+    add_entry "$cmd"
+    echo
+    echo "Bootstrapped. lfm2d is advisory only; the regex rules decide."
+    echo "Daemon:   $url  (change by editing the command string in $SETTINGS)"
+    [ -f "$SETTINGS.bak-"* ] 2>/dev/null && echo "Backup:   $SETTINGS.bak-*"
+    echo "Verify:   LFM2D_URL=$url python3 $REPO/lfm2d/hooks/test_advisory_live.py"
+    ;;
+
   install)
-    preflight
+    [ -f "$BASELINE" ] || die "dotfiles hook missing at $BASELINE -- 'install' is a parity-gated swap; a machine with no baseline wants 'bootstrap'"
+    [ -f "$SETTINGS" ] || die "no settings at $SETTINGS -- 'install' swaps an existing hook; a fresh machine wants 'bootstrap'"
+    preflight_common
     # Parity is the whole basis for calling this swap safe, so it is a GATE,
     # not a suggestion. If the two hooks ever decide differently, this script
     # must not be the thing that finds out in production.
@@ -105,9 +183,9 @@ case "${1:-status}" in
     case "$cur" in
       *pre_command_advisory.py*) echo "already installed; nothing to do."; exit 0 ;;
     esac
-    [ -n "$cur" ] || die "no recognizable PreToolUse hook in settings -- refusing to invent one"
+    [ -n "$cur" ] || die "no recognizable PreToolUse hook in settings -- 'install' swaps one; a fresh machine wants 'bootstrap'"
 
-    cp -p "$SETTINGS" "$SETTINGS.bak-$(date +%Y%m%d-%H%M%S)"
+    backup_settings
     printf '%s\n' "$cur" > "$PREVIOUS"
     set_command "$ADVISORY_CMD"
     echo
@@ -118,7 +196,8 @@ case "${1:-status}" in
     ;;
 
   uninstall)
-    preflight
+    [ -f "$SETTINGS" ] || die "no settings at $SETTINGS"
+    preflight_common
     if [ -f "$PREVIOUS" ]; then
       restore="$(cat "$PREVIOUS")"
     else
@@ -128,11 +207,11 @@ case "${1:-status}" in
       restore="python ~/.claude/hooks/pre-command.py"
       echo "note: no saved previous command; restoring the known default"
     fi
-    cp -p "$SETTINGS" "$SETTINGS.bak-$(date +%Y%m%d-%H%M%S)"
+    backup_settings
     set_command "$restore"
     rm -f "$PREVIOUS"
     echo "Reverted to: $restore"
     ;;
 
-  *) die "usage: $0 [status|install|uninstall]" ;;
+  *) die "usage: $0 [status|bootstrap|install|uninstall]" ;;
 esac

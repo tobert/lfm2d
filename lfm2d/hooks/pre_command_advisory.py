@@ -138,7 +138,15 @@ except Exception as _e:  # the plan path must never break the guard either
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # lfm2d advisory configuration
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LFM2D_URL = os.environ.get('LFM2D_URL', 'http://lfm2d-1.taila4abc.ts.net:8088')
+# Loopback by default: lfm2d is a sidecar, and the only endpoint a hook may
+# assume without being told is the machine it runs on. The default used to
+# be one specific host on one tailnet, which on any OTHER machine either
+# sent every command off-box silently (advisory fails open, the breaker
+# hides an unreachable default) or timed out on every call. A remote
+# daemon is that machine's settings — `LFM2D_URL=... python3 <hook>` in
+# the hook's command string (install.sh writes it that way) — not the
+# code's. Tested in test_hook_config.py.
+LFM2D_URL = os.environ.get('LFM2D_URL', 'http://127.0.0.1:8088')
 # Timeout scales with input length, because inference latency does.
 #
 # The first version was a flat 400 ms, picked from a 75 ms measurement of a
