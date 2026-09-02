@@ -75,6 +75,27 @@ is repeatable, and `/v1/spans`/`/v1/spans/credentials` take an optional
 
 ## API (v1)
 
+The semantic contract a consumer programs against — numbered invariants,
+cited by number from outside this repo — is `docs/integration.md` at the
+repo root. It never renumbers. This section is the reference for the
+endpoints themselves; where the two overlap, the contract wins.
+
+```
+GET  /healthz                 liveness
+GET  /readyz                  readiness
+GET  /v1/models               [{id, kind, weight_hash, labels?, hidden_size}]
+POST /embed                   TEI-compat  {"inputs": str|[str], "kind"?: document|query}
+POST /predict                 TEI-compat  {"inputs": str|[str]}
+POST /v1/classify             {"inputs": str|[str]}
+POST /v1/route                {"input": str, "routes": [str]}  -> RAW cosines
+POST /v1/cascade              {"clauses": [str]}
+POST /v1/spans                {"inputs": str|[str], "model"?: str}
+POST /v1/spans/credentials    same shape; credential.* entities only
+```
+
+The input field is `inputs` (TEI's spelling), not `texts`. `/v1/route`
+takes singular `input` because it scores one text against many routes.
+
 - `GET /healthz` → `200 "ok"` — process alive, never touches the worker.
 - `GET /readyz` → `200` once every configured model has loaded, `503`
   before.
@@ -171,6 +192,64 @@ Errors: `{"error": {"message", "type"}}`. `type` is `"bad_request"` (400 —
 malformed/empty input, or a call against a head this instance never
 loaded) or `"internal"` (500 — a loaded model's forward pass failed, or the
 worker thread itself died). Never a silently-wrong `200`.
+
+## Calling lfm2d from another program (non-normative)
+
+Design notes for a client. The promises are in `docs/integration.md`;
+these are the consequences of how the daemon is built.
+
+**Assume a queue, not a pool.** One forward pass already saturates most of
+a 16-core box, so client-side fan-out buys nothing — requests serialize
+through one worker by design. Batching within a request is the lever;
+concurrent connections are not. The `lfm2d.worker.queue_depth` gauge makes
+overload visible before it is painful.
+
+**Budget ~1.4 GiB of resident memory per head**, and do not expect heads to
+share a trunk unless they were trained on a common frozen one: the base
+encoder and the shipped Prompt-Router have 0 of 148 trunk tensors in
+common, and a full finetune diverges from both.
+
+**Rank within a request; never threshold across requests.** The score
+ranges of benign and severe clauses overlap by measurement, so no global
+cutoff exists — which is why `/v1/cascade` ships no `flagged` boolean.
+If your policy needs a yes/no, that decision belongs in your code, where
+it is visible as your choice.
+
+**The ordinal rank that picks the winner is not on the wire.**
+`/v1/cascade` returns per-label `severity_scores` and each clause's
+`top_severity`; the ranking number itself (`ClauseVerdict::severity_score`
+in the library) is the expected ordinal rank, `0.0..=n` for n severe
+labels, and is deliberately not repeated in the response. A caller that
+wants it derives it from `severity_scores` and its own severe-label set.
+It was previously a plain sum over the severe labels, which was not
+monotone in severity; recorded values from an older build are on a
+different scale.
+
+**A checkpoint and its severe set travel together.**
+`--cascade-severe-label`'s ORDER is the ordinal scale, ascending, least
+severe first. Reversing it inverts every ranking and raises no error,
+because both names are valid — read the startup line that echoes the
+resolved ranking after any change.
+
+**Log the `weight_hash` beside any decision you record.** It is the audit
+trail: it ties a verdict to the exact weights that produced it, and it is
+how a rollback is told apart from a regression after the fact.
+
+**Keep failures loud.** An unknown severe label is refused by name; a dead
+worker exits the process rather than serving a healthy-looking 200. Do not
+paper over a 5xx with a permissive default — but do not block on the
+daemon either. `docs/integration.md` invariant 6 is the rule: proceed with
+your own baseline controls and record that you skipped.
+
+### Standards this API follows, and where it stops
+
+`/embed` and `/predict` are TEI-shaped, so a TEI-conformant client works
+against them unchanged. The `/v1/*` endpoints have no standard to follow:
+TEI has no token-classification endpoint at all, and KServe V2/OIP — the
+only real standard here — is tensor-clunky and was deliberately not
+adopted. The span shape follows the PII-service convention (Presidio,
+Amazon Comprehend, GCP DLP) instead, which is the closest prior art for
+this job.
 
 ## Being a good k8s/k3s container citizen
 

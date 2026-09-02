@@ -9,7 +9,8 @@ new invariants at the end, never renumber**.
 
 Wire shapes (exact field names and JSON structure) are pinned by
 `lfm2d/tests/contract_serde.rs`. This file holds the semantic invariants
-that shapes alone can't express.
+that shapes alone can't express. The endpoint reference and the
+non-normative client-design notes are in `lfm2d/README.md`.
 
 ## Invariants
 
@@ -36,8 +37,10 @@ The order on the wire is the checkpoint's `id2label` id order, pinned by
 > ordinal-position consumer at v6 inverts its verdict mapping: the most
 > destructive label reads as "allow". v6 stays staged for score-level
 > debugging, but **it is not an ordinal-safe rollback target while any
-> ordinal consumer is wired** (`signoff.md` "Rollback is one line" carries
-> the same warning). The config can't be "fixed" by editing `id2label` —
+> ordinal consumer is wired**. `tests/severity_ladder.rs` pins v6's real
+> (alphabetical) order against its committed config fixture, so the hazard
+> is asserted rather than only described. The config can't be "fixed" by
+> editing `id2label` —
 > label order and classifier weight rows must permute together or
 > predictions silently corrupt.
 
