@@ -37,7 +37,7 @@ over HTTP by the `lfm2d` daemon in this workspace.
 against activations dumped from the real Embedding-350M weights
 (`tests/reference/dump_trunk_reference.py`, transformers 4.56.2).
 
-Milestone 1 (config) covers every family checkpoint. The fixtures keep
+Config parsing covers every family checkpoint. The fixtures keep
 earning their keep — the 230M base is *shallower* (14 layers) not just
 narrower; the PII config ships a literal `"full_attn_idxs": null`; the
 Router is not a softmax classifier; `intermediate_size` **disagrees with
@@ -45,7 +45,7 @@ the shipped weights** on three of four checkpoints (says 6656, ships
 4608 — see `Lfm2EncoderConfig::ffn_dim`); and the Policy-Linter turned
 out to be a fifth architecture name, `Lfm2BidirForRuleMatching`.
 
-**Milestone 3 started: text → vector works end to end.** `Lfm2Embedding`
+**Text → vector works end to end.** `Lfm2Embedding`
 tokenizes, runs the trunk and CLS-pools, matching the reference pipeline
 including exact token ids. Try it:
 
