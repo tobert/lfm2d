@@ -1,3 +1,7 @@
+> **History — superseded by v10.** This plan's slices were built and
+> measured, but no v9 pass shipped; `training/v10/PLAN.md` carries the
+> design that did. Read this for the reasoning that led there.
+
 # kube_ordinal v9 — plan
 
 Status: **planned, not started.** Written 2026-08-12 from measurements taken

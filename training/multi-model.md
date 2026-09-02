@@ -1,3 +1,9 @@
+> **Historical method note.** How the early synthetic corpora were
+> generated across model families and cross-validated, from the era before
+> the corpus was built from real commands. The transport and the
+> blind-relabel discipline still apply; the corpus numbers do not describe
+> anything currently shipped.
+
 # Multi-model generation survey — 2026-08-05
 
 Fixes the one-family blind spot: all gen2 rows and both holdouts were

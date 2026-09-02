@@ -1,3 +1,7 @@
+> **History — superseded by v10.** No v9 pass ever shipped; the live head
+> is `kube_ordinal_v10`. Kept for the record of what four training passes
+> taught. Current work is in `training/v10/`.
+
 # kube_ordinal v9 — corpus status
 
 **Four local training passes exist (`.models/kube_ordinal_v9`, gitignored;
