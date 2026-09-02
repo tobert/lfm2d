@@ -1,96 +1,102 @@
 #!/usr/bin/env python3
-"""PreToolUse Bash hook — the existing regex guard, plus an ADVISORY lfm2d second opinion.
+"""PreToolUse Bash hook — the regex guard, plus an ADVISORY lfm2d second opinion.
 
 WHAT THIS DOES AND DOES NOT DO
 ------------------------------
-In advisory mode (the default, and the only mode until we have data), the
-regex logic below decides EVERY outcome, byte-for-byte identically to
-`dotfiles/.claude/hooks/pre-command.py`. lfm2d's verdict is recorded and
-never enforced. The point of this phase is to find out, on real traffic,
-where the model and the regex disagree — and which of them is right when
-they do.
+The regex logic below decides EVERY outcome, byte-for-byte identically to
+the baseline guard this was cloned from (test_parity.py gates 33 cases).
+lfm2d's verdict is recorded beside the decision and never enforced. The
+product of this phase is the log: where the model and the regex disagree,
+and which of them is right when they do.
 
-Set LFM2D_HOOK_MODE=enforce only after that data says something. It is
-wired here so the switch is one env var rather than a rewrite, NOT because
-it is ready. See "MEASURED SHORTCOMINGS" below before you flip it.
+LFM2D_HOOK_MODE picks `advisory` (the default), `off` (no call at all), or
+`enforce`, which is deliberately unimplemented — it prints a refusal and
+falls back to advisory. Wiring an untested enforcement path and leaving it
+reachable is how a "temporary" mode ships.
 
-MEASURED SHORTCOMINGS (2026-08-12, kube_ordinal_v8, live pod)
--------------------------------------------------------------
-The motivating pitch was "a classifier can tell a dangerous command from a
-dangerous-looking STRING; a regex cannot." Measured, that is only PARTLY
-true on v8 today. Probe of 14 commands against /v1/classify:
-
-  correct, data position read as benign:
-    echo 'never run rm -rf / ...'                    informative      0.953
-    cat signoff.md | grep 'git push --force'         informative      0.994
-    git commit -m 'docs: ...rm -rf in prose'         situation-normal 0.681
-
-  STILL WRONG, data position read as data-critical:
-    curl ... -d '{"inputs":"rm -rf /var/lib/data"}'  data-critical    0.921
-    curl ... -d '{"inputs":"git push --force ..."}'  data-critical    0.895
-    grep -rn 'rm -rf' .../pre-command.py             data-critical    0.892
-
-Note the first of those scores HIGHER (0.921) than the real `rm -rf
-/var/lib/data` it contains (0.835). The model is keying on the severe
-tokens plus general command complexity, not on argument position.
-
-So: v8 would NOT have prevented the false positives that motivated this
-work — the actual firings were curl-with-JSON-payload, which is exactly the
-shape it still gets wrong. It DOES fix the echo/cat/commit-message shape.
-True positives were 5/5 (rm -rf, git push --force, git reset --hard,
-kubectl delete namespace). This is a coverage gap with a clear training
-answer (data-position negatives in a v9 slice), not a reason the approach
-is wrong — but it IS the reason this ships advisory.
-
-OTHER KNOWN GAPS
+WHAT GETS SCORED
 ----------------
-- The BLOCKED (git hygiene) rules are POLICY, not severity: "use explicit
-  paths instead of `git add -A`" is a team convention, and v8's vocabulary
-  (informative / situation-normal / data-critical) cannot express it. The
-  classifier is a candidate replacement for the rm/find SOFT_BLOCKED and
-  WARNED half only. Do not expect it to ever own the git half.
-- PLAN-FIRST since 2026-08-24 (v10 slice 1, kaish_plan.py): clauses come
-  from `kaish --plan` — simple commands rendered canonically, heredoc
-  bodies stripped, pipelines split into members (that last is a
-  deliberate reversal of the no-pipeline-split rule below, which was
-  guarding a v8-era misreading; expect more `sed -n`/`grep` firings on
-  the plan path — that is v10 forward collection, not a regression, and
-  `split_path` on every row keeps the two populations separable). The
-  paragraph below describes the FALLBACK path, kept verbatim.
-- Clause splitting IS wired (2026-08-12, clause_split.py): compound
-  commands go to /v1/cascade, which ranks clauses within the statement.
-  This is the fix for the measured dilution defect — `rm -rf -- "$d.venv"`
-  scores 0.540 alone and 0.047 inside its 624-char script (11x), and 92%
-  of real commands are compound. The splitter never cuts inside quotes,
-  substitutions, or heredoc bodies (the data-position hazard above), and
-  deliberately does NOT split pipelines: `cat f | grep 'git push --force'`
-  measured 0.994 informative whole, while a bare grep-for-pattern clause
-  is a shape v8 misreads (0.892 dc) — splitting pipes would manufacture
-  false positives out of currently-correct behaviour.
-  Cost, measured live on the deployed pod: cascade runs ~145 ms/clause
-  warm (~290 cold) because its forwards are per-clause, vs ~65 ms/clause
-  for batch /v1/classify — a daemon-side batching fix is noted in
-  exomemory issues. Until that deploys, the timeout carries a per-clause
-  term, and commands past CASCADE_MAX_CLAUSES (default 20; 32 clauses
-  measured 8.4 s, over any sane per-call budget) fall back to one batched
-  /v1/classify over the clauses: per-clause truth stays in the log, no
-  winner is invented client-side, and `_disagreement` handles those rows
-  as a set-membership check rather than a ranking.
-- Command text is sent to lfm2d over the tailnet (no auth) and written to a
-  local JSONL. Commands can contain secrets. The log is 0600 and local, and
-  the tailnet is Amy-ruled trusted, but this is a real exposure to weigh
-  before this runs in every session on every machine.
-- Label vocabulary is checked per call, not assumed. `SEVERE_LABELS` is what
-  the disagreement buckets key on, and if the deployed checkpoint doesn't
-  speak any of them the row is bucketed `vocab_mismatch` rather than silently
-  counted as "the model saw nothing." Caught by a test, after shipping the
-  bug: the first version compared against a hard-coded 'data-critical', so a
-  rollback to v6 would have logged every `destructive` verdict as unflagged.
-- Fail-open on any lfm2d error. In advisory mode that is correct and
-  invisible-by-design (the regex was always going to decide). In enforce
-  mode fail-open would be a silent downgrade to regex behaviour, which is
-  the house rule against silent fallbacks — hence `advisory_error` is
-  always logged, and enforce mode must decide this explicitly.
+Plan-first. `kaish_plan.py` runs `kaish --plan-file -` and renders each
+simple command in the resulting plan as one clause: canonically quoted
+argv, redirect operators and targets explicit, heredoc bodies stripped out
+of argv and tagged by kind, pipelines split into their members. That is
+the unit the deployed checkpoint is trained on.
+
+`clause_split.py` is the recorded FALLBACK for input kaish rejects. It
+cuts on top-level `&&`, `||`, `;`, `&` and newlines, and never inside
+quotes, substitutions or heredoc bodies — cutting there would fabricate a
+bare severe command out of data. It also does not split pipelines, which
+the plan path does, so the two paths produce different clause populations;
+`split_path` on every scored row is what keeps them separable.
+
+Neither path can be reached by exception. A raise anywhere in extraction
+would crash the hook before emit() and silently disable the regex guard,
+so every call site catches and records the failure by name instead.
+
+Routing is by clause count: one clause goes to /v1/classify; two through
+CASCADE_MAX_CLAUSES go to /v1/cascade, which ranks clauses WITHIN the
+statement instead of diluting the severe one across a long command; past
+that the row falls back to one batched /v1/classify, which keeps
+per-clause truth in the log without inventing a winner client-side. Plan
+clauses are deduped first — identical text scores identically, so
+duplicates are pure daemon work — then bounded by PLAN_MAX_CLAUSES, and
+both reductions are recorded on the row.
+
+WHAT GETS LOGGED
+----------------
+One JSONL row per Bash call: the command, the regex verdict, the lfm2d
+verdict, and a precomputed `disagree` bucket so analysis is a grep rather
+than a join. The buckets are agree_flag, agree_clear, regex_only,
+lfm2d_only, no_verdict, circuit_open and vocab_mismatch. `regex_only` is
+the false-positive pile; `lfm2d_only` is the recall pile.
+
+The label vocabulary is checked per call, never assumed. SEVERE_LABELS is
+what the buckets key on, and when the deployed checkpoint speaks none of
+them the row is bucketed `vocab_mismatch` rather than counted as "the
+model saw nothing" — the vocabulary belongs to the checkpoint and has
+changed wholesale before. No extra round trip is needed to notice: every
+/v1/classify response already carries the full label set in `scores`.
+
+KNOWN GAPS
+----------
+- The renderer is not pinned. LFM2D_KAISH_BIN defaults to whatever `kaish`
+  is on PATH, so a kaish upgrade changes how clauses render mid-stream.
+  That has happened, and it changed the argv rendering of a whole flag
+  family. A floor measured across that boundary is not comparable with one
+  measured after it; pin the binary or re-baseline deliberately.
+- No OpenTelemetry. The daemon is fully instrumented; this hook writes only
+  the local JSONL, so the disagreement data is readable only by opening a
+  file on the machine that produced it.
+- Command text leaves the machine and is written to disk — to the daemon
+  over whatever LFM2D_URL points at, and to a 0600 local log. Commands can
+  contain secrets. Weigh that before installing this everywhere.
+- The circuit breaker leaves holes. Skipped calls are logged as
+  `circuit_open` rows rather than omitted, so a quiet stretch is
+  distinguishable from a stretch where nothing was asked — but they are
+  still gaps when the log is mined as training signal.
+- The classifier is wrong in both directions on real shell text, and the
+  miss families are stable enough to name: bare build / test / run-script
+  forms and plain `git push` scoring as severe; shell-structure fragments
+  the fallback path hands it (`run() {`, `set -euo pipefail`); ordinary
+  English in an `echo` argument it has no anchor for; and verbs belonging
+  to programs the training corpus has never seen. Treat a firing as a
+  ranking signal, not as ground truth.
+- Data position is out of scope for this head by ruling: a severe command
+  quoted inside a benign carrier's argument reads as severe. Secret
+  detection belongs to the token-classification head and the routing
+  suite. The practical consequence to work around is that the REGEX guard
+  blocks on prose — write such a payload to a file and pass it by path
+  rather than reformulating the command.
+- The BLOCKED (git hygiene) rules are POLICY, not severity. Requiring
+  explicit paths instead of a stage-everything flag is a convention, and a
+  severity vocabulary cannot express it. The classifier is a candidate
+  replacement for the rm/find SOFT_BLOCKED and WARNED half only; do not
+  expect it to own the git half.
+- Fail-open on any lfm2d error is correct here and invisible by design,
+  because the regex was always going to decide. In an enforce mode the
+  same behavior would be a silent downgrade, which is the house rule
+  against silent fallbacks — hence `advisory_error` is always logged, and
+  an enforce mode must decide this explicitly.
 """
 import hashlib
 import json
