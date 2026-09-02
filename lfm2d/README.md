@@ -47,8 +47,10 @@ CLI flags, each with an env-var fallback (`clap`'s `env` feature):
 | `--classifier-dir` | `LFM2D_CLASSIFIER_DIR` | `Lfm2SequenceClassifier`-shaped checkpoint dir; backs `/predict`, `/v1/classify`, `/v1/cascade` |
 | `--router-dir` | `LFM2D_ROUTER_DIR` | Prompt-Router checkpoint dir; backs `/v1/route`, `/v1/cascade` |
 | `--token-classifier-dir` (repeatable) | `LFM2D_TOKEN_CLASSIFIER_DIR` (comma-separated) | `Lfm2TokenClassifier`-shaped checkpoint dir(s) — REPEATABLE, unlike the three heads above; backs `/v1/spans`, `/v1/spans/credentials` |
+| `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify` and `/v1/cascade`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
+| `--dtype` | `LFM2D_DTYPE` | `f32` (default), `f16` or `bf16`, for every head. Read the flag's own help before reaching for `f16`: these checkpoints ship f32 natively, so f16 is a real loss of resolution at ~1.6× latency, and `LFM2.5-Embedding-350M` ships bf16, where bf16→f16 can produce inf/0 rather than rounding. It is a memory lever, not a speed one |
 | `--cascade-route` (repeatable) | `LFM2D_CASCADE_ROUTES` (comma-separated) | Candidate routes for `/v1/cascade` — server-side config, not a request field |
-| `--cascade-severe-label` (repeatable) | `LFM2D_CASCADE_SEVERE_LABELS` (comma-separated) | Which classifier labels count toward the severity ranking sum; default `mutating,destructive` |
+| `--cascade-severe-label` (repeatable) | `LFM2D_CASCADE_SEVERE_LABELS` (comma-separated) | Which classifier labels count toward the severity ranking, **in ascending severity order — position is ordinal rank**. Default `mutating,destructive`, which is an old checkpoint's vocabulary; the deploy manifests pass `situation-normal,data-critical`. Duplicates are refused, and the resolved ranking is echoed at startup |
 | `--log-input-hash` | `LFM2D_LOG_INPUT_HASH` | `true`/`false`, must be spelled out (not a bare flag); default `false`. Attaches a hash of `/v1/spans`/`/v1/spans/credentials` request text — never the text itself — to that call's trace/log span; see "Observability" below |
 | `--socket-path` | `LFM2D_SOCKET_PATH` | Unix domain socket to serve on |
 | `--bind-addr` | `LFM2D_BIND_ADDR` | TCP address to serve on, e.g. `127.0.0.1:8088` |
@@ -60,7 +62,8 @@ of these are `clap` flags, they're read directly by the OTLP exporters and
 `main.rs`.
 
 At least one of `--socket-path`/`--bind-addr` and at least one of
-`--embedder-dir`/`--classifier-dir`/`--router-dir` are required — startup
+`--embedder-dir`/`--classifier-dir`/`--router-dir`/`--token-classifier-dir`
+are required — startup
 fails loudly (`exit 2`, config problem named) otherwise. Model loading
 itself is synchronous and happens before the socket is ever bound: a bad
 checkpoint path or an incompatible config also fails loudly at startup
@@ -139,11 +142,16 @@ takes singular `input` because it scores one text against many routes.
     "lane": {"route": "shell", "cosine": 0.91},
     "clauses": [
       {"index": 0, "clause": "...", "severity_scores": {"...": 0.9}, "top_severity": "informative"},
-      {"index": 1, "clause": "rm -rf .", "severity_scores": {"...": 0.9}, "top_severity": "destructive"}
+      {"index": 1, "clause": "rm -rf .", "severity_scores": {"...": 0.9}, "top_severity": "data-critical"}
     ],
     "models": [{"model_id": "...", "weight_hash": "..."}, {"model_id": "...", "weight_hash": "..."}]
   }
   ```
+  The label names above are one checkpoint's, shown to make the shape
+  readable — read the real ones from `GET /v1/models` at fire time, never
+  from this file. `models[0]` is always the severity classifier that
+  produced every `severity_scores` map; `models[1]` is the router that
+  produced `lane`.
   This handler does NOT reimplement `candle_lfm2_encoder::cascade`'s
   rank-by-severity-route-the-winner aggregation — it calls straight through
   to the library's `Cascade::run`. **No global severity cutoff exists by
@@ -172,17 +180,17 @@ takes singular `input` because it scores one text against many routes.
     would only create a second copy of it in every log this response
     passes through. Stricter than GCP DLP on purpose (DLP ships a
     no-matched-text mode as an option; here it's the only mode).
-  - **`score` is currently a constant `1.0` — not a calibrated
-    confidence.** `candle_lfm2_encoder::Lfm2TokenClassifier`'s public API
-    exposes a BIOES-decoded span (start/end/label) but no per-token
-    logits or softmax probability anywhere, unlike
-    `Lfm2SequenceClassifier::logits`'s sequence-classification
-    counterpart. Producing a real one would mean either duplicating that
-    file's private BIOES-decode + label-ordering logic here (which its
-    own module docs warn is exactly how a 161-wide output gets silently
-    mislabeled) or extending it — out of scope for the change this
-    shipped under (see "Problems noted, not fixed" below). **Do not
-    threshold or rank on this field today.**
+  - **`score` is the MINIMUM softmax probability across the span's
+    tokens**, passed straight through from `lfm2_encoder::Span::score`.
+    Minimum rather than mean because a span is a conjunction of per-token
+    decisions — it is wrong if any one token is wrong — so a single
+    coin-flip token inside an otherwise confident credential is exactly
+    the signal averaging would hide. **These numbers therefore read
+    systematically lower than tools that average** (Hugging Face's
+    grouped-entity pipeline) or that report a recognizer's own confidence
+    (Presidio); do not compare them across tools, and do not threshold
+    them against a fixed cutoff, same as every other number this API
+    returns.
 - `POST /v1/spans/credentials` — identical contract to `/v1/spans`, server-
   side filtered (via `Lfm2TokenClassifier::credentials`) to only the
   `credential.*` entity family. A separate endpoint, not a query flag on
@@ -250,6 +258,67 @@ only real standard here — is tensor-clunky and was deliberately not
 adopted. The span shape follows the PII-service convention (Presidio,
 Amazon Comprehend, GCP DLP) instead, which is the closest prior art for
 this job.
+
+## The advisory hook (`hooks/`)
+
+`hooks/` holds this repo's reference consumer: a `PreToolUse` Bash hook
+that scores every shell command through `/v1/cascade` and appends the
+comparison to a local JSONL. **It decides nothing.** The regex rules it
+carries make every outcome, byte-for-byte identically to the baseline
+guard it was cloned from — `test_parity.py` gates that on 33 cases, and
+the model's verdict is recorded beside the decision, never enforced.
+The point is to learn where the two disagree, and which one is right when
+they do.
+
+Clause extraction is **plan-first**. `kaish_plan.py` runs
+`kaish --plan-file -` and renders each simple command in the resulting
+plan as one clause: canonically quoted argv, redirect operators and
+targets explicit, heredoc bodies stripped out of argv and tagged by kind,
+pipelines split into their members. `clause_split.py` is the recorded
+fallback for input kaish rejects, and every scored row carries
+`split_path`, so the two populations stay separable and the live fallback
+rate is a count rather than a guess. Compound statements go to
+`/v1/cascade` (ranked within the statement); a single clause goes to
+`/v1/classify`; past a clause budget the row falls back to one batched
+`/v1/classify`, which keeps per-clause truth without inventing a winner
+client-side.
+
+`install.sh bootstrap` wires the hook on a machine that has never had one;
+`install.sh install` swaps a compatible existing regex hook for it and
+refuses when there is no baseline to gate parity against. The daemon
+endpoint is written into the installed command string from `LFM2D_URL`;
+the hook's own default is loopback, because a remote daemon is a
+machine's configuration and not the code's.
+
+Run the tests with `python3 lfm2d/hooks/test_<name>.py` — they are plain
+scripts that exit non-zero on failure, not a pytest suite.
+
+### Known gaps
+
+- **The renderer is not pinned.** `LFM2D_KAISH_BIN` defaults to whatever
+  `kaish` is on `PATH`, so a kaish upgrade changes how clauses render
+  mid-stream. That has already happened once, and it changed the argv
+  rendering of a whole flag family. A score floor measured across such a
+  boundary is not comparable with one measured after it: pin
+  `LFM2D_KAISH_BIN`, or re-baseline deliberately once the move is
+  accepted.
+- **The hook emits no OpenTelemetry.** The daemon is fully instrumented;
+  the hook writes only its local JSONL, so the disagreement data — the
+  entire product of the advisory phase — is readable only by opening a
+  file on the machine that produced it.
+- **Command text leaves the machine and is written to disk.** It goes to
+  the daemon over whatever `LFM2D_URL` points at, and to a `0600` local
+  log. Commands can contain secrets; weigh that before installing this
+  in every session on every machine.
+- **The circuit breaker leaves holes.** After repeated failures the hook
+  stops calling for a cooldown. Those skipped calls are logged as
+  `circuit_open` rows rather than omitted, so a quiet stretch is
+  distinguishable from a stretch where nothing was asked — but they are
+  still gaps when the log is mined as training signal.
+- **Enforce mode is deliberately unimplemented.** `LFM2D_HOOK_MODE=enforce`
+  prints a refusal and falls back to advisory. Wiring an untested
+  enforcement path and leaving it reachable is how a "temporary" mode
+  ships.
 
 ## Being a good k8s/k3s container citizen
 
@@ -333,13 +402,18 @@ Resource attributes: `service.name`
 (`OTEL_SERVICE_NAME`, default `lfm2d`), `service.version` (crate version),
 and `lfm2d.model.<kind>_hash` per loaded model — set once, from
 `main.rs`, AFTER models finish loading (weight hashes aren't known any
-earlier; see `src/telemetry.rs`'s module docs). Metrics: `lfm2d.worker.queue_depth`
-(observable gauge over an `AtomicUsize`, incremented on send, decremented
-when the worker picks a command up), `lfm2d.request.duration_ms` (histogram,
-by route+status), `lfm2d.inference.duration_ms` (histogram, by operation
-kind), `lfm2d.requests` (counter). Verified against a real OTLP/gRPC
-capture server with real checkpoints loaded (`kube_ordinal_v6` +
-`LFM2.5-Encoder-350M-Prompt-Router`): spans arrived correctly nested
+earlier; see `src/telemetry.rs`'s module docs). Metrics:
+`lfm2d.worker.queue_depth` (observable gauge over an `AtomicUsize`,
+incremented on send, decremented when the worker picks a command up),
+`lfm2d.request.duration` (histogram, by route+status),
+`lfm2d.inference.duration` (histogram, by operation kind), `lfm2d.requests`
+(counter), and `lfm2d.candidate.agreement` (counter, only when
+`--candidate-classifier-dir` is set). The two histograms carried a
+`_duration_ms` name until the OTel exporter's unit suffix made it
+`..._ms_milliseconds`; `src/telemetry.rs` is the source of truth for the
+name, and a running image may still be exporting the old one until it is
+rebuilt. Verified against a real OTLP/gRPC capture server with a
+classifier and the Prompt-Router loaded: spans arrived correctly nested
 (`http_request` parenting `worker_call`) carrying `queue_wait_ms`/
 `inference_ms`, all four metrics arrived, logs arrived with the effective
 config and per-model weight hashes, and SIGTERM still drained and exited 0
@@ -400,49 +474,33 @@ The task spec left a few things implicit; here's what was decided and why
    sidecar" (a general PII head plus a narrower secrets-only head, say) is
    a realistic deployment shape in a way that "N embedders" or "N routers"
    is not for this daemon's current consumers.
-5. **`/v1/spans`'s `score` field is a known-incomplete placeholder, not a
-   silently-wrong one.** See the API section's `/v1/spans` entry above and
-   `types::SpanResult::score`'s doc comment for the full reasoning: the
-   library's public `Lfm2TokenClassifier` surface has no per-token
-   probability to build a real confidence from, and reconstructing one
-   outside the library (by re-deriving its private BIOES decode / label
-   ordering) is exactly the class of bug that file's own module docs warn
-   against. Flagged to Amy rather than guessed at or silently shipped —
-   the fix is a small, additive library method
-   (`Lfm2TokenClassifier::token_probs` alongside the existing
-   `token_label_ids`), not an `lfm2d` change.
+5. **`/v1/spans`'s `score` is the weakest token, not the average.** A
+   span is a conjunction of per-token decisions, so its trustworthiness is
+   its weakest token's; averaging would hide the coin-flip token that
+   indicates a misplaced boundary. The consequence for a caller is that
+   these numbers are not comparable with other PII services' — see the
+   API section's `/v1/spans` entry and `types::SpanResult::score`'s doc
+   comment.
 
-## Problems noted, not fixed (scope-limited by the task)
+## Problems noted, not fixed
 
-- No dtype/device flag — always F32 on CPU (the library's verified path).
-  A `--dtype` flag would be a small addition if f16 throughput becomes
-  worth the ~1.6× latency tradeoff the parent crate's `f16-halves-memory`
-  finding documents.
-- No trunk sharing across heads (`Lfm2Trunk::load_shared` + `from_trunk`)
-  — each head loads its own trunk via `from_dir`. Correct for this
-  service's general case (independently-trained checkpoints don't share a
-  trunk), but a same-trunk deployment would pay for N trunks it doesn't
-  need to.
+- Each head loads its own trunk; there is no trunk sharing across heads.
+  This is not a gap to close in the general case — the base encoder and
+  the shipped Prompt-Router have 0 of 148 trunk tensors in common, and
+  only heads trained on a *common frozen trunk* can share one, which costs
+  measured accuracy. Budget memory per head.
 - The quadlet's `HealthCmd` only proves the binary still execs, not that
   `/healthz` answers — the runtime image ships no `curl`/`wget` on purpose
   (minimal image; see the Containerfile). A real HTTP healthcheck should
   run from OUTSIDE the container against `/healthz`/`/readyz`.
-- **Observed, not a code defect, but worth recording:** during live OTLP
-  verification, the endpoint an `otlp-mcp` tool call returned
-  (`127.0.0.1:36185`) accepted the TCP connection instantly but every
-  actual gRPC export (logs, then traces) timed out against it — even at a
-  20s `OTEL_EXPORTER_OTLP_TIMEOUT`, well past the 10s default — while the
-  standard OTLP/gRPC port (`4317`, also listening on this box) accepted
-  the exact same exporter code's traffic immediately and captured
-  everything (spans correctly parented, all four metrics, logs with the
-  effective config and weight hashes). Whatever the ephemeral port is
-  multiplexing, it wasn't reliably forwarding gRPC under this session's
-  conditions; `4317` was. Confirms the required behavior either way
-  (export failures against the flaky endpoint did NOT crash the daemon or
-  block SIGTERM's clean exit 0), but an operator pointing
-  `OTEL_EXPORTER_OTLP_ENDPOINT` at a genuinely reachable collector — which
-  `4317` was standing in for here — is a precondition this daemon can't
-  itself fix.
+- **An endpoint that accepts TCP is not an endpoint that forwards gRPC.**
+  During live OTLP verification a port that connected instantly timed out
+  every actual export, even at a 20 s `OTEL_EXPORTER_OTLP_TIMEOUT`, while
+  the standard OTLP/gRPC port on the same box captured everything from the
+  identical exporter code. The daemon behaved correctly either way — the
+  failed exports neither crashed it nor blocked SIGTERM's clean exit 0 —
+  but pointing `OTEL_EXPORTER_OTLP_ENDPOINT` at a genuinely reachable
+  collector is a precondition this daemon cannot check for you.
 - `WorkerHandle::spawn_crash_on_panic`'s monitor mechanism is proven
   end-to-end via `tests/worker_crash_monitor.rs`, but that test needs a
   `LFM2D_TEST_CRASH_ON_WORKER_PANIC`-gated stub-engine branch in `main.rs`
@@ -450,10 +508,6 @@ The task spec left a few things implicit; here's what was decided and why
   decision logic (`worker_thread_outcome_is_a_crash`) is ALSO unit-tested
   directly, so the crash-vs-clean-exit distinction has a fast, model-free
   test in addition to the slower real-binary one.
-- **`/v1/spans`'s `score` is a constant `1.0`, not a real confidence** —
-  see "Judgment calls worth knowing about" item 5 above. Do not build a
-  consumer that thresholds or ranks on this field until it's backed by a
-  real per-token probability.
 - **`lfm2d.model.token_classifier_hash` collides across 2+ token
   classifiers.** `telemetry::resource()` sets one OTLP resource attribute
   per LOADED KIND (`lfm2d.model.<kind>_hash`), a scheme that predates

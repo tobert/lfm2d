@@ -21,8 +21,18 @@ Upstream candle-transformers implements the *causal* LFM2
 
 ## Status
 
-**Milestone 2 done: the bidirectional trunk runs and matches the
-reference.** `Lfm2Trunk` reproduces LiquidAI's own
+**Every head in the table above runs, and each has a parity test against
+the reference implementation**: the trunk, pooled embedding, ColBERT late
+interaction, token classification (PII and credential spans), sequence
+routing, and sequence classification. The parity suites under `tests/` are
+what keep those claims honest — each compares against activations dumped
+from real weights by the matching script in `tests/reference/`.
+
+Sequence classification is also the substrate for the fine-tuned severity
+heads this repo trains (`training/README.md`), and the heads are served
+over HTTP by the `lfm2d` daemon in this workspace.
+
+`Lfm2Trunk` reproduces LiquidAI's own
 `modeling_lfm2_bidirectional.py` to max|Δ| ≈ 4.6e-5 on f32 CPU, verified
 against activations dumped from the real Embedding-350M weights
 (`tests/reference/dump_trunk_reference.py`, transformers 4.56.2).
@@ -95,8 +105,6 @@ has no mask token at all), `[Q]`/`[D]` are **real vocab ids** 64400/64401
 — which is why its vocab is 64402 rather than the family's 65536 —
 expansion tokens are masked as attention *keys* yet still emitted as
 vectors, and documents drop punctuation vectors via a 32-id skiplist.
-
-Next heads: token classification (PII/secrets) → routing/rule-matching.
 
 ## This embedding model is asymmetric
 
