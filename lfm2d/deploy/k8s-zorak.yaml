@@ -190,6 +190,38 @@ spec:
             - --cascade-severe-label=situation-normal
             - --cascade-severe-label=data-critical
             - --bind-addr=0.0.0.0:8088
+            # MEASURED on zorak 2026-09-05 with the shipped 0.1.3 image, the
+            # live head + Prompt-Router, and the 5-clause cascade the advisory
+            # hook actually sends. Interleaved 8/32/8/32 runs to cancel drift
+            # on a box that was busy with llama-bench at load ~10:
+            #
+            #   threads   p50 ms          cpu-sec per cascade   effective cores
+            #   32        858 831 867     10.15 10.11 10.38     ~12
+            #   16        700              5.76                 ~8
+            #   8         728 756 798      3.33  3.48  3.67     ~4.5
+            #   4         919              2.75                 ~2.9
+            #
+            # The default is std::thread::available_parallelism() = 32 here,
+            # and 32 is worse on BOTH axes: ~15% SLOWER than 8 while burning
+            # 3x the CPU for the same answer. This is not a latency-for-CPU
+            # trade, it is over-parallelization — the per-clause matmuls are
+            # small enough that rayon's coordination costs more than the extra
+            # width wins, and on a contended box the wide pass cannot get its
+            # cores anyway. 4 threads is where it finally does turn into a
+            # trade (919 ms), so 8 is the floor of the flat region, not a
+            # random pick.
+            #
+            # Effect on the pod: ~12 cores per request burst -> ~4.5, and at
+            # the measured ~5.7 inference ops/min that is ~1.1 cores steady
+            # -> ~0.37. Idle is 0.000 cores either way (verified: all 70
+            # threads sleeping across five samples; nothing busy-waits).
+            #
+            # This does NOT fix the advisory breaker under burst. One serial
+            # inference worker means throughput is 1/latency — ~1.2 req/s at
+            # 32 threads, ~1.4 at 8 — while the 2026-09-03 fan-out drove 3.25
+            # req/s. It buys ~18% headroom, not a solution; rate limiting on
+            # the caller side is still the answer there.
+            - --threads=8
           ports:
             - containerPort: 8088
           env:
