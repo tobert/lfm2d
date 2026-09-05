@@ -66,14 +66,43 @@ spec:
           # A real version, never `:latest`. `:latest` + IfNotPresent is
           # exactly how the situation above went unnoticed for a day.
           #
-          # Running imageID digest for 0.1.2, read back off the pod:
-          #   sha256:e9c494f4a2e1a826a1275cbc63254b39187738f77094c12938c978a0c59d2ed8
-          # (0.1.1 was sha256:de4c3418…; 0.1.0 sha256:9259e4c0… — rollback
-          # targets, both still in the registry.)
+          # Running imageID digest for 0.1.3, read back off the pod:
+          #   sha256:2805f1d94785b49f123a3d544b7ca505311bddd9c21d8c14a2db3666c691d332
+          # (0.1.2 was sha256:e9c494f4…; 0.1.1 sha256:de4c3418…; 0.1.0
+          # sha256:9259e4c0… — rollback targets, all still in the registry.)
           # Bump this comment WITH the tag — a digest recorded next to a
           # different version is worse than no digest, because it reads as
           # verified. It went stale within one deploy of being written.
-          image: 192.168.1.2:3000/amy/lfm2d:0.1.2
+          #
+          # Take the digest from the POD, never from `podman inspect`: the
+          # local 0.1.2 manifest digest reads sha256:eede5b27… while the
+          # cluster reported sha256:e9c494f4… for the same tag. The pod is
+          # what is actually running.
+          #
+          # 0.1.3 (2026-09-05) is a CATCH-UP release: the running 0.1.2 was
+          # built at 28d927a on 2026-08-11 and five daemon commits landed
+          # after it. No args change, no memory change, no new behavior
+          # unless a flag is added. What it brings:
+          #   * the resolved cascade severity ranking is echoed at startup,
+          #     so the ORDER-IS-SEMANTIC note below is verifiable in the log
+          #     rather than by reading this file;
+          #   * duration metric names lose their doubled unit suffix —
+          #     lfm2d_*_duration_ms_milliseconds_* becomes
+          #     lfm2d_*_duration_milliseconds_*. BREAKING for queries, and
+          #     taken now because it is still free: checked live in
+          #     VictoriaMetrics on deploy day, 8 lfm2d series, zero alert or
+          #     recording rules, no Grafana in the cluster;
+          #   * --dtype (f32 default / f16 / bf16), refusing to start on a
+          #     dtype it cannot compute in — a memory lever, unused here;
+          #   * --candidate-classifier-dir, which scores a SECOND classifier
+          #     shadow-only on every /v1/classify and /v1/cascade and never
+          #     changes a response byte. Deliberately NOT set below: it is a
+          #     4th resident trunk (~+1.4 GiB, so the 6Gi request would need
+          #     to grow) and it roughly doubles classify work on the one
+          #     serial worker, which the burst behaviour cannot absorb
+          #     today. Turn it on the day a v10.1 candidate exists, and bump
+          #     the memory request in the same edit.
+          image: 192.168.1.2:3000/amy/lfm2d:0.1.3
           imagePullPolicy: IfNotPresent
           args:
             # kube_ordinal_v9 — Amy's straight-cutover call 2026-08-16:
