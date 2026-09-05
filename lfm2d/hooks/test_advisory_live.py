@@ -232,6 +232,19 @@ def test_log_row_is_complete(_c):
     ok = not missing and r['command'] == 'rm -rf ./build' and 'latency_ms' in r['lfm2d']
     check('log row is complete', ok, f'missing={missing} row={r}')
 
+    # The plan's verb/redirect facts must reach the LOG, not just the
+    # process. Without them an offline read has to re-derive a verb by
+    # splitting text on whitespace, which is the second parser the plan
+    # path exists to remove.
+    plan = (r.get('lfm2d') or {}).get('plan') or {}
+    if plan.get('clauses_planned'):
+        cmds = plan.get('commands')
+        named = [c for c in (cmds or []) if c.get('name')]
+        check('log row carries plan command facts',
+              (isinstance(cmds, list), bool(named),
+               all('clause_index' in c and 'redirects' in c for c in (cmds or []))),
+              (True, True, True))
+
 
 def test_disagreement_buckets_are_right(_c):
     """Characterization test against the DEPLOYED checkpoint. If this fails

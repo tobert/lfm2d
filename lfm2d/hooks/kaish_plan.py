@@ -82,6 +82,49 @@ def _heredoc_kind(name: str, redirect_kinds: list) -> str:
     return 'other'
 
 
+def _command_facts(c: dict) -> dict:
+    """The structured fields a caller needs to decide something about a
+    clause WITHOUT re-parsing the text it was just handed.
+
+    Rendered clause text is the training unit and stays exactly as it was.
+    These ride alongside it for the escalation cascade's static stages:
+    `echo restored` scoring data-critical is dismissible only if the caller
+    can see both that the verb is `echo` AND that nothing redirects, and
+    `echo restored` vs `echo restored > /etc/shadow` differ by precisely
+    that. Matching the rendered string instead is the prose-reading failure
+    this module exists to avoid.
+
+    Never raises and never guesses: a shape we cannot read becomes None or
+    an empty list, never an invented value. Rows with no simple command
+    (a pure assignment, a statement-level fallback) carry the keys with
+    empty values rather than omitting them, so no consumer needs a
+    KeyError guard to ask a question every row can answer.
+    """
+    args = []
+    for a in c.get('args') or []:
+        if isinstance(a, dict) and isinstance(a.get('plain'), str):
+            args.append(a['plain'])
+
+    redirects = []
+    for r in c.get('redirects') or []:
+        if not isinstance(r, dict):
+            continue
+        kind = r.get('kind') or None
+        target = (r.get('target') or {}).get('plain') if isinstance(r.get('target'), dict) else None
+        if not isinstance(target, str):
+            target = None
+        # fd-dup forms (2>&1) encode the destination in the kind, and kaish
+        # still emits a placeholder target for them. Passing it through
+        # would hand a static check a redirect that reads as "writes a file
+        # named null". Discriminate on the KIND, never the target's
+        # spelling — `echo hi > null` is a real file and keeps its target.
+        if kind and '&' in kind:
+            target = None
+        redirects.append({'kind': kind, 'target': target})
+
+    return {'name': c.get('name') or None, 'args': args, 'redirects': redirects}
+
+
 def _render_command(c: dict):
     """One simple command as clause text, or None when the plan's args
     carry a shape we don't know how to render faithfully (no `plain`
@@ -122,6 +165,7 @@ def plan_clauses(cmd: str) -> dict:
     """Plan `cmd` and return clause rows. ALWAYS has 'ok'.
 
     ok=True  -> 'clauses': non-empty list of {'text', 'stmt_index',
+                'name', 'args', 'redirects' (see _command_facts),
                 'heredoc': {'delimiter','literal','kind'} | None,
                 'stmt_fallback': bool}, 'statement_count': int.
     ok=False -> 'error' in {'empty', 'kaish_missing', 'timeout',
@@ -180,14 +224,16 @@ def _extract(doc: dict, returncode: int) -> dict:
             rendered = plan.get('rendered')
             if rendered:
                 clauses.append({'text': rendered, 'stmt_index': stmt.get('index'),
-                                'heredoc': None, 'stmt_fallback': False})
+                                'heredoc': None, 'stmt_fallback': False,
+                                **_command_facts({})})
             continue
         rendered_cmds = [_render_command(c) for c in commands]
         if any(r is None for r in rendered_cmds):
             # An arg shape we can't render faithfully: score the whole
             # statement as kaish rendered it rather than a lossy guess.
             clauses.append({'text': plan.get('rendered') or '', 'stmt_index': stmt.get('index'),
-                            'heredoc': None, 'stmt_fallback': True})
+                            'heredoc': None, 'stmt_fallback': True,
+                            **_command_facts({})})
             continue
         for c, text in zip(commands, rendered_cmds):
             heredocs = c.get('heredocs') or []
@@ -201,7 +247,8 @@ def _extract(doc: dict, returncode: int) -> dict:
                                           [r.get('kind') for r in c.get('redirects') or []]),
                 }
             clauses.append({'text': text, 'stmt_index': stmt.get('index'),
-                            'heredoc': tag, 'stmt_fallback': False})
+                            'heredoc': tag, 'stmt_fallback': False,
+                            **_command_facts(c)})
 
     clauses = [c for c in clauses if c['text'].strip()]
     if not clauses:

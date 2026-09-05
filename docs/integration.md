@@ -64,17 +64,45 @@ controls unchanged and record that it skipped — never block on the
 daemon's availability. (The daemon itself has been down for 21-hour
 stretches; a guard that denied on outage would have frozen every seat.)
 
+**7. There is no global score threshold, and one cannot be calibrated.**
+Rank clauses WITHIN a statement; never compare a score against a fixed
+cutoff to decide anything. Measured on real traffic: the highest-scoring
+benign clause reached **0.3415** while the lowest-scoring genuinely
+data-critical one sat at **0.3440** — the bands touch, so every cutoff
+buys a false positive for each true one it catches. The reason is
+structural rather than a calibration bug: the axis the head actually
+learned is corpus familiarity, not danger. v8 scored `rm -rf /` at
+**0.404** and `git reset --hard` at **0.991**, and a `.md` target
+suppresses the score even on a path like `/etc/shadow`. `/v1/cascade`
+exists to do the supported operation — rank the clauses of one statement
+against each other and name a winner — and a consumer that escalates on
+the winner's LABEL inherits that ranking instead of inventing a cutoff
+the model cannot support. Prior calibration (`tau`) moves where the
+argmax falls; it does not create a threshold that separates the classes.
+
 ## Operational numbers (measured, dated — re-measure before designing on them)
 
-- **Latency** (2026-08-13, server-side): `/v1/classify` p50 ~110 ms,
-  p99 250–750 ms; `/v1/cascade` p50 ~720 ms on real multi-clause
-  commands. A 5 s client timeout is comfortable; sub-second is not.
-- **Escalate volume under an ordinal mapping** (2026-08-24, 10,751 real
-  cascade rows, v9_cal era): winners are 31.6% `informative`, 56.9%
-  `situation-normal`, 11.5% `data-critical`. An ordinal policy that
-  auto-allows only index 0 prompts a human on **68.4% of commands** —
-  run new consumers in log-only mode first (Amy's standing ruling).
-- **Precision context**: on live traffic the `data-critical` argmax has
-  run at a ~5% precision ceiling (v8-era read; v9_cal's noise profile is
-  in `training/v10/PLAN.md`). Treat a firing as a ranking signal to
-  enrich a prompt, not as ground truth.
+- **Latency** (2026-09-05, server-side, `--threads=8`): `/v1/classify`
+  ~90 ms on a short single input; `/v1/cascade` p50 **673–727 ms** warm on
+  a 5-clause statement, and p50 **746 ms** across a day of real hook
+  traffic. A 5 s client timeout is comfortable; sub-second is not. The
+  daemon serves through ONE serial inference worker, so concurrent callers
+  queue rather than parallelise — throughput is ~1.4 req/s, and a caller
+  that fans out past that backlogs everyone behind it.
+- **Escalate volume** (2026-09-05, 1,224 real advisory rows over 24 h,
+  `kube_ordinal_v10`): winners are **55.6% `informative`, 42.8%
+  `situation-normal`, 1.10% `data-critical`**. So a policy that escalates
+  only on `data-critical` fires on ~15 statements a day, and one that
+  auto-allows only `informative` prompts on **43.9%** of commands.
+  **These numbers moved a lot with the checkpoint** — the v9_cal-era read
+  (2026-08-24, 10,751 rows) was 31.6 / 56.9 / **11.5%**, so data-critical
+  fell 10x when v10 shipped. Re-measure against the deployed head; do not
+  size a desk or a budget off a number from another checkpoint.
+- **Precision context**: on live traffic most `data-critical` firings are
+  still false positives. Of the ~15 in the 24 h read, ~9 fell in known
+  families (`echo restored`/`echo stopped` ×6, `set -euo` ×2, git
+  branch-read forms ×2) and only `rm -f` and `sudo -n` were arguably
+  correct. Treat a firing as a ranking signal to enrich a prompt, not as
+  ground truth — and expect a static post-filter on the winning clause's
+  verb and redirects to remove most of the volume before it reaches a
+  human or an adjudicator.

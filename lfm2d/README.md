@@ -282,6 +282,25 @@ rate is a count rather than a guess. Compound statements go to
 `/v1/classify`; past a clause budget the row falls back to one batched
 `/v1/classify`, which keeps per-clause truth without inventing a winner
 client-side.
+Each planned clause also carries the **structured facts** behind its text
+— `name` (the verb), `args`, and `redirects` as `{kind, target}` — so a
+caller can decide something about a clause without re-parsing the string
+it was just handed. This exists for the escalation pattern where a static
+check runs *after* the classifier: `echo restored` scoring data-critical
+is dismissible only if the caller can see both that the verb is `echo`
+and that nothing redirects, and `echo restored` vs `echo restored >
+/etc/shadow` differ by exactly that. Matching the rendered text instead
+is the prose-reading mistake the plan path exists to remove. The logged
+row carries `plan.commands[]` (verb + redirects per sent clause, indexed
+the way `heredocs` is); `args` is left out of the log because it is
+already in `text` verbatim and would be most of the added bytes.
+
+One trap the facts handle: an fd-dup like `2>&1` encodes its destination
+in the *kind*, and kaish still emits a placeholder target for it. Passed
+through raw, a consumer would see a redirect that reads as "writes a file
+named `null`". The target is nulled when the kind contains `&`, and a
+real file — `echo hi > null` — keeps its target. The discriminator is the
+kind, never the target's spelling.
 
 `install.sh bootstrap` wires the hook on a machine that has never had one;
 `install.sh install` swaps a compatible existing regex hook for it and
@@ -292,6 +311,10 @@ machine's configuration and not the code's.
 
 Run the tests with `python3 lfm2d/hooks/test_<name>.py` — they are plain
 scripts that exit non-zero on failure, not a pytest suite.
+`test_advisory_live.py` needs a reachable daemon and refuses to skip
+rather than reporting green while testing nothing, so point it at one:
+`LFM2D_URL=http://<host>:8088 python3 lfm2d/hooks/test_advisory_live.py`.
+Its defaults are loopback, like the hook's.
 
 ### Known gaps
 
@@ -486,6 +509,18 @@ The task spec left a few things implicit; here's what was decided and why
    these numbers are not comparable with other PII services' — see the
    API section's `/v1/spans` entry and `types::SpanResult::score`'s doc
    comment.
+
+6. **No observe-only endpoint.** Asked for a way to report actions a
+   consumer handled WITHOUT scoring them — read-only calls that bypass the
+   daemon — so coverage is countable. Deliberately not added: an endpoint
+   that records without scoring turns a model server into an event sink,
+   a different service with different retention and scaling properties,
+   and the right sink already exists. This daemon exports traces, metrics
+   AND logs over OTLP (see Observability), so a consumer should emit its
+   bypassed actions as spans carrying the attributes it would have sent,
+   marked `lfm2d.skipped=read_only`. Scored and unscored actions then live
+   in one store, coverage accounting is a query rather than a second write
+   path, and lfm2d keeps one job.
 
 ## Problems noted, not fixed
 

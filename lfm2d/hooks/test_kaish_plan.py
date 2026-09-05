@@ -172,6 +172,63 @@ def main():
         check('non-dict command fails closed',
               (r['ok'], r['error'].startswith('extract:')), (False, True))
 
+    # -- structured command facts: what a static check needs so it does not
+    # have to re-parse the clause text it was just handed. The escalation
+    # cascade (kaish plan -> static checks -> classifier -> static checks on
+    # classifier data -> adjudicator) makes its fourth stage out of these:
+    # `echo restored` scoring data-critical is dismissible ONLY if the caller
+    # can see that the verb is `echo` AND that nothing redirects. Text alone
+    # cannot carry that safely -- `echo restored` and `echo restored >
+    # /etc/shadow` differ by a redirect, and matching on the rendered string
+    # is the prose-reading failure this module exists to avoid.
+    r = plan_clauses('cat README.md')
+    c = r['clauses'][0]
+    check('facts: name', c['name'], 'cat')
+    check('facts: args', c['args'], ['README.md'])
+    check('facts: no redirects', c['redirects'], [])
+
+    r = plan_clauses('echo hi > /etc/hosts')
+    c = r['clauses'][0]
+    check('facts: redirect name', c['name'], 'echo')
+    check('facts: redirect args', c['args'], ['hi'])
+    check('facts: redirect captured structurally',
+          c['redirects'], [{'kind': '>', 'target': '/etc/hosts'}])
+
+    # An fd-dup carries its destination INSIDE the kind, and kaish emits a
+    # placeholder target for it. Passing that placeholder through would hand
+    # stage 4 a redirect that looks like it writes a file named `null` --
+    # same discriminator `_render_command` uses, applied to the facts.
+    r = plan_clauses('make 2>&1')
+    c = r['clauses'][0]
+    check('facts: fd-dup target is not a filename',
+          [x['target'] for x in c['redirects']], [None])
+    check('facts: fd-dup kind kept', [x['kind'] for x in c['redirects']], ['2>&1'])
+
+    # A real file named `null` must NOT be confused with the placeholder.
+    r = plan_clauses('echo hi > null')
+    c = r['clauses'][0]
+    check('facts: real file named null survives',
+          c['redirects'], [{'kind': '>', 'target': 'null'}])
+
+    # Every row carries the keys, including the shapes that have no command
+    # to describe -- a consumer must never need a KeyError guard.
+    for cmd in ('cat README.md', 'X=1', 'ls | wc -l', 'cat <<EOF\nbody\nEOF'):
+        r = plan_clauses(cmd)
+        if not r.get('ok'):
+            check(f'facts: keys present for {cmd!r} (plan ok)', r.get('ok'), True)
+            continue
+        missing = [k for row in r['clauses'] for k in ('name', 'args', 'redirects')
+                   if k not in row]
+        check(f'facts: all keys present for {cmd!r}', missing, [])
+
+    # The pure-assignment row has no command, so its facts are empty rather
+    # than absent or guessed.
+    r = plan_clauses('X=1')
+    if r.get('ok'):
+        c = r['clauses'][0]
+        check('facts: assignment has no verb', (c['name'], c['args'], c['redirects']),
+              (None, [], []))
+
     print()
     if FAILURES:
         print(f'FAILED: {len(FAILURES)} case(s): {FAILURES}')

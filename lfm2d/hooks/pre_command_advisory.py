@@ -746,6 +746,25 @@ def main():
                         {'clause_index': i, **c['heredoc']}
                         for i, c in enumerate(clause_rows) if c.get('heredoc')
                     ],
+                    # Verb and redirect shape per SENT clause, indexed the
+                    # same way heredocs are. The clause text carries these
+                    # too, but only as text: recovering "does this redirect,
+                    # and where" from the rendered string means re-parsing
+                    # it, which is the prose-reading mistake kaish_plan
+                    # exists to avoid. Recorded so an offline read can ask
+                    # "which verbs won a cascade, and did any of them write"
+                    # without a second parser -- that question had to be
+                    # answered by splitting text on whitespace as recently
+                    # as today. `args` is deliberately NOT logged: it is
+                    # already in `text` verbatim and would be most of the
+                    # added bytes. Rows with nothing to say (a pure
+                    # assignment, a statement-level fallback) are omitted,
+                    # exactly as heredocs are.
+                    'commands': [
+                        {'clause_index': i, 'name': c['name'], 'redirects': c['redirects']}
+                        for i, c in enumerate(clause_rows)
+                        if c.get('name') or c.get('redirects')
+                    ],
                 }
             else:
                 split_path = 'clause_split'
