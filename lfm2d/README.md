@@ -47,7 +47,7 @@ CLI flags, each with an env-var fallback (`clap`'s `env` feature):
 | `--classifier-dir` | `LFM2D_CLASSIFIER_DIR` | `Lfm2SequenceClassifier`-shaped checkpoint dir; backs `/predict`, `/v1/classify`, `/v1/cascade` |
 | `--router-dir` | `LFM2D_ROUTER_DIR` | Prompt-Router checkpoint dir; backs `/v1/route`, `/v1/cascade` |
 | `--token-classifier-dir` (repeatable) | `LFM2D_TOKEN_CLASSIFIER_DIR` (comma-separated) | `Lfm2TokenClassifier`-shaped checkpoint dir(s) — REPEATABLE, unlike the three heads above; backs `/v1/spans`, `/v1/spans/credentials` |
-| `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify` and `/v1/cascade`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
+| `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify` and `/v1/cascade`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter (or, on a failed candidate pass, a failure counter) and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
 | `--dtype` | `LFM2D_DTYPE` | `f32` (default), `f16` or `bf16`, for every head. Read the flag's own help before reaching for `f16`: these checkpoints ship f32 natively, so f16 is a real loss of resolution at ~1.6× latency, and `LFM2.5-Embedding-350M` ships bf16, where bf16→f16 can produce inf/0 rather than rounding. It is a memory lever, not a speed one |
 | `--cascade-route` (repeatable) | `LFM2D_CASCADE_ROUTES` (comma-separated) | Candidate routes for `/v1/cascade` — server-side config, not a request field |
 | `--cascade-severe-label` (repeatable) | `LFM2D_CASCADE_SEVERE_LABELS` (comma-separated) | Which classifier labels count toward the severity ranking, **in ascending severity order — position is ordinal rank**. Default `mutating,destructive`, which is an old checkpoint's vocabulary; the deploy manifests pass `situation-normal,data-critical`. Duplicates are refused, and the resolved ranking is echoed at startup |
@@ -407,8 +407,13 @@ earlier; see `src/telemetry.rs`'s module docs). Metrics:
 incremented on send, decremented when the worker picks a command up),
 `lfm2d.request.duration` (histogram, by route+status),
 `lfm2d.inference.duration` (histogram, by operation kind), `lfm2d.requests`
-(counter), and `lfm2d.candidate.agreement` (counter, only when
-`--candidate-classifier-dir` is set). The two histograms carried a
+(counter), and the shadow-classifier pair `lfm2d.candidate.agreement` /
+`lfm2d.candidate.failure` (counters, only when
+`--candidate-classifier-dir` is set). Read those two together: a candidate
+forward-pass failure never reaches the caller, but it IS counted, because
+agreement over an unknown denominator is not a measurement — a candidate
+failing systematically would otherwise read as near-perfect agreement over
+a shrinking set of successes. The two histograms carried a
 `_duration_ms` name until the OTel exporter's unit suffix made it
 `..._ms_milliseconds`; `src/telemetry.rs` is the source of truth for the
 name, and a running image may still be exporting the old one until it is

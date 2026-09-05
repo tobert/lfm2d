@@ -265,6 +265,37 @@ pub fn record_candidate_agreement(primary_id: &str, candidate_id: &str, primary_
         .add(1, &attrs);
 }
 
+/// Shadow-classifier forward passes that FAILED, counted separately from
+/// [`record_candidate_agreement`].
+///
+/// The candidate's verdict is still discarded and the caller's response is
+/// still byte-identical — but the failure is not silent, because an
+/// agreement count without the denominator it was computed over is not a
+/// measurement. A candidate that fails systematically would otherwise read
+/// as high agreement over a quietly shrinking set of successes, and that is
+/// the number a checkpoint-promotion decision rests on.
+///
+/// The error string is LOGGED, never used as a metric attribute — an error
+/// message is unbounded cardinality, the same reasoning `--log-input-hash`
+/// gives for keeping unbounded values out of labels.
+pub fn record_candidate_failure(primary_id: &str, candidate_id: &str, error: &str) {
+    tracing::warn!(
+        primary_model = %primary_id,
+        candidate_model = %candidate_id,
+        error = %error,
+        "shadow classifier forward pass failed; candidate verdict discarded, primary response unaffected"
+    );
+    let attrs = [
+        KeyValue::new("primary_model", primary_id.to_string()),
+        KeyValue::new("candidate_model", candidate_id.to_string()),
+    ];
+    meter()
+        .u64_counter("lfm2d.candidate.failure")
+        .with_description("Shadow-classifier forward passes that failed; these are MISSING from lfm2d.candidate.agreement")
+        .build()
+        .add(1, &attrs);
+}
+
 /// Register the queue-depth observable gauge over `queue_depth` — called
 /// once from `main.rs` right after [`crate::worker::WorkerHandle::spawn_crash_on_panic`]
 /// returns a handle (the [`std::sync::Arc<std::sync::atomic::AtomicUsize>`]

@@ -319,6 +319,28 @@ fn scores_and_top(labels: &[String], probs: &[f32]) -> (std::collections::BTreeM
     (map, top.0)
 }
 
+/// One shadow-classifier observation, derived from the candidate head's
+/// forward-pass result.
+///
+/// Extracted from the shadow passes in `classify`/`cascade` so the
+/// swallow-vs-record decision has a fast, model-free test rather than one
+/// that needs a checkpoint engineered to fail — the same shape
+/// `worker_thread_outcome_is_a_crash` uses for the crash-vs-clean-exit
+/// decision. The `Err` arm must produce a [`ShadowObservation::Failure`],
+/// never nothing: see `candidate_failure_is_observed_not_swallowed`.
+#[derive(Debug, PartialEq, Eq)]
+enum ShadowObservation {
+    Agreement { candidate_top: String },
+    Failure { error: String },
+}
+
+fn shadow_observation<E: std::fmt::Display>(labels: &[String], probs: Result<Vec<f32>, E>) -> ShadowObservation {
+    match probs {
+        Ok(probs) => ShadowObservation::Agreement { candidate_top: scores_and_top(labels, &probs).1 },
+        Err(e) => ShadowObservation::Failure { error: e.to_string() },
+    }
+}
+
 impl InferenceEngine for RealEngine {
     fn list_models(&self) -> Vec<ModelInfo> {
         let mut out = Vec::new();
@@ -411,15 +433,20 @@ impl InferenceEngine for RealEngine {
             })
             .collect();
         // SHADOW pass: scores the same inputs against candidate_classifier
-        // (if configured) purely for a local agreement counter, never
-        // touching `out`. A candidate forward-pass failure is swallowed,
-        // not propagated -- an experimental second head must never turn
-        // into a caller-visible error the primary classifier didn't have.
+        // (if configured) purely for local counters, never touching `out`.
+        // A candidate forward-pass failure is not propagated -- an
+        // experimental second head must never turn into a caller-visible
+        // error the primary classifier didn't have -- but it IS counted,
+        // because agreement without its denominator is not a measurement.
         if let (Ok(primary), Some((cand_model, cand_meta))) = (&out, &self.candidate_classifier) {
             for (text, result) in inputs.iter().zip(primary) {
-                if let Ok(probs) = cand_model.predict(text) {
-                    let (_, cand_top) = scores_and_top(cand_model.labels(), &probs);
-                    crate::telemetry::record_candidate_agreement(&meta.id, &cand_meta.id, &result.top, &cand_top);
+                match shadow_observation(cand_model.labels(), cand_model.predict(text)) {
+                    ShadowObservation::Agreement { candidate_top } => {
+                        crate::telemetry::record_candidate_agreement(&meta.id, &cand_meta.id, &result.top, &candidate_top)
+                    }
+                    ShadowObservation::Failure { error } => {
+                        crate::telemetry::record_candidate_failure(&meta.id, &cand_meta.id, &error)
+                    }
                 }
             }
         }
@@ -476,11 +503,16 @@ impl InferenceEngine for RealEngine {
 
         // SHADOW pass on the winning clause only -- that's the text
         // cascade's decision actually hinges on. Same discipline as
-        // `classify`: swallowed on failure, never touches the response.
+        // `classify`: a failure is counted, not propagated, and never
+        // touches the response.
         if let Some((cand_model, cand_meta)) = &self.candidate_classifier {
-            if let Ok(probs) = cand_model.predict(&winner_row.clause) {
-                let (_, cand_top) = scores_and_top(cand_model.labels(), &probs);
-                crate::telemetry::record_candidate_agreement(&classifier_meta.id, &cand_meta.id, &winner_top, &cand_top);
+            match shadow_observation(cand_model.labels(), cand_model.predict(&winner_row.clause)) {
+                ShadowObservation::Agreement { candidate_top } => {
+                    crate::telemetry::record_candidate_agreement(&classifier_meta.id, &cand_meta.id, &winner_top, &candidate_top)
+                }
+                ShadowObservation::Failure { error } => {
+                    crate::telemetry::record_candidate_failure(&classifier_meta.id, &cand_meta.id, &error)
+                }
             }
         }
 
@@ -514,5 +546,38 @@ impl InferenceEngine for RealEngine {
             .map(|text| Ok(clf.credentials(text).map_err(WorkerError::from)?.into_iter().map(to_wire_span).collect()))
             .collect::<Result<Vec<_>, WorkerError>>()?;
         Ok(SpansOutcome { per_input, model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels() -> Vec<String> {
+        ["informative", "situation-normal", "data-critical"].iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The regression this guards: the shadow pass was
+    /// `if let Ok(probs) = cand_model.predict(text)`, so a candidate
+    /// forward-pass failure produced NO record at all. The agreement
+    /// counter then measures agreement over the candidate's SUCCESSES, and
+    /// a candidate failing systematically reads as high agreement over a
+    /// silently shrinking denominator — which is exactly the number a
+    /// checkpoint-promotion decision would rest on. An `Err` must produce
+    /// an observation.
+    #[test]
+    fn candidate_failure_is_observed_not_swallowed() {
+        let obs = shadow_observation::<String>(&labels(), Err("tensor shape mismatch".to_string()));
+        assert_eq!(
+            obs,
+            ShadowObservation::Failure { error: "tensor shape mismatch".to_string() },
+            "a failed candidate forward pass must be recorded, never dropped"
+        );
+    }
+
+    #[test]
+    fn candidate_success_names_the_top_label() {
+        let obs = shadow_observation::<String>(&labels(), Ok(vec![0.1, 0.2, 0.7]));
+        assert_eq!(obs, ShadowObservation::Agreement { candidate_top: "data-critical".to_string() });
     }
 }
