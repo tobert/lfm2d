@@ -1,0 +1,12 @@
+# The repo-wide `*.jsonl` rule exists to keep training corpora out of the
+# tree. These are not corpora: they are hand-written EVALUATION cases with
+# expected fields, no real traffic rows, and a metric ships with the thing
+# that produces it -- an uncommitted scorer is how v6's calibration numbers
+# became unreproducible.
+#
+# Run OUTPUT is not here at all: benchmark.py writes to --output, which the
+# README points at /tmp. So there is nothing in this directory to ignore
+# except bytecode, which the repo-wide rule already covers.
+!cases.jsonl
+!tool_cases.jsonl
+!tool_cases_v1.jsonl
