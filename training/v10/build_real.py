@@ -40,6 +40,24 @@ from kaish_plan import KAISH_BIN, PLAN_TIMEOUT_S, _render_command  # noqa: E402
 from scrub import EMAIL_RE, SECRET_RE, scrub_command  # noqa: E402
 from soak_shapes import DEFAULT_LOG, QUOTING_PROMPT_TS, load_rows, shape  # noqa: E402
 
+# Verbs dropped as a DATA CLEANING PASS at load, not relabeled and not
+# routed around at the hook (Amy's ruling, 2026-09-04). git is out: it is
+# 6.6% of live clauses but 32% of data-critical cascade winners, and the
+# head's dc mass sits on history rewriting -- `git rebase` 0.996,
+# `git branch -D` 0.948 -- which a reflog makes recoverable, while
+# `git clean -xfd` (0.095) and `git stash drop` (0.077), the two that
+# destroy work no log holds, read situation-normal. That axis is not
+# operator safety, and kaijutsu and kaibo are growing builtin git
+# implementations that check it statically instead.
+#
+# Keyed on the plan's command NAME, so `git -C d1 status` drops and
+# `grep -rn git d1` does not. A verb reached through a wrapper (`sudo
+# git ...`, `xargs git ...`) is named by the wrapper and survives; if
+# that shows up in a build report, widen this deliberately rather than
+# reaching into args. Adding a verb here needs its own ruling --
+# test_build_real.py pins the set.
+DROPPED_VERBS = frozenset({'git'})
+
 VOTES = HERE / 'bulk_votes.json'
 OUT = HERE / 'real.jsonl'
 REVIEW = Path.home() / '.cache/claude-hooks/v10-scrub-review.txt'
@@ -98,6 +116,9 @@ def build_rows(commands_by_cmd, labels, cap):
             raw = _render_command(c)
             s = shape(raw)
             stats['clauses'] += 1
+            if (c.get('name') or '') in DROPPED_VERBS:
+                stats['dropped_verb'] += 1
+                continue
             if s not in labels:
                 stats['unlabeled_shape'] += 1
                 continue
@@ -120,6 +141,23 @@ def build_rows(commands_by_cmd, labels, cap):
     return rows, stats, examples
 
 
+def write_review(path, rows, examples, labels):
+    """Write the raw -> scrubbed review to `path`, 0600, real text.
+
+    Takes the path rather than reading REVIEW so a diagnostic or
+    candidate build can aim somewhere else: the default target is Amy's
+    reviewed artifact and a rebuild used to clobber it with no warning.
+    Returns the path written, so a caller can assert on it."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write('# v10 scrub review \u2014 raw -> scrubbed, up to 3 per shape. LOCAL ONLY (real text).\n')
+        for sh in sorted(examples, key=lambda sh: -sum(1 for r in rows if r['shape'] == sh)):
+            f.write(f'\n## {sh}  [{labels[sh]}]\n')
+            for scrubbed, raw in list(examples[sh].items())[:3]:
+                f.write(f'  - {raw}\n  + {scrubbed}\n')
+    return path
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--log', default=DEFAULT_LOG)
@@ -130,6 +168,9 @@ def main(argv=None):
                          'candidate A read bare `echo` as data-critical)')
     ap.add_argument('--jobs', type=int, default=8)
     ap.add_argument('--out', default=str(OUT))
+    ap.add_argument('--review', default=str(REVIEW),
+                    help='raw -> scrubbed review, 0600, REAL TEXT. Defaults to the '
+                         'reviewed artifact; point a diagnostic run somewhere else.')
     args = ap.parse_args(argv)
 
     votes = json.loads(VOTES.read_text())
@@ -156,16 +197,10 @@ def main(argv=None):
     with open(args.out, 'w') as f:
         for r in rows:
             f.write(json.dumps(r) + '\n')
-    fd = os.open(REVIEW, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        f.write('# v10 scrub review — raw -> scrubbed, up to 3 per shape. LOCAL ONLY (real text).\n')
-        for s in sorted(examples, key=lambda s: -sum(1 for r in rows if r['shape'] == s)):
-            f.write(f'\n## {s}  [{labels[s]}]\n')
-            for scrubbed, raw in list(examples[s].items())[:3]:
-                f.write(f'  - {raw}\n  + {scrubbed}\n')
+    write_review(args.review, rows, examples, labels)
     by_label = collections.Counter(r['label'] for r in rows)
     print(json.dumps({**stats, 'by_label': dict(by_label), 'cap': args.cap}, indent=1))
-    print(f'wrote {args.out} ({len(rows)} rows) and {REVIEW} (0600)')
+    print(f'wrote {args.out} ({len(rows)} rows) and {args.review} (0600)')
     return 0
 
 
