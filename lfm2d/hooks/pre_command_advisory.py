@@ -14,6 +14,16 @@ LFM2D_HOOK_MODE picks `advisory` (the default), `off` (no call at all), or
 falls back to advisory. Wiring an untested enforcement path and leaving it
 reachable is how a "temporary" mode ships.
 
+LFM2D_STAGE4 picks `off` (the default) or `record`. `record` runs stage 4
+of the escalation cascade — static checks on the classifier's own answer
+(stage4.py) — over the winning clause, and writes the result on the log
+row as `stage4`. It decides nothing, and test_stage4_parity.py gates that:
+the emitted decision is byte-identical with the flag off and on, including
+on rows where the plan clears the winning clause. Stage 4's job is to
+dismiss a CLASSIFIER verdict, which this hook never enforced anyway; what
+`record` buys is the measurement, live instead of replayed, and the
+escalation trigger stage 5 will need.
+
 WHAT GETS SCORED
 ----------------
 Plan-first. `kaish_plan.py` runs `kaish --plan-file -` and renders each
@@ -123,6 +133,16 @@ except Exception as _e:  # the splitter must never be able to break the guard
     def split_clauses(cmd: str) -> list:
         stripped = cmd.strip()
         return [stripped] if stripped else []
+
+# Stage 4 of the escalation cascade (stage4.py): static checks on the
+# classifier's own answer. Guarded like the splitter -- a raise here would
+# land before emit() and silently disable the regex guard.
+try:
+    from stage4 import review as stage4_review
+    _STAGE4_IMPORT_ERROR = None
+except Exception as _e:
+    _STAGE4_IMPORT_ERROR = f'{type(_e).__name__}: {_e}'
+    stage4_review = None
 
 # Plan-first clause extraction (v10 slice 1, 2026-08-24): `kaish --plan`
 # renders each simple command canonically — heredoc bodies stripped,
@@ -246,6 +266,15 @@ def batch_timeout_for(clauses: list) -> float:
 # 'advisory' (default): lfm2d is recorded, regex decides. 'off': no call at
 # all. 'enforce': NOT READY — read the shortcomings above.
 LFM2D_MODE = os.environ.get('LFM2D_HOOK_MODE', 'advisory')
+
+# LFM2D_STAGE4 picks `off` (the default) or `record`. `record` runs stage 4
+# over the winning clause and writes the answer on the log row; it changes
+# no decision, because the regex decides every outcome here and stage 4's
+# whole job is to dismiss a CLASSIFIER verdict, which this hook never
+# enforced in the first place. Anything else names itself on the row rather
+# than being read as `record`.
+STAGE4_MODE = os.environ.get('LFM2D_STAGE4', 'off')
+STAGE4_MODES = ('off', 'record')
 # Which of the checkpoint's labels count as "the model flagged this", for the
 # disagreement buckets only — this decides nothing, it labels rows.
 #
@@ -495,7 +524,87 @@ def breaker_record(ok: bool):
     breaker_write({'consecutive_failures': fails, 'open_until': open_until})
 
 
-def log_advisory(cmd: str, regex_verdict: dict, lfm2d_verdict: dict):
+def _severe_known(scores: dict) -> list:
+    """Which of SEVERE_LABELS this checkpoint actually speaks.
+
+    Read from the response's own `scores`, never assumed: the vocabulary
+    belongs to the checkpoint and has changed wholesale before. Empty means
+    a mismatch, which is a named bucket rather than "nothing was flagged".
+    """
+    return [l for l in SEVERE_LABELS if l in (scores or {})]
+
+
+def stage4_block(lfm2d_verdict: dict, regex_verdict: dict,
+                 clause_rows: Optional[list]) -> Optional[dict]:
+    """Stage 4 of the cascade, as a field for the log row.
+
+    Returns None when the flag is off (the row carries no `stage4` key at
+    all), otherwise a dict that ALWAYS says something: a review, a named
+    `skipped` reason, or a named `error`. Stage 4 having nothing to say
+    about a row must never be indistinguishable from stage 4 clearing it.
+
+    Decides nothing. The regex decides every outcome in this hook
+    (test_parity.py gates that byte-for-byte); this writes a field.
+
+    Never raises: a raise anywhere on this path lands before emit() and
+    silently disables the regex guard, which is the failure the whole plan
+    path is written around.
+    """
+    if STAGE4_MODE == 'off':
+        return None
+    if STAGE4_MODE not in STAGE4_MODES:
+        return {'error': f'unknown_mode:{STAGE4_MODE}'}
+    if stage4_review is None:
+        return {'error': f'import:{_STAGE4_IMPORT_ERROR}'}
+    try:
+        d = lfm2d_verdict or {}
+        if not d.get('ok'):
+            return {'mode': STAGE4_MODE, 'skipped': 'no_verdict'}
+        # A batch row has no winner by design -- flagging there is
+        # set-membership over per-clause argmaxes, not ranking, and
+        # inventing a winner client-side is what lfm2d_classify_batch
+        # refuses to do. Stage 4 inherits that refusal.
+        if d.get('endpoint') == 'classify_batch':
+            return {'mode': STAGE4_MODE, 'skipped': 'no_winner'}
+        if clause_rows is None:
+            # The clause_split fallback carries no plan facts, so there is
+            # no structure to check. This is the design, not a failure --
+            # and on the live window it is the majority of the load.
+            return {'mode': STAGE4_MODE, 'skipped': 'fallback_path'}
+        known = _severe_known(d.get('scores'))
+        if not known:
+            return {'mode': STAGE4_MODE, 'skipped': 'vocab_mismatch'}
+        if d.get('top') not in known:
+            # Stage 4 reviews a RAISED verdict. There is nothing to dismiss
+            # on a clear one, and reviewing it anyway would record a
+            # confident answer about a question nobody asked.
+            return {'mode': STAGE4_MODE, 'skipped': 'not_raised'}
+
+        index = d.get('winner_index')
+        if index is None and len(clause_rows) == 1:
+            # A single-clause /v1/classify row has no winner_index because
+            # the winner is the only clause. Requiring the key would skip
+            # most of the traffic.
+            index = 0
+        if not isinstance(index, int) or not (0 <= index < len(clause_rows)):
+            # Clamping to 0 here would review the WRONG clause and record a
+            # confident answer about it. An index that does not address the
+            # sent clauses is an alignment bug and says so.
+            return {'mode': STAGE4_MODE, 'skipped': 'winner_unindexed',
+                    'winner_index': index, 'sent_clauses': len(clause_rows)}
+
+        facts = clause_rows[index]
+        verdict = stage4_review(facts, guard_decision=regex_verdict.get('decision'))
+        return {'mode': STAGE4_MODE, 'winner_index': index,
+                'verb': facts.get('name'),
+                'dismissible': verdict.dismissible, 'reason': verdict.reason}
+    except Exception as e:
+        return {'mode': STAGE4_MODE, 'error': f'raise:{type(e).__name__}',
+                'detail': str(e)[:200]}
+
+
+def log_advisory(cmd: str, regex_verdict: dict, lfm2d_verdict: dict,
+                 stage4: Optional[dict] = None):
     """Append one comparison row. Best-effort: logging must never block a command."""
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -511,6 +620,11 @@ def log_advisory(cmd: str, regex_verdict: dict, lfm2d_verdict: dict):
             # and we would gain).
             'disagree': _disagreement(regex_verdict, lfm2d_verdict),
         }
+        # Omitted entirely when the flag is off, so a row either carries a
+        # stage-4 answer or says nothing about stage 4 -- there is no
+        # third state that could be read as "reviewed and cleared".
+        if stage4 is not None:
+            row['stage4'] = stage4
         with open(ADVISORY_LOG, 'a') as f:
             f.write(json.dumps(row) + '\n')
         ADVISORY_LOG.chmod(0o600)  # commands can contain secrets
@@ -690,6 +804,9 @@ def main():
     verdict = regex_verdict_for(cmd)
 
     lfm2d = {'ok': False, 'error': 'disabled'}
+    # Sent-clause plan facts, when the plan path produced any. None means
+    # no structure to check -- see stage4_block.
+    clause_rows = None
     if LFM2D_MODE != 'off':
         if breaker_should_skip():
             # Still logged. A skipped call and a healthy quiet period must not
@@ -770,6 +887,11 @@ def main():
                 split_path = 'clause_split'
                 clauses = split_clauses(cmd)
                 plan_meta = None
+                # No plan facts on this path. None (not []) so stage 4 can
+                # tell "the parser gave us nothing" from "the parser gave us
+                # a clause with no verb" -- the first is the fallback, the
+                # second is a real row about a pure assignment.
+                clause_rows = None
             if len(clauses) > CASCADE_MAX_CLAUSES:
                 lfm2d = lfm2d_classify_batch(clauses)
             elif len(clauses) >= 2:
@@ -794,7 +916,18 @@ def main():
             if _SPLIT_IMPORT_ERROR:
                 lfm2d['split_import_error'] = _SPLIT_IMPORT_ERROR
             breaker_record(lfm2d.get('ok', False))
-        log_advisory(cmd, verdict, lfm2d)
+        # Stage 4, on the in-process plan facts. These carry `args`, which
+        # the LOG row deliberately does not -- so the hook can read a git
+        # subcommand that an offline replay of the log cannot, without
+        # re-parsing the rendered text.
+        #
+        # Outside the branch on purpose: with the flag on, EVERY logged row
+        # gets a stage4 field, including a circuit-open row (which records
+        # `no_verdict`). A row that sometimes omits the key would give the
+        # field three states, and the third would read as "reviewed and
+        # cleared".
+        stage4 = stage4_block(lfm2d, verdict, clause_rows)
+        log_advisory(cmd, verdict, lfm2d, stage4)
 
     if LFM2D_MODE == 'enforce':
         # Deliberately unimplemented. Wiring an untested enforcement path
