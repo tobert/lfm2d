@@ -222,7 +222,12 @@ def run(args):
                '--request-timeout', str(args.request_timeout), '--isq', args.isq,
                '--thinking', str(args.thinking == 'on').lower(),
                '--prefix-cache-n', str(args.prefix_cache_n)]
-    env = {**os.environ, 'HF_HUB_OFFLINE': '1', 'RUST_LOG': 'info', 'NO_COLOR': '1'}
+    # RUST_LOG defaults to info but is NOT forced: a diagnostic run needs to be
+    # able to turn a module up (e.g. mistralrs_core::prefix_cacher=debug) without
+    # editing the harness. driver.log is not parsed for measurements, so a
+    # louder log cannot change a number.
+    env = {**os.environ, 'HF_HUB_OFFLINE': '1', 'NO_COLOR': '1',
+           'RUST_LOG': os.environ.get('RUST_LOG', 'info')}
     metadata = dict(type='metadata', schema_version=3, label=args.label,
                     binary=str(binary), binary_sha256=sha256(binary), model=str(model),
                     model_config_sha256=config_hashes, harness_sha256=sha256(__file__),
