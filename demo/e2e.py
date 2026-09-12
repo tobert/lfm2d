@@ -1,0 +1,129 @@
+"""Real binary + real weights + HTTP over UDS. Missing prerequisites FAIL.
+
+Run after cargo build --release -p lfm2d: python3 demo/e2e.py -v
+No existing daemon or production endpoint is used; the child is always stopped.
+"""
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+import unittest
+
+from lfm2 import Client, ROOT, chunks, dot, extract
+
+
+class RealDaemonTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        binary = Path(os.environ.get("LFM2D_BIN", ROOT / "target/release/lfm2d")).resolve()
+        model = Path(os.environ.get("LFM2_MODELS_DIR", ROOT / ".models")) / "LFM2.5-Embedding-350M"
+        if not binary.is_file() or not (model / "model.safetensors").is_file():
+            raise RuntimeError("build lfm2d and supply LFM2.5-Embedding-350M via LFM2_MODELS_DIR")
+        temporary = tempfile.TemporaryDirectory(prefix="lfm2d-demo-")
+        cls.addClassCleanup(temporary.cleanup)
+        socket_path = Path(temporary.name) / "lfm2d.sock"
+        cls.endpoint = f"unix://{socket_path}"
+        log_path = Path(temporary.name) / "server.log"
+        log = log_path.open("w")
+        cls.addClassCleanup(log.close)
+        # Do not inherit production model selection or telemetry destinations.
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("LFM2D_", "OTEL_"))}
+        child = subprocess.Popen([str(binary), "--embedder-dir", str(model.resolve()),
+                                  "--socket-path", str(socket_path), "--threads", "8"],
+                                 stdout=log, stderr=log, env=env)
+        def stop():
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+        cls.addClassCleanup(stop)
+        deadline = time.monotonic() + 60
+        while not socket_path.exists():
+            if child.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError(f"daemon failed to start:\n{log_path.read_text()}")
+            time.sleep(0.05)
+        cls.client = Client(cls.endpoint)
+
+    def test_batch_order_prefixes_and_model_headers(self):
+        client = self.client
+        self.assertEqual(client.model["hidden_size"], 1024)
+        texts = ["A mutex protects shared data from simultaneous writes.",
+                 "A sourdough starter ferments flour and water."]
+        batch = client.embed(texts, "document")
+        for text, vector in zip(texts, batch):
+            single = client.embed([text], "document")[0]
+            self.assertLess(max(abs(a - b) for a, b in zip(vector, single)), 1e-6)
+        query = client.embed([texts[0]], "query")[0]
+        self.assertLess(dot(query, batch[0]), 0.98, "query prefix was lost")
+        self.assertGreater(dot(query, batch[0]), dot(query, batch[1]))
+        with self.assertRaisesRegex(RuntimeError, "HTTP 400"):
+            client.request("/embed", {"inputs": []})
+
+    def test_retrieval_quality_over_http(self):
+        corpus = json.loads((ROOT / "tests/data/semantic_search_eval.json").read_text())
+        documents = corpus["documents"]
+        vectors = self.client.embed([d["text"] for d in documents], "document")
+        queries = self.client.embed([q["text"] for q in corpus["queries"]], "query")
+        hits1 = hits3 = hard_wins = hard_total = 0
+        for case, query in zip(corpus["queries"], queries):
+            scores = {d["id"]: dot(query, v) for d, v in zip(documents, vectors)}
+            order = sorted(scores, key=scores.get, reverse=True)
+            hits1 += order[0] in case["relevant"]
+            hits3 += bool(set(order[:3]) & set(case["relevant"]))
+            best = max(scores[d] for d in case["relevant"])
+            for negative in case["hard_negatives"]:
+                hard_wins += scores[negative] > best
+                hard_total += 1
+        count = len(queries)
+        print(f"\nHTTP retrieval: R@1={hits1}/{count}, R@3={hits3}/{count}, "
+              f"hard-negative wins={hard_wins}/{hard_total}", flush=True)
+        self.assertGreaterEqual(hits1 / count, 0.80)
+        self.assertGreaterEqual(hits3 / count, 0.95)
+        self.assertLessEqual(hard_wins / hard_total, 0.10)
+
+    def test_python_cli_and_extractive_provenance(self):
+        fixture = ROOT / "demo/conversation.txt"
+        result = subprocess.run([os.sys.executable, str(ROOT / "demo/lfm2.py"),
+                                 "--endpoint", self.endpoint, "search", "What is still undecided?",
+                                 "--file", str(fixture), "--top", "6"],
+                                capture_output=True, text=True, timeout=60, check=True)
+        self.assertIn("storage schema", result.stdout)
+        # This CLI contract test checks coverage, including the final paragraph.
+        # Ranking quality has its own full-corpus test above. The open-ended
+        # question here misses the intended passage at rank 1 (see README).
+        self.assertEqual(result.stdout.count(f"[{fixture}:"), 6)
+        self.assertIn(self.client.model["weight_hash"], result.stderr)
+        source = fixture.read_text()
+        parts = chunks(source)
+        vectors = self.client.embed([p.text for p in parts], "document")
+        selected = extract(parts, vectors, 3)
+        self.assertEqual(len(selected), 3)
+        self.assertEqual(selected, sorted(selected, key=lambda p: p.start))
+        for part in selected:
+            self.assertEqual(source[part.start:part.end], part.text)
+
+        # Exercise splitting over HTTP and the extract CLI with original CRLF
+        # offsets. The original fixture's short paragraphs don't cover this.
+        with tempfile.TemporaryDirectory(prefix="lfm2d-source-") as directory:
+            long_source = ("Shared memory needs synchronization. " * 35 +
+                           "\r\n\r\nFinal decision: protect writes with a mutex.\r\n")
+            path = Path(directory) / "long.txt"
+            path.write_bytes(long_source.encode())
+            pieces = chunks(long_source)
+            self.assertGreater(len(pieces), 3)
+            rendered = subprocess.run([
+                os.sys.executable, str(ROOT / "demo/lfm2.py"), "--endpoint", self.endpoint,
+                "extract", str(path), "--count", str(len(pieces)),
+            ], capture_output=True, text=True, timeout=60, check=True)
+            for piece in pieces:
+                self.assertIn(f"[{path}:{piece.start}-{piece.end}]\n{piece.text}", rendered.stdout)
+            self.assertIn("Final decision", rendered.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

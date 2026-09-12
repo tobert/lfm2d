@@ -60,6 +60,10 @@ something — the hard negatives share vocabulary with the query and are
 still wrong. `tests/retrieval_quality.rs` keeps those numbers honest on
 every `cargo test`.
 
+For a Python client over the actual daemon, see [`demo/`](demo/README.md):
+semantic search, source-passage extraction, thinking-block previews through
+a separate local generator, and real-weight HTTP end-to-end tests.
+
 ```
 # search the bundled corpus, or point --dir at your own tree
 cargo run --release --example search -- .models/LFM2.5-Embedding-350M \

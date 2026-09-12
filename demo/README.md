@@ -1,0 +1,166 @@
+# LFM2 search and summary experiments
+
+Python 3.10+, standard library only. Run commands from the repository root.
+`conversation.txt` and `thinking.txt` are **invented fixtures**, not session
+transcripts. They test a changed plan, an untested hypothesis, constraints,
+and an unresolved decision.
+
+## Search and source excerpts: lfm2d
+
+```sh
+cargo build --release -p lfm2d
+target/release/lfm2d \
+  --embedder-dir '.models/LFM2.5-Embedding-350M' \
+  --bind-addr '127.0.0.1:8088' --threads 8
+```
+
+In another terminal:
+
+```sh
+# Bundled 105-document retrieval corpus
+python3 demo/lfm2.py search 'how do I stop two threads corrupting shared state'
+
+# Search a conversation, retaining source character offsets
+python3 demo/lfm2.py search 'storage schema for passage references' \
+  --file demo/conversation.txt
+
+# Select three representative passages, penalizing repetition, in source order
+python3 demo/lfm2.py extract demo/conversation.txt --count 3
+python3 demo/lfm2.py extract demo/conversation.txt --query 'next steps'
+```
+
+`--endpoint` precedes the subcommand; it accepts an HTTP(S) root URL or
+`unix:///absolute/path/to/lfm2d.sock`. The client discovers the embedder,
+pins its ID/weight hash, validates every response, and normalizes raw vectors
+before cosine scoring. Query and document roles are always explicit.
+
+Files are split at paragraph/whitespace boundaries into at most 384 UTF-8
+bytes per passage. This conservative bound fits the current checkpoint's
+byte-level BPE below its 512-token window, including role prefix and BOS.
+Offsets are Python character offsets, **not byte offsets**. Non-whitespace
+source content is never dropped. Queries exceeding this bound are rejected.
+Production chunking should use the actual tokenizer and preserve block IDs.
+
+`extract` uses centroid relevance (or a query) and maximum marginal relevance
+to choose **verbatim passages**. It does not understand which latest decision
+supersedes an earlier one, and it can omit important exceptions. Its output
+is a navigation aid, not conversation compaction. The demo index is in memory
+and is rebuilt on each invocation.
+
+## Thinking-block previews: separate generation endpoint
+
+lfm2d serves bidirectional encoders; it has no generation endpoint. Our local
+LFM2.5-8B-A1B runs in llama-server on port 2031. Start that service separately
+if needed; this demo neither starts it nor changes its configuration.
+
+```sh
+# One sentence, at most 30 whitespace-delimited words
+python3 demo/lfm2.py summarize demo/thinking.txt
+
+# At most 100 words, preserving decisions, constraints, and open questions
+python3 demo/lfm2.py summarize demo/conversation.txt --style context
+
+# All choices are explicit and independent of the embedding endpoint
+python3 demo/lfm2.py summarize demo/thinking.txt \
+  --generator 'http://127.0.0.1:2031' --model 'lfm25-8b-a1b' --max-tokens 1024
+```
+
+The 1,024-token output allowance is a **request budget**, shared by reasoning
+and the final answer. It can be increased. It is unrelated to the encoder's
+512-token input window. The demo caps source input at 32,000 UTF-8 bytes and
+refuses larger sources rather than silently truncating them. It inherits the
+generator's sampling defaults. Non-`stop` completion, empty output, and an
+exceeded word limit are errors; output is not repaired or silently retried.
+Word limits here suit the English fixtures, not language-independent UI sizing.
+The word-count guard does not prove factual accuracy or enforce one sentence.
+
+For kaijutsu, a thinking-block preview should be derived, expandable content:
+keep the original block, and key the cached preview by block ID/content hash,
+generator revision, and prompt version. Generate once the block completes;
+invalidate on edits. Show only the final content, not the summarizer's own
+reasoning. Batch local compaction remains a separate workload requiring
+retention tests for decisions, corrections, constraints, and provenance.
+
+## Tests
+
+```sh
+python3 -m unittest discover -s demo -p 'test_demo.py'
+cargo build --release -p lfm2d
+python3 demo/e2e.py -v
+# Optional: requires the separate generator to already be running
+python3 demo/e2e_generation.py -v
+```
+
+The E2E suite starts the actual compiled daemon with real embedding weights
+on a temporary Unix socket, drives the Python client and CLI through HTTP,
+and stops the child even on failure. It needs ~1.4 GiB for the f32 model and
+permission to bind a local socket. Missing binary/weights **fail**, not skip.
+Override `LFM2D_BIN` or `LFM2_MODELS_DIR` as needed. It checks:
+
+- Batch order/single-input equivalence, role asymmetry, model identity headers,
+  vector dimensions, and HTTP error propagation.
+- Retrieval over the existing 105-document/35-query corpus, including 68
+  hard negatives; quality floors are R@1 ≥80%, R@3 ≥95%, negative wins ≤10%.
+- The actual CLI preserves all fixture passages, including the final paragraph,
+  and extractive output refers back to exact source slices.
+
+Fast tests cover malformed vectors, model swaps, input bounds, UTF-8 splitting,
+final-newline preservation, diversity selection, and summary output rejection.
+The opt-in generation smoke test invokes the actual preview CLI against the
+separately running service. It checks completion/word limits and prints the
+answer for human review; it does not grade faithfulness. It is not a dependency
+of the encoder E2E suite. Override `LFM2_GENERATOR`/`LFM2_GENERATOR_MODEL` to
+select another local endpoint/model.
+
+## Measurements and remaining work (2026-09-12)
+
+Real-daemon retrieval reproduced the library baseline: **31/35 R@1 (88.6%),
+35/35 R@3 (100%), 1/68 hard-negative wins**. This is a small developer-prose
+corpus, not validation on real kaijutsu conversations. In the conversation
+fixture, the broad query “What is still undecided?” ranked the dense-retrieval
+decision ahead of the intended unresolved storage-schema passage. No model
+tuning or recall-floor relaxation was used to hide that miss. The CLI coverage
+test requests all six passages; ranking has its own corpus quality test.
+
+Single local LFM2.5 Q5_K_M probes (as-deployed sampling; not a benchmark):
+
+| Probe | Output budget | Result |
+| --- | ---: | --- |
+| First conversation summary | 512 | Truncated; rejected |
+| Thinking preview | 512 | 3.84 s, 391 completion tokens; concise, preserved uncertainty |
+| Conversation summary | 1,024 | 7.30 s, 791 completion tokens; useful overview, omitted no-publishing constraint |
+
+The last omission is why these probes support trying a preview, not trusting
+compaction. The context prompt now explicitly mentions constraints. A separate
+probe including constraints retained “No publishing today” (9.32 s, 785
+completion tokens); prompt and stochastic differences prevent attribution.
+`chat_template_kwargs.enable_thinking=false` **still emitted reasoning** on
+this deployed template, so the demo does not advertise it as a working switch.
+One repeated-prompt response reported 142 cached prompt tokens; the older
+blanket claim that LFM2.5 cannot reuse any prefix is too strong.
+
+Service readiness, checked in source and against live deployment arguments:
+
+- lfm2d already has the dense embedding HTTP interface kaijutsu's
+  `Lfm2dEmbedder` expects. The live deployment currently loads classifier,
+  router, and PII models, **no embedder**. Enabling it needs weights/config
+  and memory; this demo does not mutate that deployment.
+- Kaijutsu already wires that adapter into index startup, pins model identity,
+  and normalizes vectors. Its current context index truncates the combined
+  conversation into one embedding: passage storage/aggregation and retention
+  of late decisions need work before long-context retrieval is reliable.
+- The encoder silently truncates beyond 512 tokens. Model discovery does not
+  advertise this limit, tokenizer identity, or truncation counts. Record and
+  resolve that consumer contract gap before increasing input sizes.
+- ColBERT works in the Rust library, with parity/quality evidence, but is not
+  served by lfm2d. It would need its own per-token representation/scoring API;
+  it cannot substitute directly into the single-vector index interface.
+- Existing Rust tests cover model parity, classifier/PII real-engine routing,
+  stub HTTP contracts, TCP/UDS serving and shutdown. These Python tests add
+  real-weight embedding transport and retrieval coverage. Kaijutsu → index →
+  lfm2d with real weights still needs a separate cross-project E2E test.
+
+Review: Kaibo, DeepSeek cast (`deepseek-flash` explorer and synthesis).
+Fixed empty-query handling, CRLF boundaries, and malformed generation-response
+errors with failing-then-passing tests. Retained deliberate refusal of overlong
+summaries; added explicit generation smoke and split-passage CLI coverage.

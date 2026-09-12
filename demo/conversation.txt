@@ -1,0 +1,11 @@
+Amy: Let's enable semantic search for kaijutsu conversations. The first idea was to embed each whole conversation once.
+
+Assistant: The embedding checkpoint only sees 512 tokens. A single conversation vector would lose later decisions. We should index bounded passages and keep their context IDs and source offsets.
+
+Amy: Agreed. Keep the original blocks as the source of truth. A summary is a navigation aid, not a replacement for the conversation.
+
+Assistant: The service already exposes query and document embedding modes and a weight hash. The deployed instance has no embedder loaded yet. ColBERT is implemented in the library but has no HTTP endpoint.
+
+Amy: Start with dense retrieval. ColBERT can wait until we measure actual misses. Also, do not publish anything today.
+
+Assistant: Next steps are to load the embedder, test retrieval over real conversations, and measure missed decisions near the end of long contexts. The storage schema for passage references is still undecided.
