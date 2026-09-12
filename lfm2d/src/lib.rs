@@ -83,6 +83,7 @@
 //! label (unbounded cardinality). See `worker.rs`'s module docs.
 
 pub mod config;
+pub mod device;
 pub mod engine_real;
 pub mod engine_stub;
 pub mod hash;

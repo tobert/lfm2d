@@ -1,0 +1,23 @@
+[
+  {
+    "id": "instructions",
+    "role": "system",
+    "kind": "text",
+    "status": "done",
+    "content": "Invented distraction: maintain orchestration protocols, administrative schedules, repository procedures, response templates, approval rules, and configuration inventories."
+  },
+  {
+    "id": "tool-output",
+    "role": "tool",
+    "kind": "tool_result",
+    "status": "done",
+    "content": "Invented log: DEBUG configuration_loader retry_count=12 registry_state=ready orchestration_tick=999"
+  },
+  {
+    "id": "search-thinking",
+    "role": "model",
+    "kind": "thinking",
+    "status": "done",
+    "content": "The search miss might come from embedding the whole conversation. The query prefix looks correct, so I suspect input truncation, but this remains untested.\n\n```python\n# Invented code distraction\norchestration_registry = administrative_schedule\n```\n\nPassage retrieval should preserve decisions near the end. We need a comparison against whole-context retrieval before choosing a storage schema. The original thinking block should remain available."
+  }
+]

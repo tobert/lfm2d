@@ -24,6 +24,56 @@ tests from candle, and the two response conventions this API uses).
 cargo build --release -p lfm2d
 ```
 
+The default build is CPU-only. A GPU build selects a device at startup:
+
+```sh
+# AMD, with the ROCm toolchain/runtime installed
+cargo build --release -p lfm2d --features rocm
+target/release/lfm2d --device auto --threads 8 \
+  --embedder-dir '.models/LFM2.5-Embedding-350M' --bind-addr '127.0.0.1:8088'
+```
+
+Optional `cuda` and `metal` features expose those Candle backends too. ROCm
+on the Radeon 8060S is hardware-tested here; CUDA/Metal are not verified by
+that result. Candle core/nn are pinned together to the published
+`tobert/candle` revision in the root manifest because crates.io 0.11 lacks
+ROCm. A clean checkout can fetch this revision without the ignored vendor tree.
+
+`auto` tries compiled backends in ROCm/CUDA/Metal order, then uses CPU if
+device initialization is unavailable. Every failed probe/reason is logged,
+and execution metadata reports the **selected** backend. Use `--device cpu`
+to force CPU or `--device rocm` (etc.) to require a GPU; an explicit GPU never
+falls back. `--device-index` selects the backend's device ordinal.
+
+Fallback is startup-only: checkpoint/configuration errors, model smoke-test
+failures, and inference failures remain errors, without retrying on CPU.
+GPU builds still require their linked runtime libraries even in CPU mode;
+missing shared libraries prevent startup before selection can run. The
+ordinary CPU build remains portable to machines without those libraries.
+The container recipes below build the ordinary CPU variant; a GPU container
+also needs the runtime libraries and device access.
+
+Changing the execution device can change classifier scores and near-tied
+verdicts. Validate deployment calibration before moving a safety head; the
+numerical parity gate is not a replacement for traffic evaluation.
+
+Run the mandatory device gate when changing backend selection/execution:
+
+```sh
+bash demo/test_devices.sh rocm
+```
+
+It builds once with the chosen backend, compares real embedding/classifier/
+router/PII heads on CPU and GPU, then runs the real HTTP suite under explicit
+CPU, explicit GPU, automatic GPU selection, and automatic CPU fallback after
+an invalid GPU ordinal. A missing GPU/driver/weight file fails this gate.
+The hardware Rust test is opt-in (`--ignored`, invoked by this script); normal
+CPU-only tests cover selection success/failure through an injected probe.
+
+After proving the pinned ROCm patch set locally, polish it for upstream as
+separate work. Amy will review the upstream policy and handle posting; the
+local service work does not submit changes upstream.
+
 Container image (build context must be the repo ROOT, since `lfm2d`
 depends on the parent crate via `path = ".."`):
 
@@ -49,6 +99,8 @@ CLI flags, each with an env-var fallback (`clap`'s `env` feature):
 | `--token-classifier-dir` (repeatable) | `LFM2D_TOKEN_CLASSIFIER_DIR` (comma-separated) | `Lfm2TokenClassifier`-shaped checkpoint dir(s) — REPEATABLE, unlike the three heads above; backs `/v1/spans`, `/v1/spans/credentials` |
 | `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify` and `/v1/cascade`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter (or, on a failed candidate pass, a failure counter) and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
 | `--dtype` | `LFM2D_DTYPE` | `f32` (default), `f16` or `bf16`, for every head. Read the flag's own help before reaching for `f16`: these checkpoints ship f32 natively, so f16 is a real loss of resolution at ~1.6× latency, and `LFM2.5-Embedding-350M` ships bf16, where bf16→f16 can produce inf/0 rather than rounding. It is a memory lever, not a speed one |
+| `--device` | `LFM2D_DEVICE` | `auto` (default), `cpu`, `rocm`, `cuda`, or `metal`; requires corresponding compiled GPU feature |
+| `--device-index` | `LFM2D_DEVICE_INDEX` | GPU ordinal (default `0`); values exceeding the driver's signed 32-bit range are refused |
 | `--cascade-route` (repeatable) | `LFM2D_CASCADE_ROUTES` (comma-separated) | Candidate routes for `/v1/cascade` — server-side config, not a request field |
 | `--cascade-severe-label` (repeatable) | `LFM2D_CASCADE_SEVERE_LABELS` (comma-separated) | Which classifier labels count toward the severity ranking, **in ascending severity order — position is ordinal rank**. Default `mutating,destructive`, which is an old checkpoint's vocabulary; the deploy manifests pass `situation-normal,data-critical`. Duplicates are refused, and the resolved ranking is echoed at startup |
 | `--log-input-hash` | `LFM2D_LOG_INPUT_HASH` | `true`/`false`, must be spelled out (not a bare flag); default `false`. Attaches a hash of `/v1/spans`/`/v1/spans/credentials` request text — never the text itself — to that call's trace/log span; see "Observability" below |
@@ -404,6 +456,21 @@ compute split is the whole point of a serial worker (see `src/worker.rs`'s
 module docs on how a `tracing::Span` is created request-side and recorded
 onto from the worker OS thread).
 
+Incoming `traceparent` and `tracestate` are extracted using W3C Trace Context.
+The HTTP server span adopts the remote parent, and the worker span carries
+that trace context across its OS-thread boundary. Remote sampling is honored;
+absent/invalid parent headers start a local trace, duplicate `traceparent`
+headers are refused as parents, and split `tracestate` headers retain order.
+This extraction does not depend on setting a global propagator. Upstream
+clients still need to inject their headers; lfm2d has no downstream inference
+HTTP calls to inject into.
+
+HTTP spans also carry `http.request.method`, `http.route`, and integer
+`http.response.status_code`, with server span kind and error status on 5xx.
+Unknown paths use `<unmatched>` so arbitrary path text never enters trace or
+metric labels. Export-capture tests in `telemetry.rs` verify actual parent IDs,
+tracestate, sampling, worker timing, HTTP errors, and execution resources.
+
 **`/v1/spans`/`/v1/spans/credentials` telemetry is held to a stricter bar.**
 This endpoint exists to find live credentials, so request text contains
 them by definition. No span, log event, or metric anywhere in this crate
@@ -423,9 +490,14 @@ raw input) confirmed this test actually fails when it should.
 
 Resource attributes: `service.name`
 (`OTEL_SERVICE_NAME`, default `lfm2d`), `service.version` (crate version),
-and `lfm2d.model.<kind>_hash` per loaded model — set once, from
+`lfm2d.execution.device_type` (`cpu`/`gpu`), `lfm2d.execution.backend`
+(`cpu`/`rocm`/`cuda`/`metal`), `lfm2d.execution.dtype`, and
+`lfm2d.model.<kind>_hash` per loaded model — set once, from
 `main.rs`, AFTER models finish loading (weight hashes aren't known any
-earlier; see `src/telemetry.rs`'s module docs). Metrics:
+earlier; see `src/telemetry.rs`'s module docs). The same resource is attached
+to traces, metrics, and logs. Device metadata comes from the loaded engine,
+not host hardware inventory; optional `lfm2d.execution.device_name` is omitted
+until a hardware name is available through the backend interface. Metrics:
 `lfm2d.worker.queue_depth` (observable gauge over an `AtomicUsize`,
 incremented on send, decremented when the worker picks a command up),
 `lfm2d.request.duration` (histogram, by route+status),

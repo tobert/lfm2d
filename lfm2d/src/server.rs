@@ -9,13 +9,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::extract::{FromRequest, Request, State};
+use axum::extract::{FromRequest, MatchedPath, Request, State};
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use tracing::Instrument as _;
+use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
 use crate::shutdown::{ShutdownHandle, ShutdownSignal};
 use crate::types::{
@@ -59,24 +60,43 @@ pub fn build_router(state: AppState) -> Router {
 /// Wraps every request (including an unmatched-route 404 — this is a
 /// `Router`-wide `.layer()`, not a per-route one) in one tracing span
 /// carrying `method`/`route`/`status`, and records the
-/// `lfm2d.requests` counter + `lfm2d.request.duration_ms` histogram by
-/// route+status. All our routes are static strings (no path parameters),
-/// so the raw request path IS the route label — no `MatchedPath` extractor
-/// needed.
+/// `lfm2d.requests` counter + `lfm2d.request.duration` histogram by
+/// route+status. Unknown paths use a bounded label; arbitrary request paths
+/// may carry private data and must not become trace or metric attributes.
 async fn telemetry_middleware(req: Request, next: Next) -> Response {
     let method = req.method().as_str().to_string();
-    let route = req.uri().path().to_string();
+    let route = req
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|path| path.as_str())
+        .unwrap_or("<unmatched>")
+        .to_string();
     let span = tracing::info_span!(
+        parent: None,
         "http_request",
+        otel.kind = "server",
+        http.request.method = %method,
+        http.route = %route,
+        http.response.status_code = tracing::field::Empty,
+        otel.status_code = tracing::field::Empty,
         method = %method,
         route = %route,
         status = tracing::field::Empty,
     );
+    // Explicit W3C extraction works independently of global propagator
+    // installation. An empty base prevents unrelated task-local context from
+    // parenting requests that lack a valid traceparent. Without an OTEL layer,
+    // set_parent is a documented no-op error (stderr-only mode).
+    let _ = span.set_parent(crate::telemetry::extract_parent(req.headers()));
     let start = Instant::now();
     let resp = next.run(req).instrument(span.clone()).await;
     let elapsed = start.elapsed();
     let status = resp.status().as_u16();
     span.record("status", status);
+    span.record("http.response.status_code", i64::from(status));
+    if resp.status().is_server_error() {
+        span.record("otel.status_code", "ERROR");
+    }
     crate::telemetry::record_request(&route, &method, status, elapsed);
     resp
 }

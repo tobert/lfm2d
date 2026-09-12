@@ -21,7 +21,7 @@
 //! task awaiting the reply — records `queue_wait_ms` (time spent sitting in
 //! the channel) and `inference_ms` (time spent inside [`InferenceEngine`])
 //! onto that span, and reports `inference_ms` to the
-//! `lfm2d.inference.duration_ms` histogram: `tracing::Span` is `Send`/
+//! `lfm2d.inference.duration` histogram: `tracing::Span` is `Send`/
 //! `Clone` and not thread-affine, so recording from the worker OS thread is
 //! the intended use, not a hack. A separate `AtomicUsize` (`queue_depth`)
 //! backs the `lfm2d.worker.queue_depth` observable gauge — incremented in
@@ -123,7 +123,7 @@ pub struct SpansOutcome {
 }
 
 /// The engine seam. Every method is synchronous (candle inference is
-/// CPU-bound, blocking work — there is nothing to `.await` inside it) and
+/// blocking work on either device — there is nothing to `.await` inside it) and
 /// runs entirely on the worker thread; `&self` because a loaded model is
 /// never mutated after construction.
 pub trait InferenceEngine: Send + 'static {
@@ -236,6 +236,12 @@ fn run_timed<T>(
     operation: &'static str,
     f: impl FnOnce() -> T,
 ) -> T {
+    // Entering a Span alone does not install its subscriber on this OS
+    // thread. Carry the request's dispatch too, so inference events/child
+    // spans and parent-span closure use the same subscriber as the caller.
+    // Declare this guard before `span`: span closure must run before reset.
+    let dispatch = meta.span.with_subscriber(|(_, dispatch)| dispatch.clone());
+    let _dispatch_guard = dispatch.as_ref().map(tracing::dispatcher::set_default);
     let Enqueued { queued_at, span } = meta;
     let _guard = span.enter();
     let queue_wait = queued_at.elapsed();

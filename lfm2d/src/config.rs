@@ -170,6 +170,17 @@ pub struct Cli {
     #[arg(long, env = "LFM2D_DTYPE", default_value = "f32")]
     pub dtype: DtypeArg,
 
+    /// Execution backend. Auto tries compiled GPU backends (ROCm, CUDA,
+    /// Metal), then CPU if device initialization is unavailable. Explicit
+    /// backends fail instead of falling back. Model-load and inference errors
+    /// are never retried on another device.
+    #[arg(long, env = "LFM2D_DEVICE", default_value = "auto")]
+    pub device: crate::device::DeviceArg,
+
+    /// GPU ordinal within the selected backend.
+    #[arg(long, env = "LFM2D_DEVICE_INDEX", default_value_t = 0)]
+    pub device_index: usize,
+
     /// Size of the rayon global thread pool that candle's matmul runs on
     /// (`rayon::ThreadPoolBuilder::num_threads`), set BEFORE any model is
     /// loaded — rayon's global pool can only be built once, so this must
@@ -296,6 +307,8 @@ mod tests {
             socket_path: None,
             bind_addr: None,
             dtype: DtypeArg::F32,
+            device: crate::device::DeviceArg::Cpu,
+            device_index: 0,
             threads: None,
         }
     }
@@ -338,6 +351,8 @@ mod tests {
             socket_path: Some("/tmp/lfm2d.sock".into()),
             bind_addr: Some("0.0.0.0:8080".into()),
             dtype: DtypeArg::F32,
+            device: crate::device::DeviceArg::Cpu,
+            device_index: 0,
             threads: Some(4),
         };
         cli.validate().expect("fully specified config is valid");

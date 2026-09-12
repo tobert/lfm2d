@@ -1,0 +1,172 @@
+//! Choose an execution device once, before loading any checkpoint.
+
+use clap::ValueEnum;
+use lfm2_encoder::{DType, Device};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum DeviceArg {
+    Auto,
+    Cpu,
+    Rocm,
+    Cuda,
+    Metal,
+}
+
+impl DeviceArg {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto", Self::Cpu => "cpu", Self::Rocm => "rocm",
+            Self::Cuda => "cuda", Self::Metal => "metal",
+        }
+    }
+}
+
+/// Startup policy separated from driver probing so CPU-only hosts still test
+/// successful GPU selection, unavailable drivers, and explicit-device failure.
+fn select_with(
+    requested: DeviceArg,
+    compiled: &[DeviceArg],
+    mut initialize: impl FnMut(DeviceArg) -> Result<(), String>,
+) -> Result<(DeviceArg, Vec<String>), String> {
+    if requested == DeviceArg::Cpu {
+        return Ok((DeviceArg::Cpu, vec![]));
+    }
+    if requested != DeviceArg::Auto {
+        if !compiled.contains(&requested) {
+            return Err(format!("{} backend not compiled; rebuild with --features {}",
+                               requested.as_str(), requested.as_str()));
+        }
+        initialize(requested).map_err(|e| format!("{} initialization failed: {e}", requested.as_str()))?;
+        return Ok((requested, vec![]));
+    }
+    let mut reasons = Vec::new();
+    for &backend in compiled {
+        match initialize(backend) {
+            Ok(()) => return Ok((backend, reasons)),
+            Err(e) => reasons.push(format!("{} initialization failed: {e}", backend.as_str())),
+        }
+    }
+    if compiled.is_empty() {
+        reasons.push("no GPU backend compiled; rebuild with --features rocm, cuda, or metal".into());
+    }
+    Ok((DeviceArg::Cpu, reasons))
+}
+
+/// The device used by all heads. Never replaced after model loading starts.
+pub struct ExecutionDevice {
+    pub device: Device,
+    pub backend: DeviceArg,
+    pub selection_reasons: Vec<String>,
+}
+
+impl ExecutionDevice {
+    pub fn select(requested: DeviceArg, ordinal: usize) -> Result<Self, String> {
+        i32::try_from(ordinal).map_err(|_| "device index exceeds the GPU driver's signed 32-bit range")?;
+        let compiled = [
+            #[cfg(feature = "rocm")] DeviceArg::Rocm,
+            #[cfg(feature = "cuda")] DeviceArg::Cuda,
+            #[cfg(feature = "metal")] DeviceArg::Metal,
+        ];
+        let mut initialized = None;
+        let (backend, selection_reasons) = select_with(requested, &compiled, |backend| {
+            initialized = Some(initialize(backend, ordinal)?);
+            Ok(())
+        })?;
+        let device = if backend == DeviceArg::Cpu { Device::Cpu } else {
+            initialized.ok_or("selected GPU without an initialized device")?
+        };
+        Ok(Self { device, backend, selection_reasons })
+    }
+
+    pub fn metadata(&self, dtype: DType) -> crate::telemetry::ExecutionMetadata {
+        crate::telemetry::ExecutionMetadata {
+            device_type: if self.device.is_cpu() { "cpu" } else { "gpu" }.into(),
+            backend: self.backend.as_str().into(),
+            // Candle does not expose a portable hardware name. Avoid reporting
+            // the host's installed GPU as though it were necessarily selected.
+            device_name: None,
+            dtype: format!("{dtype:?}").to_lowercase(),
+        }
+    }
+}
+
+fn initialize(backend: DeviceArg, ordinal: usize) -> Result<Device, String> {
+    // Suppress only the unused-variable warning in CPU-only builds; no runtime
+    // fallback lives here or in the inference worker.
+    let _ = ordinal;
+    match backend {
+        #[cfg(feature = "rocm")]
+        DeviceArg::Rocm => Device::new_rocm(ordinal).map_err(|e| e.to_string()),
+        #[cfg(feature = "cuda")]
+        DeviceArg::Cuda => Device::new_cuda(ordinal).map_err(|e| e.to_string()),
+        #[cfg(feature = "metal")]
+        DeviceArg::Metal => Device::new_metal(ordinal).map_err(|e| e.to_string()),
+        _ => Err(format!("{} is not a compiled GPU backend", backend.as_str())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gpu_ordinal_cannot_wrap_to_a_different_device() {
+        let error = ExecutionDevice::select(DeviceArg::Auto, usize::MAX).err()
+            .expect("invalid ordinal must fail before probing or CPU fallback");
+        assert!(error.contains("device index"));
+    }
+
+    #[test]
+    fn actual_cpu_selection_exports_its_backend_and_dtype() {
+        let execution = ExecutionDevice::select(DeviceArg::Cpu, 0).unwrap();
+        let metadata = execution.metadata(DType::F16);
+        assert_eq!(metadata.device_type, "cpu");
+        assert_eq!(metadata.backend, "cpu");
+        assert_eq!(metadata.dtype, "f16");
+    }
+
+    #[test]
+    fn cpu_never_probes_a_gpu() {
+        let (selected, errors) = select_with(DeviceArg::Cpu, &[DeviceArg::Rocm], |_| {
+            panic!("CPU selection must not probe accelerators")
+        }).unwrap();
+        assert_eq!(selected, DeviceArg::Cpu);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn auto_prefers_initialized_gpu_and_records_failed_probes() {
+        let (selected, errors) = select_with(DeviceArg::Auto, &[DeviceArg::Rocm, DeviceArg::Cuda], |backend| {
+            if backend == DeviceArg::Rocm { Err("no AMD device".into()) } else { Ok(()) }
+        }).unwrap();
+        assert_eq!(selected, DeviceArg::Cuda);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("no AMD device"));
+    }
+
+    #[test]
+    fn auto_falls_back_loudly_when_initialization_fails() {
+        let (selected, errors) = select_with(DeviceArg::Auto, &[DeviceArg::Rocm], |_| {
+            Err("driver unavailable".into())
+        }).unwrap();
+        assert_eq!(selected, DeviceArg::Cpu);
+        assert!(errors[0].contains("driver unavailable"));
+    }
+
+    #[test]
+    fn cpu_only_build_reports_why_auto_selected_cpu() {
+        let (selected, errors) = select_with(DeviceArg::Auto, &[], |_| unreachable!()).unwrap();
+        assert_eq!(selected, DeviceArg::Cpu);
+        assert!(errors[0].contains("no GPU backend compiled"));
+    }
+
+    #[test]
+    fn explicit_gpu_failure_never_falls_back() {
+        let error = select_with(DeviceArg::Rocm, &[DeviceArg::Rocm], |_| {
+            Err("driver unavailable".into())
+        }).unwrap_err();
+        assert!(error.contains("driver unavailable"));
+        let error = select_with(DeviceArg::Cuda, &[], |_| unreachable!()).unwrap_err();
+        assert!(error.contains("not compiled"));
+    }
+}

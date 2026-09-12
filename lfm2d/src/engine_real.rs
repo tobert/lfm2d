@@ -19,7 +19,7 @@
 use std::path::Path;
 
 use lfm2_encoder::{
-    resolve_severe_labels, Cascade, Device, Lfm2Embedding, Lfm2EncoderConfig,
+    resolve_severe_labels, Cascade, Lfm2Embedding, Lfm2EncoderConfig,
     Lfm2SequenceClassifier, Lfm2SequenceRouter, Lfm2TokenClassifier, TextKind,
 };
 
@@ -69,6 +69,8 @@ fn load_meta(dir: &Path) -> Result<ModelMeta, String> {
 }
 
 pub struct RealEngine {
+    execution: crate::device::ExecutionDevice,
+    dtype: lfm2_encoder::DType,
     embedder: Option<(Lfm2Embedding, ModelMeta)>,
     classifier: Option<(Lfm2SequenceClassifier, ModelMeta)>,
     /// SHADOW second classifier, scored alongside `classifier` on every
@@ -107,9 +109,15 @@ impl RealEngine {
         // would make the audit story ("this hash, at this precision")
         // per-head, and nothing here needs that yet.
         let dtype = cli.dtype.to_dtype();
+        let execution = crate::device::ExecutionDevice::select(cli.device, cli.device_index)?;
+        for reason in &execution.selection_reasons {
+            // Telemetry is initialized only after the model hashes are known.
+            // Emit the device-selection explanation even if model loading fails.
+            eprintln!("lfm2d: device selection: {reason}; selected {}", execution.backend.as_str());
+        }
         let embedder = match &cli.embedder_dir {
             Some(dir) => {
-                let model = Lfm2Embedding::from_dir_with(dir, dtype, &Device::Cpu)
+                let model = Lfm2Embedding::from_dir_with(dir, dtype, &execution.device)
                     .map_err(|e| format!("loading embedder at {}: {e}", dir.display()))?;
                 let meta = load_meta(dir)?;
                 Some((model, meta))
@@ -118,7 +126,7 @@ impl RealEngine {
         };
         let classifier = match &cli.classifier_dir {
             Some(dir) => {
-                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &Device::Cpu)
+                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &execution.device)
                     .map_err(|e| format!("loading classifier at {}: {e}", dir.display()))?;
                 let meta = load_meta(dir)?;
                 Some((model, meta))
@@ -127,7 +135,7 @@ impl RealEngine {
         };
         let router = match &cli.router_dir {
             Some(dir) => {
-                let model = Lfm2SequenceRouter::from_dir_with(dir, dtype, &Device::Cpu)
+                let model = Lfm2SequenceRouter::from_dir_with(dir, dtype, &execution.device)
                     .map_err(|e| format!("loading router at {}: {e}", dir.display()))?;
                 let meta = load_meta(dir)?;
                 Some((model, meta))
@@ -139,7 +147,7 @@ impl RealEngine {
         // see the struct field doc and --candidate-classifier-dir.
         let candidate_classifier = match &cli.candidate_classifier_dir {
             Some(dir) => {
-                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &Device::Cpu)
+                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &execution.device)
                     .map_err(|e| format!("loading candidate classifier at {}: {e}", dir.display()))?;
                 let meta = load_meta(dir)?;
                 Some((model, meta))
@@ -153,7 +161,7 @@ impl RealEngine {
         // N-1.
         let mut token_classifiers = Vec::with_capacity(cli.token_classifier_dir.len());
         for dir in &cli.token_classifier_dir {
-            let model = Lfm2TokenClassifier::from_dir_with(dir, dtype, &Device::Cpu)
+            let model = Lfm2TokenClassifier::from_dir_with(dir, dtype, &execution.device)
                 .map_err(|e| format!("loading token classifier at {}: {e}", dir.display()))?;
             let meta = load_meta(dir)?;
             token_classifiers.push((model, meta));
@@ -197,6 +205,8 @@ impl RealEngine {
         }
 
         let engine = Self {
+            execution,
+            dtype,
             embedder,
             classifier,
             candidate_classifier,
@@ -207,6 +217,14 @@ impl RealEngine {
         };
         engine.smoke_test(dtype)?;
         Ok(engine)
+    }
+
+    pub fn execution_metadata(&self) -> crate::telemetry::ExecutionMetadata {
+        self.execution.metadata(self.dtype)
+    }
+
+    pub fn device_selection_reasons(&self) -> &[String] {
+        &self.execution.selection_reasons
     }
 
     /// Run one tiny forward through every loaded head, so a dtype the build

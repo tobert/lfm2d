@@ -25,13 +25,19 @@ class RealDaemonTests(unittest.TestCase):
         cls.addClassCleanup(temporary.cleanup)
         socket_path = Path(temporary.name) / "lfm2d.sock"
         cls.endpoint = f"unix://{socket_path}"
+        cls.requested_device = os.environ.get("LFM2D_TEST_DEVICE", "cpu")
+        cls.expected_device = os.environ.get("LFM2D_EXPECT_DEVICE", cls.requested_device)
+        if cls.expected_device not in ("cpu", "rocm", "cuda", "metal"):
+            raise RuntimeError("LFM2D_EXPECT_DEVICE must name an actual backend, not auto")
         log_path = Path(temporary.name) / "server.log"
         log = log_path.open("w")
         cls.addClassCleanup(log.close)
         # Do not inherit production model selection or telemetry destinations.
         env = {k: v for k, v in os.environ.items() if not k.startswith(("LFM2D_", "OTEL_"))}
         child = subprocess.Popen([str(binary), "--embedder-dir", str(model.resolve()),
-                                  "--socket-path", str(socket_path), "--threads", "8"],
+                                  "--socket-path", str(socket_path), "--threads", "8",
+                                  "--device", cls.requested_device, "--device-index",
+                                  os.environ.get("LFM2D_TEST_DEVICE_INDEX", "0")],
                                  stdout=log, stderr=log, env=env)
         def stop():
             if child.poll() is None:
@@ -48,6 +54,14 @@ class RealDaemonTests(unittest.TestCase):
                 raise RuntimeError(f"daemon failed to start:\n{log_path.read_text()}")
             time.sleep(0.05)
         cls.client = Client(cls.endpoint)
+        cls.log_path = log_path
+
+    def test_actual_execution_backend_is_reported(self):
+        # These fields are sourced from the selected engine, not host inventory.
+        log = self.log_path.read_text()
+        self.assertIn(f"backend={self.expected_device}", log)
+        self.assertIn(f"device_type={'cpu' if self.expected_device == 'cpu' else 'gpu'}", log)
+        self.assertIn("dtype=f32", log)
 
     def test_batch_order_prefixes_and_model_headers(self):
         client = self.client
@@ -123,6 +137,17 @@ class RealDaemonTests(unittest.TestCase):
             for piece in pieces:
                 self.assertIn(f"[{path}:{piece.start}-{piece.end}]\n{piece.text}", rendered.stdout)
             self.assertIn("Final decision", rendered.stdout)
+
+    def test_keyphrases_select_only_prose_from_the_requested_block(self):
+        from keyphrases import keyphrases, select_block
+        blocks = json.loads((ROOT / "demo/keyphrase_blocks.json").read_text())
+        block = select_block(blocks, "search-thinking")
+        phrases = keyphrases(block, self.client)
+        self.assertEqual(len(phrases), 3)
+        for phrase in phrases:
+            self.assertEqual(phrase["block_id"], block["id"])
+            self.assertEqual(phrase["text"], block["content"][phrase["start"]:phrase["end"]])
+            self.assertNotIn("orchestration_registry", phrase["text"])
 
 
 if __name__ == "__main__":

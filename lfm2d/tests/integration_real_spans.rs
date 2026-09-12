@@ -56,6 +56,8 @@ fn cli_with_token_classifier_only() -> Cli {
         socket_path: None,
         bind_addr: None,
         dtype: lfm2d::config::DtypeArg::F32,
+        device: lfm2d::device::DeviceArg::Cpu,
+        device_index: 0,
         threads: None,
     }
 }

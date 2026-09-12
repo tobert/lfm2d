@@ -88,7 +88,11 @@ async fn main() {
 
     let models = engine.list_models();
     let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "lfm2d".to_string());
-    let _telemetry = lfm2d::telemetry::init(&service_name, &models);
+    let execution = engine.execution_metadata();
+    let _telemetry = lfm2d::telemetry::init(&service_name, &models, &execution);
+    for reason in engine.device_selection_reasons() {
+        tracing::warn!(reason, selected_backend = %execution.backend, "device selection used an alternative backend");
+    }
 
     tracing::info!(
         embedder_dir = ?cli.embedder_dir,
@@ -160,6 +164,11 @@ async fn main() {
     tracing::info!(
         available_parallelism,
         configured_threads = threads,
+        requested_device = cli.device.as_str(),
+        device_index = cli.device_index,
+        device_type = %execution.device_type,
+        backend = %execution.backend,
+        dtype = %execution.dtype,
         container_runtime = %container_probe.runtime,
         cgroup_cpu_max = ?container_probe.cgroup_cpu_max,
         "lfm2d: startup observability"

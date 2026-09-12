@@ -29,6 +29,11 @@ python3 demo/lfm2.py extract demo/conversation.txt --count 3
 python3 demo/lfm2.py extract demo/conversation.txt --query 'next steps'
 ```
 
+For the GPU-enabled build and mandatory CPU/GPU test gate, see
+[`lfm2d/README.md`](../lfm2d/README.md#building). The daemon's default device
+choice is `auto`; its ordinary build has only CPU compiled. Specify
+`--device cpu` for a controlled CPU run.
+
 `--endpoint` precedes the subcommand; it accepts an HTTP(S) root URL or
 `unix:///absolute/path/to/lfm2d.sock`. The client discovers the embedder,
 pins its ID/weight hash, validates every response, and normalizes raw vectors
@@ -46,6 +51,58 @@ to choose **verbatim passages**. It does not understand which latest decision
 supersedes an earlier one, and it can omit important exceptions. Its output
 is a navigation aid, not conversation compaction. The demo index is in memory
 and is rebuilt on each invocation.
+
+## Clickable keyphrases from one block
+
+```sh
+python3 demo/keyphrases.py demo/keyphrase_blocks.json \
+  --block-id search-thinking --html /tmp/lfm2d-keyphrases.html
+```
+
+Open the HTML file locally. Each phrase link highlights its exact source
+range. The page contains the selected block and needs no external assets or
+JavaScript. JSON output also carries `{block_id, text, start, end, score}`;
+offsets are Unicode codepoints, requiring conversion for Rust byte indices
+or JavaScript UTF-16 indices. Scores are similarities, not confidence values.
+
+The input is a small JSON array of block snapshots, with an explicit block
+ID. Only completed, included, non-ephemeral user/model text or thinking prose
+is eligible. Other blocks—including system prompts and tool output—cannot
+contribute candidates or influence ranking. Markdown code fences and inline
+code are masked while retaining offsets. Unmarked logs/code are ambiguous
+and are not reliably filtered by these English heuristics.
+
+At most 48 source phrases (one to three words) are chosen across phrase lengths
+and source positions, embedded, ranked against the prose centroid, and selected
+with a redundancy penalty. It returns **up to** the requested number, never
+inventing fillers. The model does not generate text. This uses the existing
+`/embed` endpoint; no token-classifier or generation API is needed.
+
+On the synthetic block, both devices selected “Passage retrieval,” “prefix
+looks correct,” and “suspect input truncation.” Three end-to-end extraction
+runs, model already loaded, f32 and the same source/50 embedding forwards:
+
+| Device | Seconds per run | Median |
+| --- | --- | ---: |
+| CPU, 8 rayon threads | 3.763, 3.079, 6.960 | 3.763 s |
+| Radeon 8060S, ROCm | 0.766, 0.773, 0.754 | 0.766 s |
+
+This is a tiny local probe, not a latency guarantee. Candidate embeddings
+dominate cost; caching unchanged block results and tuning the candidate budget
+are the next levers. Per-token embeddings might reduce repeated forwards, but
+would need a new service representation and quality evaluation.
+
+The current Kaijutsu implementation has separate problems this isolated demo
+avoids: synthesis admits system/tool/excluded/ephemeral blocks, then truncates
+the first 50 n-grams **before** semantic scoring while enumeration puts all
+unigrams first. Search's combined context projection also admits system and
+excluded/ephemeral text and can fill its early byte budget with instructions.
+Fix selection and candidate budgeting in Kaijutsu before tuning top-k. Its
+current synthesis executes in Rust; the old comment describing Rhai is stale.
+No Kaijutsu source or running configuration was changed for this experiment.
+Its `Lfm2dEmbedder` also currently sends plain reqwest requests without injecting
+the current trace context. The service now honors incoming W3C headers; connecting
+Kaijutsu's caller span requires client injection as a separate consumer change.
 
 ## Thinking-block previews: separate generation endpoint
 
@@ -84,11 +141,13 @@ retention tests for decisions, corrections, constraints, and provenance.
 ## Tests
 
 ```sh
-python3 -m unittest discover -s demo -p 'test_demo.py'
+python3 -m unittest discover -s demo -p 'test_*.py'
 cargo build --release -p lfm2d
 python3 demo/e2e.py -v
 # Optional: requires the separate generator to already be running
 python3 demo/e2e_generation.py -v
+# GPU hardware gate: requires the selected backend and all four checkpoints
+bash demo/test_devices.sh rocm
 ```
 
 The E2E suite starts the actual compiled daemon with real embedding weights
@@ -103,6 +162,8 @@ Override `LFM2D_BIN` or `LFM2_MODELS_DIR` as needed. It checks:
   hard negatives; quality floors are R@1 ≥80%, R@3 ≥95%, negative wins ≤10%.
 - The actual CLI preserves all fixture passages, including the final paragraph,
   and extractive output refers back to exact source slices.
+- Selected execution device is reported correctly; keyphrase provenance and
+  code/prompt exclusions are preserved on the real service.
 
 Fast tests cover malformed vectors, model swaps, input bounds, UTF-8 splitting,
 final-newline preservation, diversity selection, and summary output rejection.
@@ -159,6 +220,13 @@ Service readiness, checked in source and against live deployment arguments:
   stub HTTP contracts, TCP/UDS serving and shutdown. These Python tests add
   real-weight embedding transport and retrieval coverage. Kaijutsu → index →
   lfm2d with real weights still needs a separate cross-project E2E test.
+
+The new service device/tracing behavior is documented in
+[`lfm2d/README.md`](../lfm2d/README.md): explicit CPU/GPU selection, startup-only
+fallback, resource metadata, W3C parent/tracestate propagation and export tests.
+The hardware gate requires both devices; it does not turn missing hardware into
+a passing skip. The default Python E2E remains explicitly CPU (`LFM2D_TEST_DEVICE`
+overrides it; `LFM2D_EXPECT_DEVICE` pins the expected result of `auto`).
 
 Review: Kaibo, DeepSeek cast (`deepseek-flash` explorer and synthesis).
 Fixed empty-query handling, CRLF boundaries, and malformed generation-response
