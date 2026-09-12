@@ -240,8 +240,33 @@ spec:
             # RETIRES the HOST_IP downward-API workaround that previously
             # lived here; brak had already made this exact change live
             # before our Service update briefly reverted it.
+            #
+            # That collector is GONE (replaced ~2026-09-07). Its name kept
+            # resolving nowhere and every export failed DNS for ~5 days,
+            # 0.1.3 and 0.1.4 alike, with nothing but pod-log ERRORs to show.
+            # The stack is now a hostNetwork otel-agent DaemonSet whose
+            # receiver binds node LOOPBACK only (pods cannot reach it) and
+            # which injects the ingest key before forwarding to the ClickStack
+            # gateway. Amy's ruling 2026-09-12: pods go straight to the
+            # gateway with a copy of the key in this namespace.
+            #
+            # The Secret is created out of band, never from this file:
+            #   kubectl -n clickstack get secret clickstack-secret \
+            #     -o jsonpath='{.data.HYPERDX_API_KEY}' | base64 -d \
+            #   | kubectl -n lfm2d create secret generic lfm2d-otlp \
+            #     --from-file=HYPERDX_API_KEY=/dev/stdin
+            # It is a COPY: rotating clickstack-secret means re-running that.
+            # Raw key, no "Bearer " prefix, same as the agent sends.
+            # HYPERDX_API_KEY must stay ABOVE the headers var — $(VAR)
+            # expansion only sees earlier entries, and a miss is left as the
+            # literal text, which would authenticate as nothing, silently.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.monitoring.svc.cluster.local:4317"
+              value: "http://clickstack-otel-collector.clickstack.svc.cluster.local:4317"
+            - name: HYPERDX_API_KEY
+              valueFrom:
+                secretKeyRef: { name: lfm2d-otlp, key: HYPERDX_API_KEY }
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "authorization=$(HYPERDX_API_KEY)"
             - name: OTEL_SERVICE_NAME
               value: lfm2d
           volumeMounts:
