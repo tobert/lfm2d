@@ -1,0 +1,10 @@
+# Allowlist the build context to exactly what lfm2d/Containerfile COPYs.
+# Without this, podman tars the whole tree — target/ alone runs to tens of
+# GiB, plus vendored trees and benchmark runs — before the first layer.
+# If the Containerfile gains a COPY, add the path here in the same edit.
+*
+!Cargo.toml
+!Cargo.lock
+!src/
+!lfm2d/Cargo.toml
+!lfm2d/src/

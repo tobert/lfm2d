@@ -66,10 +66,20 @@ spec:
           # A real version, never `:latest`. `:latest` + IfNotPresent is
           # exactly how the situation above went unnoticed for a day.
           #
-          # Running imageID digest for 0.1.3, read back off the pod:
-          #   sha256:2805f1d94785b49f123a3d544b7ca505311bddd9c21d8c14a2db3666c691d332
-          # (0.1.2 was sha256:e9c494f4…; 0.1.1 sha256:de4c3418…; 0.1.0
-          # sha256:9259e4c0… — rollback targets, all still in the registry.)
+          # Running imageID digest for 0.1.4, read back off the pod:
+          #   sha256:59a22d6c6c725f7bde9dbb25757e9cd9d3dc2fe3e6c46e7ff7ae041edefb1672
+          # (0.1.3 was sha256:2805f1d9…; 0.1.2 sha256:e9c494f4…; 0.1.1
+          # sha256:de4c3418…; 0.1.0 sha256:9259e4c0… — rollback targets, all
+          # still in the registry.)
+          #
+          # 0.1.4 (2026-09-12) is a CPU build of 644c6d7: W3C traceparent/
+          # tracestate propagation, lfm2d.execution.* resource attributes,
+          # and --device (default auto; this image compiles no GPU backend,
+          # so auto logs the reason and selects cpu). No args or memory
+          # change. Before/after probe on classify/cascade/spans/route:
+          # classify and cascade severity scores byte-identical; router
+          # cosines and one PII span score moved in the 7th significant
+          # digit (candle moved from crates.io 0.11 to the tobert/candle pin).
           # Bump this comment WITH the tag — a digest recorded next to a
           # different version is worse than no digest, because it reads as
           # verified. It went stale within one deploy of being written.
@@ -102,7 +112,7 @@ spec:
           #     serial worker, which the burst behaviour cannot absorb
           #     today. Turn it on the day a v10.1 candidate exists, and bump
           #     the memory request in the same edit.
-          image: 192.168.1.2:3000/amy/lfm2d:0.1.3
+          image: 192.168.1.2:3000/amy/lfm2d:0.1.4
           imagePullPolicy: IfNotPresent
           args:
             # kube_ordinal_v9 — Amy's straight-cutover call 2026-08-16:
