@@ -13,16 +13,18 @@ adds grouped expert prefill. That pass changes floating-point accumulation
 order and can change generated text; see its separate hardware checks and
 prompt/model observations.
 
-## Development checkout
+The [third pass](lfm25-qkv-input-cache.md) packs compatible QKV projections
+and adds an exact complete-input checkpoint with saved next-token logits.
 
-This initial integration uses sibling worktrees: `lfm2d-lfm25` and
-`candle-lfm25`. The root Cargo patch points to `../candle-lfm25/{candle-core,
-candle-nn,candle-transformers}`. Keep these adjacent. The fork branch is
-`lfm25-moe-snapshots`, commit `9ec8749d`, based on
-`d9748a8f4622e7d9b66646a96ff23cdbca2fc424`.
-Replace the development patch with a published fork revision before merging
-this integration into main. No public publication or deployment is part of
-this experiment.
+## Build and run
+
+Clone the `lfm25-adjudicator` branch of
+[tobert/lfm2d](https://github.com/tobert/lfm2d/tree/lfm25-adjudicator).
+Cargo pins the published Candle fork at `936a15a6fbcf1f29e38a27058738ffb4ce091753`
+on [lfm25-moe-snapshots](https://github.com/tobert/candle/tree/lfm25-moe-snapshots).
+No sibling checkout or Cargo patch is required. The ROCm build requires the
+ROCm development toolchain and a supported AMD GPU. Model paths below are
+examples; download the GGUF and matching tokenizer to your own paths.
 
 ```bash
 cd "$HOME/src/wt/lfm2d-lfm25"
@@ -100,8 +102,11 @@ Foreign-model state, bad tokens, and context overflow are errors.
 This provides CoW semantics at tensor boundaries. It is not a paged KV
 allocator: each append still copies prior KV into the new concatenation.
 That is a straightforward correctness baseline for subsequent optimization.
-The daemon owns one prefix, a bounded queue of eight, and one generation
-worker. Deadlines, disconnected callers, and shutdown discard the current
+The daemon owns one fixed prefix and one complete-input checkpoint with
+saved logits, a bounded queue of eight, and one generation worker. Exact
+input repeats reuse the latter; `cached_tokens` then equals `prompt_tokens`.
+`input_cache_capacity: 1` advertises this behavior. Cold requests bypass
+cache reads and writes. Deadlines, disconnected callers, and shutdown discard the current
 branch. The encoder worker is separate. Shutdown waits for both models to
 drop before flushing telemetry.
 
@@ -186,10 +191,9 @@ additional checks. Review is supporting evidence, not a substitute for tests.
   work is recoverable. Schema validation cannot catch that.
 - Shorter reasoning and grammar-constrained final JSON; latency is currently
   dominated by autoregressive reasoning, not prefix prefill.
-- Batched/grouped quantized MoE prefill and an append-efficient KV allocator.
+- An append-efficient KV allocator and less GQA materialization; grouped
+  quantized MoE prefill is implemented.
 - Wider fixed-token reference comparisons, including the native-tool prompt.
 - The old dense `lfm2`/`quantized_lfm2` cached multi-token convolution paths
   ignore existing history. This new model fixes its own path; repair and
   regression-test the older modules separately.
-- Publish/pin the Candle revision when authorized; then remove the sibling
-  development patch before integrating into main.

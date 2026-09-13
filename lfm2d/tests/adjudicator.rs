@@ -54,6 +54,7 @@ fn info() -> PrefixInfo {
         template_version: "test".into(),
         snapshot_id: "snapshot".into(),
         prefix_tokens: 7,
+        input_cache_capacity: 0,
         context_limit: 128,
         backend: "cpu".into(),
         dtype: "f32".into(),

@@ -1,0 +1,301 @@
+{
+  "description": "Paired shared-host 64-token hardware smoke; reports intentionally truncated. First case excluded from warm medians; all requests retained. Not a quality evaluation or isolated benchmark.",
+  "before_candle": "9ec8749d",
+  "after_candle": "936a15a6fbcf1f29e38a27058738ffb4ce091753",
+  "binary_sha256": {
+    "before": "b85861c6e0f729da5f345bec9e7f97b25692d228115005cb2698a61f50cb1532",
+    "after": "5b13adb68a875e2fee268494c8cba88de71fe064135be47330dc668264b08ffd"
+  },
+  "note": "Measured binary predates owner and tokenizer-boundary guards; published revision gets a separate live smoke.",
+  "warm_decode_median_ms": {
+    "before": 740.2383639999999,
+    "after": 676.427146,
+    "reduction_percent": 8.620360832851937
+  },
+  "rows": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 154.039756,
+        "decode_ms": 1191.971338
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 212.597107,
+        "decode_ms": 961.694258
+      }
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 590.849154,
+        "decode_ms": 994.4765530000001
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 841.333131,
+        "decode_ms": 716.9266309999999
+      }
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 270.097673,
+        "decode_ms": 1430.6455520000002
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 64,
+        "prefill_ms": 0.004057000000000001,
+        "decode_ms": 677.350721
+      }
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 340.173927,
+        "decode_ms": 1428.3640019999998
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 161.62010700000002,
+        "decode_ms": 677.845186
+      }
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 741.885927,
+        "decode_ms": 741.311331
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 573.971388,
+        "decode_ms": 677.039533
+      }
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 177.55902,
+        "decode_ms": 740.2383639999999
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 64,
+        "prefill_ms": 0.0034869999999999996,
+        "decode_ms": 678.664803
+      }
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 149.64439099999998,
+        "decode_ms": 740.6818920000001
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 135.68908599999997,
+        "decode_ms": 676.427146
+      }
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 577.987045,
+        "decode_ms": 739.631227
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 571.2924360000001,
+        "decode_ms": 674.716875
+      }
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 148.651005,
+        "decode_ms": 739.851032
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 64,
+        "prefill_ms": 0.001974,
+        "decode_ms": 676.0696499999999
+      }
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 149.050459,
+        "decode_ms": 740.184212
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 135.66807599999999,
+        "decode_ms": 676.23872
+      }
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 574.864605,
+        "decode_ms": 740.383428
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 64,
+        "prefill_ms": 566.847218,
+        "decode_ms": 676.147067
+      }
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 64,
+        "prefill_ms": 148.91993300000001,
+        "decode_ms": 739.5889169999999
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 64,
+        "prefill_ms": 0.002595,
+        "decode_ms": 676.93189
+      }
+    }
+  ],
+  "runtime_checks": [
+    "exact cached repeats",
+    "deadline cancellation",
+    "reuse after deadline",
+    "in-flight SIGTERM"
+  ],
+  "all_before_after_outputs_equal": true,
+  "published_revision_smoke": {
+    "binary_sha256": "4edf57a89ef771fe5c79f979ffd5fae76c14dba4d0aea267127884205f755ad3",
+    "summary": {
+      "prefix": {
+        "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+        "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+        "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "template_version": "lfm25-single-user-v1",
+        "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+        "prefix_tokens": 331,
+        "input_cache_capacity": 1,
+        "context_limit": 4096,
+        "backend": "rocm",
+        "dtype": "f32",
+        "sampling": "greedy; repetition_penalty=1.05; history=full",
+        "weight_dtypes": [
+          "F32",
+          "Q5K",
+          "Q6K"
+        ]
+      },
+      "comparisons": [
+        {
+          "case_id": "tool-reset-hard",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-restore-file",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-rm-interactive",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-sed-read",
+          "cold_equal": false,
+          "repeat_equal": true
+        }
+      ],
+      "passed": 0,
+      "total": 12
+    },
+    "runtime_checks_passed": true,
+    "max_tokens": 64
+  }
+}

@@ -133,6 +133,8 @@ pub struct PrefixInfo {
     pub template_version: String,
     pub snapshot_id: String,
     pub prefix_tokens: usize,
+    /// Complete-input checkpoints retained alongside the fixed prefix.
+    pub input_cache_capacity: usize,
     pub context_limit: usize,
     pub backend: String,
     pub dtype: String,
@@ -200,12 +202,88 @@ pub trait Generator: Send + 'static {
     ) -> Result<AdjudicateResponse, Failure>;
 }
 
+// One exact-input checkpoint in addition to the fixed system prefix. This is
+// reusable model computation, never a cached adjudication or mutable sampler.
+struct PreparedPrompt {
+    token_ids: Vec<u32>,
+    state: ModelState,
+    logits: Tensor,
+}
+struct PreparedEvaluation {
+    state: ModelState,
+    logits: Tensor,
+    cached_tokens: usize,
+}
+struct PromptCache {
+    prefix: ModelState,
+    prefix_ids: Vec<u32>,
+    ready: Option<PreparedPrompt>,
+}
+impl PromptCache {
+    fn prepare(
+        &mut self,
+        model: &Model,
+        full: &[u32],
+        use_cache: bool,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<PreparedEvaluation, Failure> {
+        check()?;
+        if !model.owns_state(&self.prefix) {
+            return Err(Failure::Internal(
+                "input checkpoint belongs to another model".into(),
+            ));
+        }
+        if !full.starts_with(&self.prefix_ids) || full.len() <= self.prefix_ids.len() {
+            return Err(Failure::BadRequest(
+                "rendered input changes cached token prefix or has no suffix".into(),
+            ));
+        }
+        if use_cache {
+            if let Some(ready) = &self.ready {
+                if ready.token_ids == full {
+                    return Ok(PreparedEvaluation {
+                        state: ready.state.clone(),
+                        logits: ready.logits.clone(),
+                        cached_tokens: full.len(),
+                    });
+                }
+            }
+        }
+        let (mut state, start) = if use_cache {
+            (self.prefix.clone(), self.prefix_ids.len())
+        } else {
+            (model.new_state(), 0)
+        };
+        let mut logits = None;
+        for chunk in full[start..].chunks(CHUNK) {
+            check()?;
+            logits = Some(model.forward(chunk, &mut state)?);
+        }
+        let logits = logits.ok_or_else(|| Failure::Internal("no suffix tokens".into()))?;
+        // Publish only complete prefill. A failed/cancelled preparation retains
+        // the previous entry; later decode never mutates the saved state/logits.
+        logits.device().synchronize()?;
+        check()?;
+        if use_cache {
+            self.ready = Some(PreparedPrompt {
+                token_ids: full.to_vec(),
+                state: state.clone(),
+                logits: logits.clone(),
+            });
+        }
+        Ok(PreparedEvaluation {
+            state,
+            logits,
+            cached_tokens: start,
+        })
+    }
+}
+
 pub struct Adjudicator {
     model: Model,
     tokenizer: tokenizers::Tokenizer,
-    prefix: ModelState,
+    cache: PromptCache,
     prefix_text: String,
-    prefix_ids: Vec<u32>,
     eos: u32,
     info: PrefixInfo,
     output_schema: Option<serde_json::Value>,
@@ -296,6 +374,12 @@ impl Adjudicator {
             .map_err(|e| e.to_string())?
             .get_ids()
             .to_vec();
+        let boundary_probe = tokenizer
+            .encode(format!("{prefix_text}<|im_start|>user\n"), false)
+            .map_err(|e| e.to_string())?;
+        if !boundary_probe.get_ids().starts_with(&prefix_ids) {
+            return Err("tokenizer changes the system prefix at the user-message boundary".into());
+        }
         if prefix_ids.is_empty() || prefix_ids.len() + 1 >= cli.adjudicator_context {
             return Err("adjudicator prefix leaves no context for input/output".into());
         }
@@ -336,6 +420,7 @@ impl Adjudicator {
             template_version: TEMPLATE_VERSION.into(),
             snapshot_id,
             prefix_tokens: prefix_ids.len(),
+            input_cache_capacity: 1,
             context_limit: cli.adjudicator_context,
             backend: execution.backend.as_str().into(),
             dtype: "f32".into(),
@@ -348,9 +433,12 @@ impl Adjudicator {
         Ok(Self {
             model,
             tokenizer,
-            prefix,
+            cache: PromptCache {
+                prefix,
+                prefix_ids,
+                ready: None,
+            },
             prefix_text,
-            prefix_ids,
             eos: 124900,
             info,
             output_schema: prompt.output_schema,
@@ -388,11 +476,6 @@ impl Generator for Adjudicator {
             .map_err(|e| Failure::Internal(e.to_string()))?
             .get_ids()
             .to_vec();
-        if !full.starts_with(&self.prefix_ids) {
-            return Err(Failure::BadRequest(
-                "rendered input changes cached token prefix".into(),
-            ));
-        }
         if full
             .len()
             .checked_add(request.max_tokens)
@@ -402,19 +485,14 @@ impl Generator for Adjudicator {
                 "prompt plus max_tokens exceeds adjudicator context".into(),
             ));
         }
-        let (mut state, start) = if request.use_cache {
-            (self.prefix.clone(), self.prefix_ids.len())
-        } else {
-            (self.model.new_state(), 0)
-        };
         let begin = Instant::now();
-        let mut logits: Option<Tensor> = None;
-        for chunk in full[start..].chunks(CHUNK) {
-            check()?;
-            logits = Some(self.model.forward(chunk, &mut state)?);
-        }
-        let mut logits = logits.ok_or_else(|| Failure::Internal("no suffix tokens".into()))?;
-        logits.device().synchronize()?;
+        let PreparedEvaluation {
+            mut state,
+            mut logits,
+            cached_tokens,
+        } = self
+            .cache
+            .prepare(&self.model, &full, request.use_cache, check)?;
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
         let decode = Instant::now();
         let mut sampler = GreedySampler::new(
@@ -467,7 +545,7 @@ impl Generator for Adjudicator {
             report_error,
             finish_reason: finish_reason.into(),
             prompt_tokens: full.len(),
-            cached_tokens: start,
+            cached_tokens,
             completion_tokens: generated.len(),
             queue_ms: 0.,
             prefill_ms,
@@ -753,4 +831,136 @@ async fn adjudicate(
     crate::server::ValidJson(request): crate::server::ValidJson<AdjudicateRequest>,
 ) -> Result<Json<AdjudicateResponse>, Response> {
     h.evaluate(request).await.map(Json)
+}
+
+#[cfg(test)]
+mod prompt_cache_tests {
+    use super::*;
+    use std::cell::Cell;
+    fn fixture() -> (Model, PromptCache) {
+        let mut f = std::io::Cursor::new(include_bytes!("../tests/fixtures/lfm2-moe/tiny.gguf"));
+        let ct = candle_core::quantized::gguf_file::Content::read(&mut f).unwrap();
+        let model = Model::from_gguf(ct, &mut f, &candle_core::Device::Cpu).unwrap();
+        let mut prefix = model.new_state();
+        model.forward(&[1, 2, 3], &mut prefix).unwrap();
+        (
+            model,
+            PromptCache {
+                prefix,
+                prefix_ids: vec![1, 2, 3],
+                ready: None,
+            },
+        )
+    }
+    fn values(t: &Tensor) -> Vec<f32> {
+        t.flatten_all().unwrap().to_vec1().unwrap()
+    }
+    #[test]
+    fn prepared_prompt_keeps_logits_and_hybrid_state_isolated() {
+        let (model, mut cache) = fixture();
+        let tokens = [1, 2, 3, 4, 5];
+        let mut first = cache.prepare(&model, &tokens, true, &|| Ok(())).unwrap();
+        assert_eq!(first.cached_tokens, 3);
+        let expected = values(&first.logits);
+        let expected_next = values(&model.forward(&[6], &mut first.state).unwrap());
+        model.forward(&[7, 8], &mut first.state).unwrap();
+        let mut second = cache.prepare(&model, &tokens, true, &|| Ok(())).unwrap();
+        assert_eq!(second.cached_tokens, tokens.len());
+        assert_eq!(second.state.len(), tokens.len());
+        assert_eq!(values(&second.logits), expected);
+        assert_eq!(
+            values(&model.forward(&[6], &mut second.state).unwrap()),
+            expected_next
+        );
+        assert_eq!(cache.prefix.len(), 3);
+    }
+    #[test]
+    fn ready_input_cannot_cross_model_instances() {
+        let (model, mut cache) = fixture();
+        let (other, _) = fixture();
+        cache
+            .prepare(&model, &[1, 2, 3, 4], true, &|| Ok(()))
+            .unwrap();
+        assert!(
+            cache
+                .prepare(&other, &[1, 2, 3, 4], true, &|| Ok(()))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn cache_is_exact_bounded_and_cold_requests_bypass_it() {
+        let (model, mut cache) = fixture();
+        let a = [1, 2, 3, 4];
+        let b = [1, 2, 3, 5];
+        cache.prepare(&model, &a, true, &|| Ok(())).unwrap();
+        assert_eq!(
+            cache
+                .prepare(&model, &b, false, &|| Ok(()))
+                .unwrap()
+                .cached_tokens,
+            0
+        );
+        assert_eq!(
+            cache
+                .prepare(&model, &a, true, &|| Ok(()))
+                .unwrap()
+                .cached_tokens,
+            a.len()
+        );
+        assert_eq!(
+            cache
+                .prepare(&model, &b, true, &|| Ok(()))
+                .unwrap()
+                .cached_tokens,
+            3
+        );
+        assert_eq!(
+            cache
+                .prepare(&model, &a, true, &|| Ok(()))
+                .unwrap()
+                .cached_tokens,
+            3
+        );
+    }
+    #[test]
+    fn failed_or_cancelled_prefill_does_not_replace_ready_input() {
+        let (model, mut cache) = fixture();
+        let a = [1, 2, 3, 4];
+        cache.prepare(&model, &a, true, &|| Ok(())).unwrap();
+        assert!(
+            cache
+                .prepare(&model, &[1, 2, 3, 16], true, &|| Ok(()))
+                .is_err()
+        );
+        assert!(
+            cache
+                .prepare(&model, &[1, 2, 9, 4], true, &|| Ok(()))
+                .is_err()
+        );
+        let calls = Cell::new(0);
+        let check = || {
+            calls.set(calls.get() + 1);
+            if calls.get() > 2 {
+                Err(Failure::Cancelled)
+            } else {
+                Ok(())
+            }
+        };
+        assert!(matches!(
+            cache.prepare(&model, &[1, 2, 3, 5], true, &check),
+            Err(Failure::Cancelled)
+        ));
+        assert_eq!(
+            cache
+                .prepare(&model, &a, true, &|| Ok(()))
+                .unwrap()
+                .cached_tokens,
+            a.len()
+        );
+        assert!(matches!(
+            cache.prepare(&model, &a, true, &|| Err(Failure::Deadline)),
+            Err(Failure::Deadline)
+        ));
+    }
 }

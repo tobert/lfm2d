@@ -7,6 +7,11 @@ Two crates in one workspace: **`lfm2-encoder`** (this README — the library,
 at the repo root) and **`lfm2d`** (the HTTP daemon that serves its heads over
 a Unix socket and/or TCP — see [`lfm2d/README.md`](lfm2d/README.md)).
 
+This branch also serves **LFM2.5-8B-A1B adjudication on ROCm**, with a resident
+system prefix and reusable complete-input snapshots. See the
+[build, API, and validation guide](docs/lfm25-adjudicator.md) and the
+[latest hardware/cache results](docs/lfm25-qkv-input-cache.md).
+
 Upstream candle-transformers implements the *causal* LFM2
 (`models/lfm2.rs`). Nobody implements the encoder branch —
 `Lfm2BidirectionalModel` and its task heads. This crate is that gap:

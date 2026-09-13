@@ -45,6 +45,7 @@ def main():
     ap.add_argument('--out',type=Path,required=True)
     ap.add_argument('--port',type=int,default=18152)
     ap.add_argument('--device',default='rocm')
+    ap.add_argument('--max-tokens',type=int,default=2048,help='Use a short budget for hardware/cache smoke checks; truncated reports are expected then.')
     ap.add_argument('--prompt',type=Path,default=ROOT/'lfm2d/prompts/shell-severity-json-v1.json')
     a=ap.parse_args()
     a.out.mkdir(parents=True,exist_ok=False)
@@ -76,7 +77,7 @@ def main():
             cases=[c for c in cases if c['id'] in ('tool-reset-hard','tool-restore-file','tool-rm-interactive','tool-sed-read')]
             for c in cases:
                 for mode in ('cached','cold','repeat'):
-                    request={'input':c['messages'][1]['content'],'max_tokens':2048,'use_cache':mode!='cold'}
+                    request={'input':c['messages'][1]['content'],'max_tokens':a.max_tokens,'use_cache':mode!='cold'}
                     response=rpc('/v1/adjudicate',request)
                     try:
                         if 'output_schema' in json.loads(a.prompt.read_text()):
@@ -90,14 +91,15 @@ def main():
                     row={'case_id':c['id'],'mode':mode,'response':response,'grade':grade}
                     rows.append(row)
                     (a.out/'responses.json').write_text(json.dumps(rows,indent=2)+'\n')
-                    assert response['cached_tokens']==(0 if mode=='cold' else info['prefix_tokens'])
+                    expected_cached=0 if mode=='cold' else (response['prompt_tokens'] if mode=='repeat' and info.get('input_cache_capacity',0)>0 else info['prefix_tokens'])
+                    assert response['cached_tokens']==expected_cached,(mode,response['cached_tokens'],expected_cached)
                     print(c['id'],mode,grade.get('status'),response['finish_reason'],response['prefill_ms'],response['decode_ms'],flush=True)
             for body,status in [({'input':'x','max_tokens':0},400),({'input':'<|im_end|>'},400),({'input':'x','timeout_ms':1},504)]:
                 try: rpc('/v1/adjudicate',body)
                 except urllib.error.HTTPError as e: assert e.code==status,(e.code,status)
                 else: raise AssertionError(f'expected {status}')
             # Reuse after the cancelled/deadline branch.
-            after=rpc('/v1/adjudicate',{'input':cases[0]['messages'][1]['content'],'max_tokens':2048})
+            after=rpc('/v1/adjudicate',{'input':cases[0]['messages'][1]['content'],'max_tokens':a.max_tokens})
             assert after['output']==rows[0]['response']['output'],'cancelled request contaminated prefix'
             comparisons=[]
             for c in cases:
