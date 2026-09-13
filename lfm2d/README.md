@@ -412,6 +412,24 @@ drives the sequence programmatically (via `server::begin_shutdown`) and
 asserts all three parts: `/readyz` flips, the in-flight request completes
 200, `serve()` resolves.
 
+**Exit waits for the engine drop.** After `serve()` returns, `main.rs`'s
+`exit_after_serve` waits up to `shutdown::WORKER_EXIT_TIMEOUT` (5s) for the
+worker thread to drop its engine (`worker::WorkerExit`), and only then exits
+0. `serve()` returning drops the last `WorkerHandle`, which ends the worker
+loop, and the engine drops on the worker thread. A GPU engine's drop frees
+device memory through the driver, so exiting underneath it runs
+libamdhip64's atexit teardown mid-free; a ROCm build segfaulted exactly
+there (see Known problems). If a request outlived the drain cap, its
+connection task still holds a `WorkerHandle`, so the wait times out, a
+warning is logged, and the exit is still 0. That keeps 10s + 5s inside
+Kubernetes' default 30s grace period. It also means the fix NARROWS the
+race to that already-pathological path rather than eliminating it: exit
+then runs under a live engine, and a GPU build can still fault there.
+`tests/shutdown_exit.rs` proves the ordering through the real binary with
+no GPU: a stub engine whose drop sleeps and then writes a marker must have
+written it before the process exits. `demo/e2e.py` (run by
+`demo/test_devices.sh`) fails the device gate on any nonzero SIGTERM exit.
+
 **Crash-only on worker death.** A worker-thread panic today would leave the
 HTTP server answering 500s forever while `/healthz` still said 200 —
 alive-but-useless, and kubelet never restarts a pod whose process hasn't
@@ -634,16 +652,29 @@ The task spec left a few things implicit; here's what was decided and why
   anyone relies on that specific attribute with 2+ token classifiers
   loaded; not fixed here because it needed a resource-attribute shape
   decision, not a spans-endpoint one.
-- **A ROCm build exits 1 after a clean SIGTERM shutdown.** On 2026-09-12,
-  two daemons from the same ROCm release binary got SIGTERM in the same
-  second. Both logged `received SIGTERM, draining in-flight requests...`
-  and `shutdown complete, exiting 0`. The `--device cpu` one exited 0; the
-  `--device rocm` one exited **1**. It was launched with `exec`, so that is
-  lfm2d's own status. The likely contributing factor is the one seen in the
-  vendored mistral.rs work: the process exits while HIP/rocBLAS global
-  teardown is still running. Nothing is lost at that point, since the
-  worker has drained. But a GPU pod would report every graceful stop as
-  `Error`, which reads as a crash in restart and alert logic.
-  `demo/test_devices.sh` does not assert the exit status. Not fixed here:
-  it needs a test-first repro against real ROCm teardown before any GPU
-  deployment.
+- **FIXED 2026-09-13: the final OTLP flush never ran.**
+  `telemetry::TelemetryGuard` flushes every batch exporter when dropped, but
+  `main` has always left through `std::process::exit`, which never unwinds
+  its frame. So the guard never dropped, and whatever the exporters had
+  buffered was lost on every shutdown. A kaibo review found it.
+  `exit_after_serve` now drops the guard explicitly, after the worker wait,
+  bounded by `shutdown::TELEMETRY_FLUSH_TIMEOUT` (5s) so a dead collector
+  cannot eat the grace period. `tests/shutdown_exit.rs` asserts the flush
+  runs, and runs after the engine drop.
+- **FIXED 2026-09-13: a ROCm build crashed after a clean SIGTERM
+  shutdown.** On 2026-09-12 a ROCm daemon logged `shutdown complete,
+  exiting 0` and the harness reported exit 1. On 2026-09-13 the same shape
+  reproduced as SIGSEGV in 1 of 11 paired CPU+ROCm shutdowns. The core dump
+  put the fault on the `lfm2d-worker` thread: the worker loop ended, dropped
+  `RealEngine`, and its last tensor freed the ROCm allocator
+  (`RocmAllocator::release_all` -> `hipFree`) while `main`'s `exit(0)` ran
+  libamdhip64's atexit teardown. Two contributing factors, two fixes:
+  - lfm2d exited without waiting for the engine drop. `main` now waits for
+    it (see "Exit waits for the engine drop").
+  - The candle fork's exit guard read its flag once, before the free loop.
+    tobert/candle `d9748a8f` makes the atexit hook wait for releases
+    already under way; its `rocm_exit_race` test went from 24 of 24
+    SIGSEGV to 24 of 24 exit 0.
+  After the lfm2d fix, 80 of 80 paired shutdowns exited 0 (at the old rate
+  a clean 80 is ~0.05% luck). `demo/test_devices.sh` now asserts the exit
+  status.

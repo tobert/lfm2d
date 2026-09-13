@@ -31,7 +31,7 @@ use lfm2d::config::Cli;
 use lfm2d::engine_real::RealEngine;
 use lfm2d::server::{begin_shutdown, build_router, serve, AppState};
 use lfm2d::shutdown::{self, ShutdownHandle};
-use lfm2d::worker::{InferenceEngine, WorkerHandle};
+use lfm2d::worker::{InferenceEngine, WorkerExit, WorkerHandle};
 
 /// Test-only escape hatch for `tests/worker_crash_monitor.rs`: that test
 /// needs to exercise the crash-only behavior of the REAL compiled binary
@@ -42,10 +42,18 @@ use lfm2d::worker::{InferenceEngine, WorkerHandle};
 /// unaffected when this var is unset, which is every real deployment.
 const TEST_CRASH_ENV: &str = "LFM2D_TEST_CRASH_ON_WORKER_PANIC";
 
+/// Test-only escape hatch for `tests/shutdown_exit.rs`, same shape as
+/// [`TEST_CRASH_ENV`]: its value is the path a slow-dropping stub engine
+/// writes once its drop has finished. Never set outside that test.
+const TEST_SHUTDOWN_ENV: &str = "LFM2D_TEST_SHUTDOWN_DROP_MARKER";
+
 #[tokio::main]
 async fn main() {
     if std::env::var_os(TEST_CRASH_ENV).is_some() {
         return run_crash_monitor_test_harness().await;
+    }
+    if let Some(marker) = std::env::var_os(TEST_SHUTDOWN_ENV) {
+        return run_shutdown_order_test_harness(marker.into()).await;
     }
 
     let cli = Cli::parse();
@@ -89,7 +97,7 @@ async fn main() {
     let models = engine.list_models();
     let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "lfm2d".to_string());
     let execution = engine.execution_metadata();
-    let _telemetry = lfm2d::telemetry::init(&service_name, &models, &execution);
+    let telemetry = lfm2d::telemetry::init(&service_name, &models, &execution);
     for reason in engine.device_selection_reasons() {
         tracing::warn!(reason, selected_backend = %execution.backend, "device selection used an alternative backend");
     }
@@ -175,6 +183,7 @@ async fn main() {
     );
 
     let worker = WorkerHandle::spawn_crash_on_panic(engine).with_log_input_hash(cli.log_input_hash);
+    let worker_exit = worker.exit_signal();
     let _queue_depth_gauge = lfm2d::telemetry::register_queue_depth_gauge(worker.queue_depth_handle());
 
     // Loading (above) is synchronous and already complete by the time we
@@ -205,15 +214,92 @@ async fn main() {
     )
     .await;
 
+    exit_after_serve(result, worker_exit, move || drop(telemetry)).await
+}
+
+/// The end of every served process: exit 0 after a graceful drain, 1 on a
+/// server error. Shared by `main` and [`run_shutdown_order_test_harness`],
+/// so `tests/shutdown_exit.rs` exercises this exact tail.
+///
+/// A graceful exit first waits (bounded) for the worker thread to drop its
+/// engine. `serve` returning drops the router and with it the last
+/// `WorkerHandle`, which ends the worker loop, and the engine then drops ON
+/// THE WORKER THREAD. Calling `exit` before that finishes runs libamdhip64's
+/// atexit teardown under a live device free: a ROCm build segfaulted exactly
+/// there on 2026-09-13 (`lfm2d/README.md`, known problems).
+///
+/// Then it flushes telemetry, bounded by `shutdown::TELEMETRY_FLUSH_TIMEOUT`.
+/// `std::process::exit` never unwinds `main`, so `TelemetryGuard` would
+/// otherwise never drop and its final OTLP flush would never run. The flush
+/// comes after the worker wait, so the worker's last spans are in it, and
+/// after the final log line, so that line is exported too.
+async fn exit_after_serve(
+    result: std::io::Result<()>,
+    worker_exit: WorkerExit,
+    flush_telemetry: impl FnOnce() + Send + 'static,
+) -> ! {
     match result {
         Ok(()) => {
-            tracing::info!("lfm2d: shutdown complete, exiting 0");
+            let timeout = shutdown::WORKER_EXIT_TIMEOUT;
+            let dropped = tokio::task::spawn_blocking(move || worker_exit.wait_timeout(timeout))
+                .await
+                .expect("the worker-exit wait task panicked");
+            if dropped {
+                tracing::info!("lfm2d: shutdown complete, exiting 0");
+            } else {
+                tracing::warn!(
+                    timeout_ms = timeout.as_millis() as u64,
+                    "lfm2d: the worker still held its engine at the timeout (a request outlived \
+                     the drain cap); exiting 0 anyway, and a GPU build can fault in driver teardown"
+                );
+            }
+            flush_bounded(flush_telemetry, shutdown::TELEMETRY_FLUSH_TIMEOUT).await;
             std::process::exit(0);
         }
         Err(e) => {
             tracing::error!(error = %e, "lfm2d: server error");
+            flush_bounded(flush_telemetry, shutdown::TELEMETRY_FLUSH_TIMEOUT).await;
             std::process::exit(1);
         }
+    }
+}
+
+/// Run `flush` on a blocking thread, giving up after `timeout`; `true` iff it
+/// finished. Reports on stderr, not through tracing: the pipeline being
+/// flushed is the one that would carry the report.
+async fn flush_bounded(flush: impl FnOnce() + Send + 'static, timeout: Duration) -> bool {
+    match tokio::time::timeout(timeout, tokio::task::spawn_blocking(flush)).await {
+        Ok(Ok(())) => true,
+        Ok(Err(e)) => {
+            eprintln!("lfm2d: the final telemetry flush panicked: {e}");
+            false
+        }
+        Err(_) => {
+            eprintln!("lfm2d: the final telemetry flush did not finish within {timeout:?}; exiting without it");
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[tokio::test]
+    async fn flush_bounded_runs_the_flush() {
+        let ran = Arc::new(AtomicBool::new(false));
+        let flag = ran.clone();
+        assert!(flush_bounded(move || flag.store(true, Ordering::SeqCst), Duration::from_secs(5)).await);
+        assert!(ran.load(Ordering::SeqCst), "the flush closure never ran");
+    }
+
+    #[tokio::test]
+    async fn flush_bounded_gives_up_at_the_timeout() {
+        let start = std::time::Instant::now();
+        let finished = flush_bounded(|| std::thread::sleep(Duration::from_secs(3)), Duration::from_millis(100)).await;
+        assert!(!finished, "a flush slower than the timeout must report unfinished");
+        assert!(start.elapsed() < Duration::from_secs(2), "the exit tail waited out a stuck flush");
     }
 }
 
@@ -259,4 +345,36 @@ async fn run_crash_monitor_test_harness() {
     let (_shutdown_handle, shutdown_signal) = shutdown::channel();
     eprintln!("lfm2d-test-harness: listening on {bind_addr}");
     let _ = serve(router, None, Some(bind_addr), shutdown_signal, Duration::from_secs(60)).await;
+}
+
+/// Test-only harness for `tests/shutdown_exit.rs` — see [`TEST_SHUTDOWN_ENV`].
+/// From the worker spawn onward this is `main`'s production path: the
+/// crash-on-panic worker, the real SIGTERM handler, `serve`, and
+/// [`exit_after_serve`]. Only the engine differs: a
+/// [`lfm2d::engine_stub::StubEngine`] whose drop takes a moment and then
+/// writes `marker`, standing in for a GPU engine freeing device memory.
+async fn run_shutdown_order_test_harness(marker: std::path::PathBuf) {
+    let bind_addr = std::env::var("LFM2D_TEST_BIND_ADDR")
+        .expect("LFM2D_TEST_BIND_ADDR must be set alongside LFM2D_TEST_SHUTDOWN_DROP_MARKER");
+    let flush_marker = marker.with_extension("flushed");
+    let engine_marker = marker.clone();
+    let engine = lfm2d::engine_stub::StubEngine {
+        drop_probe: Some(Arc::new(lfm2d::engine_stub::DropProbe { delay: Duration::from_millis(500), marker })),
+        ..lfm2d::engine_stub::StubEngine::fully_configured()
+    };
+    let worker = WorkerHandle::spawn_crash_on_panic(engine);
+    let worker_exit = worker.exit_signal();
+    let ready = Arc::new(AtomicBool::new(true));
+    let router = build_router(AppState { worker, ready: ready.clone() });
+    let (shutdown_handle, shutdown_signal) = shutdown::channel();
+    install_signal_handlers(ready, shutdown_handle);
+    eprintln!("lfm2d-test-harness: listening on {bind_addr}");
+    let result = serve(router, None, Some(bind_addr), shutdown_signal, shutdown::DEFAULT_DRAIN_TIMEOUT).await;
+    // Stands in for dropping `TelemetryGuard`: it must run, and only after the
+    // engine drop, so the worker's last spans are in the final flush.
+    let flush = move || {
+        let order = if engine_marker.exists() { "after-engine-drop" } else { "BEFORE-engine-drop" };
+        std::fs::write(&flush_marker, order).expect("could not write the flush marker");
+    };
+    exit_after_serve(result, worker_exit, flush).await
 }

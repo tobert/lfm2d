@@ -107,6 +107,29 @@ pub struct StubEngine {
     /// e.g. `tests/graceful_shutdown.rs` proving an in-flight request still
     /// completes with 200 after shutdown has been requested.
     pub delay: Option<std::time::Duration>,
+    /// When set, dropping the engine takes time and then leaves a marker —
+    /// see [`DropProbe`]. Shared behind an `Arc` so the stub stays `Clone`;
+    /// the probe fires when the last clone goes.
+    pub drop_probe: Option<std::sync::Arc<DropProbe>>,
+}
+
+/// Stands in for an engine whose drop does real work. A GPU engine frees
+/// device memory through the driver when it drops, and on ROCm that free
+/// faults once `exit`'s atexit teardown has begun (2026-09-13 core dump:
+/// `RocmAllocator::release_all` -> `hipFree` on the worker thread, racing
+/// `main`'s `exit(0)`). This makes the drop slow and observable, so
+/// `tests/shutdown_exit.rs` can prove the process waits for it — no GPU.
+#[derive(Debug)]
+pub struct DropProbe {
+    pub delay: std::time::Duration,
+    pub marker: std::path::PathBuf,
+}
+
+impl Drop for DropProbe {
+    fn drop(&mut self) {
+        std::thread::sleep(self.delay);
+        std::fs::write(&self.marker, b"engine dropped\n").expect("DropProbe could not write its marker");
+    }
 }
 
 impl StubEngine {
@@ -131,6 +154,7 @@ impl StubEngine {
             fail_with: None,
             panic_with: None,
             delay: None,
+            drop_probe: None,
         }
     }
 

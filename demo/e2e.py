@@ -6,6 +6,7 @@ No existing daemon or production endpoint is used; the child is always stopped.
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -40,13 +41,18 @@ class RealDaemonTests(unittest.TestCase):
                                   os.environ.get("LFM2D_TEST_DEVICE_INDEX", "0")],
                                  stdout=log, stderr=log, env=env)
         def stop():
+            # A graceful stop is part of the device gate: on 2026-09-13 a ROCm
+            # build logged a clean drain and then segfaulted in driver teardown.
             if child.poll() is None:
                 child.terminate()
                 try:
-                    child.wait(timeout=15)
+                    child.wait(timeout=30)  # 10s drain cap + 5s worker wait, with slack
                 except subprocess.TimeoutExpired:
                     child.kill()
                     child.wait()
+                    raise RuntimeError(f"daemon ignored SIGTERM for 30s:\n{log_path.read_text()}")
+            if child.returncode != 0:
+                raise RuntimeError(f"daemon exited {child.returncode} on SIGTERM, not 0:\n{log_path.read_text()}")
         cls.addClassCleanup(stop)
         deadline = time.monotonic() + 60
         while not socket_path.exists():
@@ -58,7 +64,9 @@ class RealDaemonTests(unittest.TestCase):
 
     def test_actual_execution_backend_is_reported(self):
         # These fields are sourced from the selected engine, not host inventory.
-        log = self.log_path.read_text()
+        # tracing's fmt layer colors fields even when writing to a file:
+        # `backend\x1b[0m\x1b[2m=\x1b[0mcpu`. Match the text, not the escapes.
+        log = re.sub(r"\x1b\[[0-9;]*m", "", self.log_path.read_text())
         self.assertIn(f"backend={self.expected_device}", log)
         self.assertIn(f"device_type={'cpu' if self.expected_device == 'cpu' else 'gpu'}", log)
         self.assertIn("dtype=f32", log)

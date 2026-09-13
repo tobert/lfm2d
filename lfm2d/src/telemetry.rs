@@ -71,9 +71,12 @@ pub(crate) fn extract_parent(headers: &axum::http::HeaderMap) -> opentelemetry::
 }
 
 /// Holds every OTLP provider alive for the process lifetime — dropping this
-/// (at the end of `main`, after `serve()` resolves) calls `shutdown()` on
-/// each, which flushes the batch exporters' buffered data one last time
-/// before the process exits. `None` fields mean OTLP export was disabled;
+/// calls `shutdown()` on each, which flushes the batch exporters' buffered
+/// data one last time. `main` leaves through `std::process::exit`, which
+/// never unwinds its frame, so nothing drops this implicitly: `main.rs`'s
+/// `exit_after_serve` drops it explicitly, bounded, after the worker has
+/// finished (until 2026-09-13 it never dropped at all, and every shutdown
+/// lost its last batch). `None` fields mean OTLP export was disabled;
 /// dropping a disabled guard is a no-op.
 pub struct TelemetryGuard {
     tracer_provider: Option<SdkTracerProvider>,

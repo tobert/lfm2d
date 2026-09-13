@@ -43,8 +43,8 @@
 //! this through the real compiled binary.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
 use tracing::Span;
@@ -209,6 +209,8 @@ pub(crate) enum WorkerCommand {
 #[derive(Clone)]
 pub struct WorkerHandle {
     tx: std::sync::mpsc::Sender<WorkerCommand>,
+    /// Fires once the worker thread has dropped its engine — see [`WorkerExit`].
+    exit: WorkerExit,
     /// Commands sent but not yet dequeued by the worker thread — the
     /// `lfm2d.worker.queue_depth` observable gauge reads this (see
     /// `telemetry::register_queue_depth_gauge`). Incremented in
@@ -287,6 +289,8 @@ impl WorkerHandle {
         let (tx, rx) = std::sync::mpsc::channel::<WorkerCommand>();
         let queue_depth = Arc::new(AtomicUsize::new(0));
         let worker_queue_depth = queue_depth.clone();
+        let exit = WorkerExit::default();
+        let thread_exit = exit.clone();
         let join = std::thread::Builder::new()
             .name("lfm2d-worker".to_string())
             .spawn(move || {
@@ -339,6 +343,12 @@ impl WorkerHandle {
                         }
                     }
                 }
+                // Every sender is gone. Drop the engine HERE, explicitly, and
+                // only then report finished: a GPU engine's drop frees device
+                // memory through the driver, and `main` must not start
+                // `exit`'s teardown until it is done (see `WorkerExit`).
+                drop(engine);
+                thread_exit.mark();
             })
             .expect("failed to spawn the lfm2d inference worker thread");
 
@@ -364,7 +374,7 @@ impl WorkerHandle {
                 .expect("failed to spawn the lfm2d worker crash monitor thread");
         }
 
-        Self { tx, queue_depth, log_input_hash: false }
+        Self { tx, exit, queue_depth, log_input_hash: false }
     }
 
     /// Opt into attaching an input-text hash to `/v1/spans`/
@@ -381,6 +391,13 @@ impl WorkerHandle {
     /// [`crate::telemetry::register_queue_depth_gauge`].
     pub fn queue_depth_handle(&self) -> Arc<AtomicUsize> {
         self.queue_depth.clone()
+    }
+
+    /// A waiter for the worker thread's clean finish. Take it BEFORE handing
+    /// the handle to the router: the waiter holds no sender, so it never
+    /// keeps the worker loop alive itself.
+    pub fn exit_signal(&self) -> WorkerExit {
+        self.exit.clone()
     }
 
     /// `Err` only if the worker thread is gone (panicked or otherwise
@@ -515,6 +532,35 @@ fn worker_thread_outcome_is_a_crash(outcome: &std::thread::Result<()>) -> bool {
     outcome.is_err()
 }
 
+/// Fires once the worker thread has finished cleanly: its command loop
+/// ended (every [`WorkerHandle`] clone was dropped) AND it has dropped the
+/// engine. `main.rs` waits on this before `exit(0)`. A GPU engine's drop
+/// frees device memory through the driver, and on ROCm a free issued after
+/// `exit` has begun libamdhip64's atexit teardown segfaults (2026-09-13
+/// core dump; `tests/shutdown_exit.rs`). Never fires for a worker that
+/// panicked; that exit belongs to the crash monitor.
+#[derive(Clone, Default)]
+pub struct WorkerExit(Arc<(Mutex<bool>, Condvar)>);
+
+impl WorkerExit {
+    fn mark(&self) {
+        let (finished, cv) = &*self.0;
+        *finished.lock().expect("worker exit lock poisoned") = true;
+        cv.notify_all();
+    }
+
+    /// Block until the worker has dropped its engine or `timeout` passes;
+    /// `true` iff it finished.
+    pub fn wait_timeout(&self, timeout: Duration) -> bool {
+        let (finished, cv) = &*self.0;
+        let guard = finished.lock().expect("worker exit lock poisoned");
+        let (guard, _) = cv
+            .wait_timeout_while(guard, timeout, |finished| !*finished)
+            .expect("worker exit lock poisoned");
+        *guard
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -529,5 +575,40 @@ mod tests {
     fn a_cleanly_returned_worker_thread_is_not_a_crash() {
         let outcome: std::thread::Result<()> = Ok(());
         assert!(!worker_thread_outcome_is_a_crash(&outcome));
+    }
+
+    fn slow_drop_engine(marker: &std::path::Path) -> crate::engine_stub::StubEngine {
+        crate::engine_stub::StubEngine {
+            drop_probe: Some(Arc::new(crate::engine_stub::DropProbe {
+                delay: Duration::from_millis(200),
+                marker: marker.to_path_buf(),
+            })),
+            ..crate::engine_stub::StubEngine::fully_configured()
+        }
+    }
+
+    #[test]
+    fn exit_signal_fires_only_after_the_engine_has_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("dropped");
+        let handle = WorkerHandle::spawn(slow_drop_engine(&marker));
+        let exit = handle.exit_signal();
+        drop(handle);
+        assert!(exit.wait_timeout(Duration::from_secs(5)), "worker never reported a clean finish");
+        assert!(marker.exists(), "exit signal fired before the engine finished dropping");
+    }
+
+    #[test]
+    fn exit_signal_waits_while_any_handle_clone_is_alive() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("dropped");
+        let handle = WorkerHandle::spawn(slow_drop_engine(&marker));
+        let exit = handle.exit_signal();
+        let clone = handle.clone();
+        drop(handle);
+        assert!(!exit.wait_timeout(Duration::from_millis(400)), "a live clone must keep the worker, and its engine, alive");
+        assert!(!marker.exists());
+        drop(clone);
+        assert!(exit.wait_timeout(Duration::from_secs(5)), "dropping the last clone must finish the worker");
     }
 }

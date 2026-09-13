@@ -71,6 +71,20 @@ pub fn channel() -> (ShutdownHandle, ShutdownSignal) {
 /// modeling real request latency.
 pub const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long a graceful exit waits, after [`crate::server::serve`] returns,
+/// for the inference worker thread to finish dropping its engine (see
+/// `main.rs`'s `exit_after_serve` and [`crate::worker::WorkerExit`]). The
+/// drop itself takes milliseconds; the bound only matters when a request
+/// outlived [`DEFAULT_DRAIN_TIMEOUT`] and still holds the worker. Drain plus
+/// this stays under Kubernetes' default 30s termination grace period.
+pub const WORKER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long a graceful exit waits for the final telemetry flush (dropping
+/// `telemetry::TelemetryGuard`, which shuts each OTLP provider down) before
+/// exiting without it. A dead collector must not eat the grace period:
+/// drain + worker wait + this = 20s, still under Kubernetes' default 30s.
+pub const TELEMETRY_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[cfg(test)]
 mod tests {
     use super::*;

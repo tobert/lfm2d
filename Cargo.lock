@@ -394,7 +394,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "candle-core"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=6788d51f47e7d60fce344bc8f910f5a0ea2e9021#6788d51f47e7d60fce344bc8f910f5a0ea2e9021"
+source = "git+https://github.com/tobert/candle?rev=d9748a8f4622e7d9b66646a96ff23cdbca2fc424#d9748a8f4622e7d9b66646a96ff23cdbca2fc424"
 dependencies = [
  "byteorder",
  "candle-kernels",
@@ -427,7 +427,7 @@ dependencies = [
 [[package]]
 name = "candle-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=6788d51f47e7d60fce344bc8f910f5a0ea2e9021#6788d51f47e7d60fce344bc8f910f5a0ea2e9021"
+source = "git+https://github.com/tobert/candle?rev=d9748a8f4622e7d9b66646a96ff23cdbca2fc424#d9748a8f4622e7d9b66646a96ff23cdbca2fc424"
 dependencies = [
  "cudaforge",
 ]
@@ -435,7 +435,7 @@ dependencies = [
 [[package]]
 name = "candle-metal-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=6788d51f47e7d60fce344bc8f910f5a0ea2e9021#6788d51f47e7d60fce344bc8f910f5a0ea2e9021"
+source = "git+https://github.com/tobert/candle?rev=d9748a8f4622e7d9b66646a96ff23cdbca2fc424#d9748a8f4622e7d9b66646a96ff23cdbca2fc424"
 dependencies = [
  "block2",
  "half",
@@ -450,7 +450,7 @@ dependencies = [
 [[package]]
 name = "candle-nn"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=6788d51f47e7d60fce344bc8f910f5a0ea2e9021#6788d51f47e7d60fce344bc8f910f5a0ea2e9021"
+source = "git+https://github.com/tobert/candle?rev=d9748a8f4622e7d9b66646a96ff23cdbca2fc424#d9748a8f4622e7d9b66646a96ff23cdbca2fc424"
 dependencies = [
  "candle-core",
  "candle-metal-kernels",
@@ -468,7 +468,7 @@ dependencies = [
 [[package]]
 name = "candle-rocm-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=6788d51f47e7d60fce344bc8f910f5a0ea2e9021#6788d51f47e7d60fce344bc8f910f5a0ea2e9021"
+source = "git+https://github.com/tobert/candle?rev=d9748a8f4622e7d9b66646a96ff23cdbca2fc424#d9748a8f4622e7d9b66646a96ff23cdbca2fc424"
 dependencies = [
  "dirs 5.0.1",
  "fslock",
@@ -481,7 +481,7 @@ dependencies = [
 [[package]]
 name = "candle-ug"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=6788d51f47e7d60fce344bc8f910f5a0ea2e9021#6788d51f47e7d60fce344bc8f910f5a0ea2e9021"
+source = "git+https://github.com/tobert/candle?rev=d9748a8f4622e7d9b66646a96ff23cdbca2fc424#d9748a8f4622e7d9b66646a96ff23cdbca2fc424"
 dependencies = [
  "ug",
  "ug-cuda",

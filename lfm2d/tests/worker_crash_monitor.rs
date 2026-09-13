@@ -70,6 +70,8 @@ fn a_worker_panic_exits_the_real_process_nonzero() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_lfm2d"))
         .env("LFM2D_TEST_CRASH_ON_WORKER_PANIC", "1")
         .env("LFM2D_TEST_BIND_ADDR", &addr)
+        // the sibling harness in tests/shutdown_exit.rs; never let it leak in
+        .env_remove("LFM2D_TEST_SHUTDOWN_DROP_MARKER")
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
