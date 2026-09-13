@@ -634,3 +634,16 @@ The task spec left a few things implicit; here's what was decided and why
   anyone relies on that specific attribute with 2+ token classifiers
   loaded; not fixed here because it needed a resource-attribute shape
   decision, not a spans-endpoint one.
+- **A ROCm build exits 1 after a clean SIGTERM shutdown.** On 2026-09-12,
+  two daemons from the same ROCm release binary got SIGTERM in the same
+  second. Both logged `received SIGTERM, draining in-flight requests...`
+  and `shutdown complete, exiting 0`. The `--device cpu` one exited 0; the
+  `--device rocm` one exited **1**. It was launched with `exec`, so that is
+  lfm2d's own status. The likely contributing factor is the one seen in the
+  vendored mistral.rs work: the process exits while HIP/rocBLAS global
+  teardown is still running. Nothing is lost at that point, since the
+  worker has drained. But a GPU pod would report every graceful stop as
+  `Error`, which reads as a crash in restart and alert logic.
+  `demo/test_devices.sh` does not assert the exit status. Not fixed here:
+  it needs a test-first repro against real ROCm teardown before any GPU
+  deployment.
