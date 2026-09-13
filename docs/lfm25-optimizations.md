@@ -102,8 +102,7 @@ still encounters two pre-existing unnecessary casts in Candle core's
 
 ## Next established changes
 
-Continue with grouped expert matrix multiplication for prefill, an
-append-efficient KV allocation scheme that preserves snapshot ownership,
-and compatible QKV/residual-normalization fusion. The current MoE prefill
-still dispatches indexed matrix-vector work per token/expert pair. Profile
-after those larger structural changes, as requested.
+[Grouped expert prefill](lfm25-grouped-prefill.md) is now implemented for
+ROCm Q5K/Q6K. Continue with an append-efficient KV allocation scheme that
+preserves snapshot ownership and compatible QKV/residual-normalization
+fusion. Profile after those larger structural changes, as requested.

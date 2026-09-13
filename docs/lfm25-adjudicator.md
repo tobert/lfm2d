@@ -8,14 +8,17 @@ the classifier/cascade's authority.
 
 The [first optimization pass](lfm25-optimizations.md) adds device-side
 selection, merged expert projections, and fused convolution updates while
-preserving the initial outputs.
+preserving the initial outputs. The [second pass](lfm25-grouped-prefill.md)
+adds grouped expert prefill. That pass changes floating-point accumulation
+order and can change generated text; see its separate hardware checks and
+prompt/model observations.
 
 ## Development checkout
 
 This initial integration uses sibling worktrees: `lfm2d-lfm25` and
 `candle-lfm25`. The root Cargo patch points to `../candle-lfm25/{candle-core,
 candle-nn,candle-transformers}`. Keep these adjacent. The fork branch is
-`lfm25-moe-snapshots`, commit `3b3f6f9f`, based on
+`lfm25-moe-snapshots`, commit `9ec8749d`, based on
 `d9748a8f4622e7d9b66646a96ff23cdbca2fc424`.
 Replace the development patch with a published fork revision before merging
 this integration into main. No public publication or deployment is part of

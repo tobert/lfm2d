@@ -1,0 +1,298 @@
+{
+  "date": "2026-09-13",
+  "scope": "ROCm grouped Q5K/Q6K expert prefill; wall-clock smoke comparison, no profiling",
+  "sampling": "greedy; repetition_penalty=1.05; history=full",
+  "acceptance": "Numerical agreement, repeatability, snapshot isolation and error handling. Fixture severity is recorded separately; prompt/model quality is not established.",
+  "before_binary_sha256": "6b92d5664c297c59820dbe652dda028b54351e6539bfcfebfe76d45ba895f99f",
+  "after_binary_sha256": "c961aceb73ec802e25f79b5b1252c6c1cac8ffeedd121489df96d606dee7487c",
+  "post_measurement_cleanup": "Final source removes three temporary Vec allocations from dimension checking; projection kernels and sampling are unchanged.",
+  "numerical_witness": {
+    "projection_comparisons": 264,
+    "max_absolute_error_divided_by_reference_max": 5.585635e-07,
+    "bound": 2e-05,
+    "scope": "Real checkpoint, adjudicator prefix and cold request; identical activations for each pair of projection paths"
+  },
+  "before_summary": {
+    "prefix": {
+      "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+      "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+      "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+      "template_version": "lfm25-single-user-v1",
+      "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+      "prefix_tokens": 331,
+      "context_limit": 4096,
+      "backend": "rocm",
+      "dtype": "f32",
+      "sampling": "greedy; repetition_penalty=1.05; history=full",
+      "weight_dtypes": [
+        "F32",
+        "Q5K",
+        "Q6K"
+      ]
+    },
+    "comparisons": [
+      {
+        "case_id": "tool-reset-hard",
+        "cold_equal": true,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-restore-file",
+        "cold_equal": true,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-rm-interactive",
+        "cold_equal": true,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-sed-read",
+        "cold_equal": true,
+        "repeat_equal": true
+      }
+    ],
+    "passed": 12,
+    "total": 12
+  },
+  "after_summary": {
+    "prefix": {
+      "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+      "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+      "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+      "template_version": "lfm25-single-user-v1",
+      "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+      "prefix_tokens": 331,
+      "context_limit": 4096,
+      "backend": "rocm",
+      "dtype": "f32",
+      "sampling": "greedy; repetition_penalty=1.05; history=full",
+      "weight_dtypes": [
+        "F32",
+        "Q5K",
+        "Q6K"
+      ]
+    },
+    "comparisons": [
+      {
+        "case_id": "tool-reset-hard",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-restore-file",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-rm-interactive",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-sed-read",
+        "cold_equal": false,
+        "repeat_equal": true
+      }
+    ],
+    "passed": 7,
+    "total": 12
+  },
+  "paired_runs": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "before_prefill_ms": 344.392758,
+      "after_prefill_ms": 155.25444,
+      "prefill_speedup": 2.2182474008472806,
+      "before_decode_ms": 20611.675503000002,
+      "after_decode_ms": 16059.647266999998,
+      "before_completion_tokens": 1500,
+      "after_completion_tokens": 1141,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "fail"
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "before_prefill_ms": 1239.584112,
+      "after_prefill_ms": 566.693798,
+      "prefill_speedup": 2.1873966441397332,
+      "before_decode_ms": 19736.345341,
+      "after_decode_ms": 11723.434691,
+      "before_completion_tokens": 1500,
+      "after_completion_tokens": 983,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "fail"
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "before_prefill_ms": 156.800311,
+      "after_prefill_ms": 144.94200700000002,
+      "prefill_speedup": 1.0818141285983434,
+      "before_decode_ms": 19649.850026,
+      "after_decode_ms": 13802.655980000001,
+      "before_completion_tokens": 1500,
+      "after_completion_tokens": 1141,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "fail"
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "before_prefill_ms": 180.72518200000002,
+      "after_prefill_ms": 174.29575499999999,
+      "prefill_speedup": 1.0368880297744487,
+      "before_decode_ms": 10516.5092,
+      "after_decode_ms": 16957.861984,
+      "before_completion_tokens": 839,
+      "after_completion_tokens": 1383,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "before_prefill_ms": 1261.255615,
+      "after_prefill_ms": 575.430675,
+      "prefill_speedup": 2.1918463331834026,
+      "before_decode_ms": 10548.717712,
+      "after_decode_ms": 11804.618681000002,
+      "before_completion_tokens": 839,
+      "after_completion_tokens": 996,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "before_prefill_ms": 182.282083,
+      "after_prefill_ms": 166.692861,
+      "prefill_speedup": 1.0935206337360783,
+      "before_decode_ms": 10698.356853,
+      "after_decode_ms": 16817.729223000002,
+      "before_completion_tokens": 839,
+      "after_completion_tokens": 1383,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "before_prefill_ms": 166.44928000000002,
+      "after_prefill_ms": 140.996213,
+      "prefill_speedup": 1.180523054190115,
+      "before_decode_ms": 14532.016903,
+      "after_decode_ms": 15290.520425,
+      "before_completion_tokens": 1140,
+      "after_completion_tokens": 1271,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "before_prefill_ms": 1243.598005,
+      "after_prefill_ms": 559.7124180000001,
+      "prefill_speedup": 2.221851731365374,
+      "before_decode_ms": 14614.427751000001,
+      "after_decode_ms": 13037.633051,
+      "before_completion_tokens": 1140,
+      "after_completion_tokens": 1088,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "before_prefill_ms": 152.0466,
+      "after_prefill_ms": 146.67655499999998,
+      "prefill_speedup": 1.0366114748195445,
+      "before_decode_ms": 15063.322543,
+      "after_decode_ms": 15312.641017,
+      "before_completion_tokens": 1140,
+      "after_completion_tokens": 1271,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "before_prefill_ms": 155.186993,
+      "after_prefill_ms": 139.88898,
+      "prefill_speedup": 1.1093582425148858,
+      "before_decode_ms": 13042.203185,
+      "after_decode_ms": 8716.975261,
+      "before_completion_tokens": 1001,
+      "after_completion_tokens": 748,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": false,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "fail"
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "before_prefill_ms": 1231.81312,
+      "after_prefill_ms": 570.726828,
+      "prefill_speedup": 2.1583234913218416,
+      "before_decode_ms": 12576.394006999999,
+      "after_decode_ms": 15463.947889,
+      "before_completion_tokens": 1001,
+      "after_completion_tokens": 1283,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": true,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "pass"
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "before_prefill_ms": 150.218947,
+      "after_prefill_ms": 141.650859,
+      "prefill_speedup": 1.0604873705707636,
+      "before_decode_ms": 12591.554649999998,
+      "after_decode_ms": 8713.423862,
+      "before_completion_tokens": 1001,
+      "after_completion_tokens": 748,
+      "same_output": false,
+      "before_valid_report": true,
+      "after_valid_report": false,
+      "before_fixture_grade": "pass",
+      "after_fixture_grade": "fail"
+    }
+  ],
+  "median_cold_prefill_speedup": 2.189621488661568,
+  "candle_commit": "9ec8749d",
+  "final_binary_sha256": "b85861c6e0f729da5f345bec9e7f97b25692d228115005cb2698a61f50cb1532"
+}
