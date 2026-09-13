@@ -22,9 +22,17 @@
     "name": "cpu32-sample"
    },
    "clauses": {
+    "abs_diff_p50": {
+     "data-critical": 0.0,
+     "informative": 0.0,
+     "situation-normal": 0.0
+    },
+    "abs_diff_p99": {
+     "data-critical": 0.0,
+     "informative": 0.0,
+     "situation-normal": 0.0
+    },
     "clauses": 7994,
-    "dc_abs_diff_p50": 0.0,
-    "dc_abs_diff_p99": 0.0,
     "flip_margin_max": null,
     "flip_pairs": {},
     "margin_below": {
@@ -45,7 +53,16 @@
     "model_id": "kube_ordinal_v10F_candraw-e2",
     "weight_hash": "e90e0ba8f47e5e47c6b029d1243f05113911c4ce49c88d4e741a775587789742"
    },
-   "note": "compared the 7994 clauses both runs scored (a=82433, b=8000)",
+   "keys": {
+    "only_a": 74439,
+    "only_b": 6,
+    "shared": 7994
+   },
+   "labels": [
+    "informative",
+    "situation-normal",
+    "data-critical"
+   ],
    "rows": {}
   },
   "cpu8_vs_rocm0": {
@@ -70,9 +87,17 @@
     "name": "rocm0"
    },
    "clauses": {
+    "abs_diff_p50": {
+     "data-critical": 4.850000000027575e-09,
+     "informative": 6.499999999980371e-10,
+     "situation-normal": 1.510000000005344e-08
+    },
+    "abs_diff_p99": {
+     "data-critical": 1.959999999995299e-06,
+     "informative": 5.399999999933236e-06,
+     "situation-normal": 5.260000000006926e-06
+    },
     "clauses": 82430,
-    "dc_abs_diff_p50": 4.850000000027575e-09,
-    "dc_abs_diff_p99": 1.959999999995299e-06,
     "flip_margin_max": null,
     "flip_pairs": {},
     "margin_below": {
@@ -89,27 +114,78 @@
     "min_margin": 0.00022775000000002654,
     "top_flips": 0
    },
+   "fired_labels": [
+    "data-critical"
+   ],
    "head": {
     "model_id": "kube_ordinal_v10F_candraw-e2",
     "weight_hash": "e90e0ba8f47e5e47c6b029d1243f05113911c4ce49c88d4e741a775587789742"
    },
+   "keys": {
+    "only_a": 3,
+    "only_b": 0,
+    "shared": 82430
+   },
+   "labels": [
+    "informative",
+    "situation-normal",
+    "data-critical"
+   ],
    "live_until": 1789247897.0,
    "rows": {
     "gate_window": {
      "cascade_rows": 11085,
      "fired_disagree": 0,
+     "max_severity_abs_diff": 2.230830000005124e-05,
+     "min_top_changing_winner_margin": 0.0003658020000001372,
+     "min_winner_margin": 5.330199999998352e-09,
      "rows": 16719,
+     "top_changing_winner_margin_below": {
+      "0.0001": 0,
+      "0.001": 1,
+      "0.01": 2,
+      "0.05": 11
+     },
+     "top_changing_winner_margin_rows": 5428,
      "top_disagree": 0,
-     "winner_disagree": 0
+     "winner_disagree": 0,
+     "winner_margin_below": {
+      "0.0001": 301,
+      "0.001": 847,
+      "0.01": 2805,
+      "0.05": 5809
+     },
+     "winner_margin_rows": 11085
     },
     "live_v10": {
      "cascade_rows": 17469,
      "fired_disagree": 0,
+     "max_severity_abs_diff": 2.7884999999949756e-05,
+     "min_top_changing_winner_margin": 0.0016666180000000086,
+     "min_winner_margin": 7.271660000000194e-08,
      "rows": 20630,
+     "top_changing_winner_margin_below": {
+      "0.0001": 0,
+      "0.001": 0,
+      "0.01": 9,
+      "0.05": 42
+     },
+     "top_changing_winner_margin_rows": 8070,
      "top_disagree": 0,
-     "winner_disagree": 0
+     "winner_disagree": 0,
+     "winner_margin_below": {
+      "0.0001": 520,
+      "0.001": 2214,
+      "0.01": 4786,
+      "0.05": 9165
+     },
+     "winner_margin_rows": 17469
     }
-   }
+   },
+   "severe_order": [
+    "situation-normal",
+    "data-critical"
+   ]
   },
   "rocm0_vs_rocm0_repeat_control": {
    "a": {
@@ -133,9 +209,17 @@
     "name": "rocm0-repeat"
    },
    "clauses": {
+    "abs_diff_p50": {
+     "data-critical": 0.0,
+     "informative": 0.0,
+     "situation-normal": 0.0
+    },
+    "abs_diff_p99": {
+     "data-critical": 0.0,
+     "informative": 0.0,
+     "situation-normal": 0.0
+    },
     "clauses": 7989,
-    "dc_abs_diff_p50": 0.0,
-    "dc_abs_diff_p99": 0.0,
     "flip_margin_max": null,
     "flip_pairs": {},
     "margin_below": {
@@ -156,7 +240,16 @@
     "model_id": "kube_ordinal_v10F_candraw-e2",
     "weight_hash": "e90e0ba8f47e5e47c6b029d1243f05113911c4ce49c88d4e741a775587789742"
    },
-   "note": "compared the 7989 clauses both runs scored (a=82430, b=8000)",
+   "keys": {
+    "only_a": 74441,
+    "only_b": 11,
+    "shared": 7989
+   },
+   "labels": [
+    "informative",
+    "situation-normal",
+    "data-critical"
+   ],
    "rows": {}
   }
  },
@@ -205,5 +298,6 @@
    ]
   }
  },
+ "recompared": "2026-09-13: same collections re-compared after the tool fixes (labels from /v1/models or --labels, --intersect with recorded key counts, winner headroom). Every clause field and row count reproduced exactly; the six gate files were byte-identical, so the gates section stands.",
  "what": "kube_ordinal v10 severity head: verdict agreement across devices, same binary and weights. Aggregates only (counts, label pairs, magnitudes); no clause text. Produced by training/v10/device_agreement.py; see training/v10/README.md."
 }

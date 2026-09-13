@@ -95,6 +95,29 @@ def main():
 
     raises('refuses different clause sets', ValueError,
            da.compare_clauses, a, keyed({'x': s(0.6, 0.3, 0.1)}), LABELS)
+    # every label's drift, not just one hard-coded name
+    check('per-label abs diff p50',
+          {k: round(v, 6) for k, v in c['abs_diff_p50'].items()},
+          {'informative': 0.0, 'situation-normal': 0.0, 'data-critical': 0.01})
+    check('per-label abs diff p99',
+          {k: round(v, 6) for k, v in c['abs_diff_p99'].items()},
+          {'informative': 0.02, 'situation-normal': 0.01, 'data-critical': 0.02})
+
+    # -- key sets: compare must not silently narrow what it measured. The
+    #    2026-09-12 cpu8 run held 3 clauses rocm0 lacked, and the old note
+    #    stayed silent because one set was a strict SUBSET of the other.
+    two = keyed({'x': 1, 'y': 2})
+    one = keyed({'x': 1})
+    check('equal key sets pass with counts', da.shared_keys(two, dict(two), intersect=False)[1],
+          {'shared': 2, 'only_a': 0, 'only_b': 0})
+    check('a strict subset is refused without --intersect',
+          _raised(da.shared_keys, one, two, intersect=False), 'SystemExit')
+    check('--intersect records what was dropped, as numbers',
+          da.shared_keys(one, two, intersect=True)[1], {'shared': 1, 'only_a': 0, 'only_b': 1})
+    check('--intersect keeps only the shared keys',
+          da.shared_keys(one, two, intersect=True)[0], set(one))
+    check('two runs with one name are refused (their gate files collide)',
+          _raised(da.check_names, {'name': 'cpu8'}, {'name': 'cpu8'}), 'SystemExit')
 
     # -- row verdicts: the decisions the hook actually makes
     rows = [
@@ -110,16 +133,55 @@ def main():
     ]
     ra = keyed({'p': s(0.05, 0.05, 0.9), 'q': s(0.8, 0.1, 0.1), 'r': s(0.7, 0.2, 0.1)})
     rb = keyed({'p': s(0.1, 0.6, 0.3), 'q': s(0.0, 0.05, 0.95), 'r': s(0.4, 0.1, 0.5)})
-    ag = da.row_agreement(rows, ra, rb, LABELS, ['situation-normal', 'data-critical'])
-    check('row agreement counts', ag, {
+    severe, fired = ['situation-normal', 'data-critical'], frozenset({'data-critical'})
+    ag = da.row_agreement(rows, ra, rb, LABELS, severe, fired)
+    counts = ('rows', 'fired_disagree', 'top_disagree', 'cascade_rows', 'winner_disagree')
+    check('row agreement counts', {k: ag[k] for k in counts}, {
         'rows': 3, 'fired_disagree': 1, 'top_disagree': 1,
         'cascade_rows': 1, 'winner_disagree': 1,
     })
     raises('row agreement refuses an unscored clause', KeyError,
-           da.row_agreement, rows, {}, rb, LABELS, ['situation-normal', 'data-critical'])
+           da.row_agreement, rows, {}, rb, LABELS, severe, fired)
+    check('the fired set is the caller\'s, not a default',
+          da.row_agreement(rows, ra, rb, LABELS, severe, frozenset({'informative', 'data-critical'}))['fired_disagree'], 0)
+
+    # -- winner headroom: the clause-margin bound says nothing about which
+    #    CLAUSE wins a cascade, so measure how close the closest winner call is.
+    #    Weights sn=1, dc=2: p 1.85, q 0.30, r 0.40, t 0.295.
+    cas = lambda *cl: {'command': '; '.join(cl), 'lfm2d': {'ok': True, 'endpoint': 'cascade',
+                                                            'clauses': [{'clause': x} for x in cl]}}
+    mrows = [cas('p', 'q'),   # winner p by 1.55
+             cas('p', 'p'),   # same text twice: both move together, never a swap
+             cas('q', 'r'),   # winner r by 0.10
+             cas('q', 't'),   # winner q by 0.005, the closest call — both informative
+             cas('w', 'v'),   # winner v (dc 1.01) over w (informative 0.98) by 0.03
+             {'command': 'r', 'lfm2d': {'ok': True, 'endpoint': 'classify'}}]
+    ma = keyed({'p': s(0.05, 0.05, 0.9), 'q': s(0.8, 0.1, 0.1), 'r': s(0.7, 0.2, 0.1),
+                't': s(0.705, 0.295, 0.0), 'w': s(0.51, 0.0, 0.49), 'v': s(0.33, 0.33, 0.34)})
+    mb = dict(ma, **keyed({'q': s(0.8, 0.12, 0.08)}))  # q: 0.30 -> 0.28
+    mg = da.row_agreement(mrows, ma, mb, LABELS, severe, fired)
+    check('closest winner call, duplicate clauses excluded', round(mg['min_winner_margin'], 6), 0.005)
+    check('cascade rows with a winner margin', mg['winner_margin_rows'], 4)
+    check('winner calls near a boundary, by margin threshold', mg['winner_margin_below'],
+          {'0.0001': 0, '0.001': 0, '0.01': 1, '0.05': 2})
+    check('largest clause severity change', round(mg['max_severity_abs_diff'], 6), 0.02)
+    check('that change swaps the closest call', mg['winner_disagree'], 1)
+    # a swap between two clauses with the same top label changes which clause
+    # is shown, not the top or fired decision; headroom for THAT is separate
+    check('closest winner call against a rival with a different top',
+          round(mg['min_top_changing_winner_margin'], 6), 0.03)
+    check('cascade rows with a top-changing rival', mg['top_changing_winner_margin_rows'], 2)
+    check('top-changing winner calls by margin threshold', mg['top_changing_winner_margin_below'],
+          {'0.0001': 0, '0.001': 0, '0.01': 0, '0.05': 1})
 
     # -- soak file: passthrough_gate's format, cascade rows only, one side's dcs
-    doc = da.soak_doc(rows, ra, 'kube_ordinal_v10F_candraw-e2', 'kube_ordinal_v9_cal', 1787497523)
+    check('soak label is the single fired label', da.soak_label(fired), 'data-critical')
+    check('a multi-label fired set cannot fill a one-score soak file',
+          _raised(da.soak_label, frozenset(severe)), 'SystemExit')
+    check('a fired label passthrough_gate does not read is refused',
+          _raised(da.soak_label, frozenset({'situation-normal'})), 'SystemExit')
+    doc = da.soak_doc(rows, ra, 'data-critical', 'kube_ordinal_v10F_candraw-e2',
+                      'kube_ordinal_v9_cal', 1787497523)
     check('soak doc header', (doc['replayed_model'], doc['live_model_id'], doc['until']),
           ('kube_ordinal_v10F_candraw-e2', 'kube_ordinal_v9_cal', 1787497523))
     check('soak doc keeps cascade rows only, dc per clause', doc['rows'], [[0.9, 0.1]])
@@ -132,9 +194,63 @@ def main():
     check('startup line parsed through ANSI',
           da.parse_startup('noise\n' + line + '\nmore'),
           {'device_type': 'gpu', 'backend': 'rocm', 'dtype': 'f32', 'configured_threads': 8,
-           'requested_device': 'rocm'})
+           'requested_device': 'rocm', 'device_index': '0'})
+    raises('a restart onto another GPU index is refused', ValueError,
+           da.parse_startup, line + '\n' + line.replace('device_index=0', 'device_index=1'))
     raises('no startup line is a refusal, not a guess', ValueError,
            da.parse_startup, 'lfm2d: loaded model id=x')
+    # a restart appends a second startup line; the FIRST must not speak for it
+    check('a restart on the same device still parses',
+          da.parse_startup(line + '\n' + line)['device_type'], 'gpu')
+    cpu_line = line.replace('device_type=gpu backend=rocm', 'device_type=cpu backend=cpu')
+    raises('startup lines that disagree are refused', ValueError,
+           da.parse_startup, line + '\nrestart\n' + cpu_line)
+
+    # -- --url must be the daemon whose log is the evidence
+    served = line + '\n\x1b[32m INFO\x1b[0m lfm2d: lfm2d: will serve on tcp addr=0.0.0.0:18141'
+    check('url on the logged port passes', _raised(da.check_url_matches_log,
+          'http://127.0.0.1:18141', served), 'returned normally')
+    check('url on another daemon\'s port is refused',
+          _raised(da.check_url_matches_log, 'http://127.0.0.1:18140', served), 'SystemExit')
+    check('a log with no tcp listener is refused',
+          _raised(da.check_url_matches_log, 'http://127.0.0.1:18141', line), 'SystemExit')
+
+    # -- labels come from the daemon's /v1/models, never from this file
+    models = [{'id': 'router', 'kind': 'router', 'weight_hash': 'r', 'hidden_size': 1024},
+              {'id': 'm', 'kind': 'classifier', 'weight_hash': 'h', 'labels': LABELS,
+               'hidden_size': 1024}]
+    check('classifier labels read from /v1/models', da.classifier_labels(models, 'm', 'h'), LABELS)
+    check('no model with that id and hash is refused',
+          _raised(da.classifier_labels, models, 'm', 'other'), 'SystemExit')
+    check('a matching model without labels is refused',
+          _raised(da.classifier_labels, models, 'router', 'r'), 'SystemExit')
+    check('scores keyed by exactly the labels pass',
+          _raised(da.check_score_labels, [{'scores': s(0.1, 0.2, 0.7)}], LABELS), 'returned normally')
+    check('scores missing a label are refused',
+          _raised(da.check_score_labels, [{'scores': {'informative': 1.0}}], LABELS), 'SystemExit')
+    check('recorded labels that agree are used',
+          da.resolve_labels(None, {'labels': LABELS}, {'labels': list(LABELS)}), LABELS)
+    check('recorded labels that disagree are refused',
+          _raised(da.resolve_labels, None, {'labels': LABELS}, {'labels': LABELS[::-1]}), 'SystemExit')
+    check('no recorded labels and no flag is refused',
+          _raised(da.resolve_labels, None, {}, {'labels': LABELS}), 'SystemExit')
+    check('--labels for runs that predate recording', da.resolve_labels(LABELS, {}, {}), LABELS)
+    check('--labels contradicting a recording is refused',
+          _raised(da.resolve_labels, LABELS[::-1], {'labels': LABELS}, {}), 'SystemExit')
+
+    # -- resume: the device must match, and the corpus read time is the FIRST
+    dev = {'device_type': 'gpu', 'backend': 'rocm'}
+    prev = {'name': 'rocm0', 'device': dev, 'meta': {'model_id': 'm'}, 'scores': {'k': {}},
+            'log_read_at': 5.0}
+    check('resume keeps scores, meta and the first read',
+          da.resume_state(prev, dev, 'rocm0'), ({'k': {}}, {'model_id': 'm'}, 5.0))
+    check('resume on another device is refused',
+          _raised(da.resume_state, prev, {"device_type": "cpu", "backend": "cpu"}, 'rocm0'), 'SystemExit')
+    check('resume under another name is refused (it would relabel the run)',
+          _raised(da.resume_state, prev, dev, 'cpu8'), 'SystemExit')
+    legacy = {k: v for k, v in prev.items() if k != 'log_read_at'}
+    check('a run that predates read times stays unknown, never "now"',
+          da.resume_state(legacy, dev, 'rocm0')[2], None)
 
     # -- identity: a comparison must be ONE head on two devices
     good = [{'model_id': 'm', 'weight_hash': 'h'}, {'model_id': 'm', 'weight_hash': 'h'}]

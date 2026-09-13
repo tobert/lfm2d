@@ -97,7 +97,9 @@ release binary, same weights (`e90e0ba8…`), `--device cpu --threads 8`
 
 - **Hook decisions:** 0 disagreements on fired, cascade winner or top label.
   That covers all 16,719 gate-window rows (11,085 cascade) and all 20,630
-  live v10 rows (17,469 cascade).
+  live v10 rows (17,469 cascade). The ROCm run is the one clause set both
+  runs scored: the CPU run read 3 later live clauses, all past the frozen
+  row window (`--intersect`, recorded as `keys`).
 - **Gates:** the committed scorers print byte-identical output on both
   devices. `score_probes.py` passes 20/23 gating constraints.
   `passthrough_gate.py` gives a floor of 0.5427, controls 7/7, benign shapes
@@ -106,10 +108,22 @@ release binary, same weights (`e90e0ba8…`), `--device cpu --threads 8`
   device. The committed CPU run `probes_run_v10F_candraw-e2.json` fails the
   same 3 constraints. All 4 benign-shape failures are the bare build/test
   probes added for v10.1 (`8a2c732`) after v10 shipped.
-- **Why 0 flips is structural, not luck:** a flip needs two labels to cross
-  the top-two margin. At the largest per-label difference measured, they can
-  close at most ~4.7e-5, under the closest call's 2.28e-4, so there is ~5×
-  headroom.
+- **Why 0 clause flips is structural, not luck:** a flip needs two labels
+  to cross the top-two margin. At the largest per-label difference measured,
+  they can close at most ~4.7e-5, under the closest call's 2.28e-4, so there
+  is ~5× headroom.
+- **The same holds for decisions made through the cascade winner:** a swap
+  to a rival clause with a different top label needs that severity gap to
+  close. Each clause's severity moved at most 2.23e-5 (gate) and 2.79e-5
+  (live), while the closest such call is 3.66e-4 (gate, ~8×) and 1.67e-3
+  (live, ~30×). That covers top and fired.
+- **Which clause wins is NOT structural:** winner margins against a
+  same-top rival reach 5.3e-9. 301 gate-window and 520 live cascade rows sit
+  under 1e-4, inside the drift. 0 swaps were observed, but a swap there
+  would change the clause the hook shows, and the lane routed from it, not
+  the top or fired verdict. The first version of this section claimed
+  structural headroom for winners too; `row_agreement`'s
+  `min_winner_margin` and `top_changing_winner_*` now measure it.
 - **Both controls are bit-identical.** candle's CPU path does not depend on
   thread count, and ROCm repeats itself exactly. The CPU/ROCm difference is
   systematic and tiny, not noise.
@@ -121,9 +135,12 @@ What this does NOT settle:
   flip. Re-run on every new head; `margin_below` shows the exposure.
 - **Torch-scored numbers:** anything scored with torch, such as
   `clause_replay.py --device cuda`, is still subject to the 08-16 drift.
-- **Whether to roll out at all:** throughput under burst, and sharing the
-  iGPU and its unified memory with the host llama-server, are the open
-  deployment questions.
+- **Winner identity across devices:** see above. Same-top near-ties are
+  common, so a device change can move the shown clause without moving the
+  verdict.
+- **Deployment:** Amy ruled 2026-09-13 that a GPU pod is worth it on
+  efficiency alone. Burst sizing and the ROCm SIGTERM exit status
+  (`lfm2d/README.md`) are the remaining work.
 
 ```
 # three daemons, one binary, one head (a ROCm build runs CPU too)
