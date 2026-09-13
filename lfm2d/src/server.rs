@@ -63,7 +63,7 @@ pub fn build_router(state: AppState) -> Router {
 /// `lfm2d.requests` counter + `lfm2d.request.duration` histogram by
 /// route+status. Unknown paths use a bounded label; arbitrary request paths
 /// may carry private data and must not become trace or metric attributes.
-async fn telemetry_middleware(req: Request, next: Next) -> Response {
+pub(crate) async fn telemetry_middleware(req: Request, next: Next) -> Response {
     let method = req.method().as_str().to_string();
     let route = req
         .extensions()

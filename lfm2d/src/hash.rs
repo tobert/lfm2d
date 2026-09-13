@@ -9,13 +9,21 @@ use sha2::{Digest, Sha256};
 
 /// sha256 of `path`'s bytes, as 64 lowercase hex characters.
 ///
-/// Reads the whole file rather than mmap-hashing it: a checkpoint is loaded
-/// exactly once at startup, so this cost is paid once per process, not per
-/// request — not worth the complexity of hashing through the same mmap
-/// candle uses for the tensors themselves.
+/// Streams bounded chunks, including multi-gigabyte GGUFs. Paid once during
+/// startup; no second checkpoint-sized host allocation is needed.
 pub fn sha256_hex_file(path: impl AsRef<Path>) -> std::io::Result<String> {
-    let bytes = std::fs::read(path.as_ref())?;
-    Ok(sha256_hex_bytes(&bytes))
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(hex_encode(&hasher.finalize()))
 }
 
 /// sha256 of `bytes`, as 64 lowercase hex characters. Used for the checkpoint
@@ -77,6 +85,14 @@ mod tests {
             sha256_hex_bytes(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn streamed_hash_handles_multiple_chunks_and_partial_tail() {
+        let bytes: Vec<u8> = (0..(2 * 65536 + 17)).map(|i| (i % 251) as u8).collect();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&bytes).unwrap();
+        assert_eq!(sha256_hex_file(f.path()).unwrap(), sha256_hex_bytes(&bytes));
     }
 
     #[test]

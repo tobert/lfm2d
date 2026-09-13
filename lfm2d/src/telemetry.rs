@@ -106,6 +106,7 @@ impl Drop for TelemetryGuard {
 
 fn model_kind_attr(kind: ModelKind) -> &'static str {
     match kind {
+        ModelKind::Adjudicator => "adjudicator",
         ModelKind::Embedder => "embedder",
         ModelKind::Classifier => "classifier",
         ModelKind::Router => "router",

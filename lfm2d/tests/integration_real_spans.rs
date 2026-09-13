@@ -45,6 +45,11 @@ fn cli_with_token_classifier_only() -> Cli {
         dir.display(),
     );
     Cli {
+        adjudicator_model: None,
+        adjudicator_tokenizer: None,
+        adjudicator_prompt: None,
+        adjudicator_context: 4096,
+            adjudicator_repeat_penalty: 1.05,
         embedder_dir: None,
         classifier_dir: None,
         router_dir: None,

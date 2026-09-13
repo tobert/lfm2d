@@ -43,6 +43,7 @@ impl Inputs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelKind {
+    Adjudicator,
     Embedder,
     Classifier,
     Router,

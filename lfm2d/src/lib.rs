@@ -1,4 +1,4 @@
-//! `lfm2d` — the LFM2.5 encoder sidecar/daemon.
+//! `lfm2d` — the LFM2.5 encoder and causal adjudicator daemon.
 //!
 //! # Why this exists
 //!
@@ -16,11 +16,13 @@
 //!
 //! # Architecture
 //!
-//! One inference worker thread ([`worker::WorkerHandle`]) owns every loaded
-//! model. axum handlers never touch a model directly — they send a
-//! [`worker::WorkerCommand`] down an unbounded channel and `.await` a
-//! `oneshot` reply. Requests are processed strictly serially by design (see
-//! above); this is not a bottleneck to optimize away.
+//! One inference worker thread ([`worker::WorkerHandle`]) owns the encoder
+//! models. The optional [`adjudicator`] has a separate bounded queue and worker,
+//! with immutable hot-prefix state and isolated per-evaluation branches.
+//! axum handlers send commands to their worker and await a `oneshot` reply.
+//! Encoder requests use [`worker::WorkerCommand`] on an unbounded channel;
+//! adjudication uses its own bounded channel. Each worker processes requests
+//! serially.
 //!
 //! The [`worker::InferenceEngine`] trait decouples the channel/handler
 //! plumbing from real candle models: [`engine_real::RealEngine`] is what
@@ -82,6 +84,7 @@
 //! the input text to that call's trace/log span only — never a metric
 //! label (unbounded cardinality). See `worker.rs`'s module docs.
 
+pub mod adjudicator;
 pub mod config;
 pub mod device;
 pub mod engine_real;

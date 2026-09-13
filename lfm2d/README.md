@@ -678,3 +678,10 @@ The task spec left a few things implicit; here's what was decided and why
   After the lfm2d fix, 80 of 80 paired shutdowns exited 0 (at the old rate
   a clean 80 is ~0.05% luck). `demo/test_devices.sh` now asserts the exit
   status.
+
+## Resident causal adjudicator
+
+LFM2.5-8B-A1B GGUF inference, reusable hot-prefix state, and validated JSON
+reports are available as a development integration. See
+[the adjudicator guide](../docs/lfm25-adjudicator.md) for build/run commands,
+HTTP semantics, measured limitations, and the sibling Candle worktree setup.

@@ -33,6 +33,23 @@ impl DtypeArg {
 #[derive(Parser, Debug, Clone)]
 #[command(name = "lfm2d", about, long_about = None)]
 pub struct Cli {
+    /// LFM2.5-8B-A1B GGUF for the separate adjudicator worker.
+    #[arg(long, env="LFM2D_ADJUDICATOR_MODEL")]
+    pub adjudicator_model: Option<PathBuf>,
+    /// Matching Hugging Face tokenizer.json (checked against GGUF vocabulary).
+    #[arg(long, env="LFM2D_ADJUDICATOR_TOKENIZER")]
+    pub adjudicator_tokenizer: Option<PathBuf>,
+    /// JSON {system, output_schema} prompt, prefetched into an immutable hybrid snapshot.
+    #[arg(long, env="LFM2D_ADJUDICATOR_PROMPT")]
+    pub adjudicator_prompt: Option<PathBuf>,
+    /// Adjudicator context budget, including output. The initial eager attention path is capped at 8192.
+    #[arg(long, default_value_t=4096)]
+    pub adjudicator_context: usize,
+    /// Sign-aware repetition penalty over the full prompt and generated tokens.
+    /// 1.0 disables it; 1.05 is the checkpoint author's recommendation.
+    #[arg(long, default_value_t = 1.05)]
+    pub adjudicator_repeat_penalty: f32,
+
     /// Directory holding an `Lfm2Embedding`-shaped checkpoint
     /// (`config.json`, `tokenizer.json`, `model.safetensors`). Backs
     /// `/embed`.
@@ -217,13 +234,24 @@ impl Cli {
             && self.classifier_dir.is_none()
             && self.router_dir.is_none()
             && self.token_classifier_dir.is_empty()
+            && self.adjudicator_model.is_none()
         {
             return Err(
                 "no models configured: pass at least one of --embedder-dir/--classifier-dir/\
-                 --router-dir/--token-classifier-dir (env LFM2D_EMBEDDER_DIR/LFM2D_CLASSIFIER_DIR/\
+                 --router-dir/--token-classifier-dir/--adjudicator-model (env LFM2D_EMBEDDER_DIR/LFM2D_CLASSIFIER_DIR/\
                  LFM2D_ROUTER_DIR/LFM2D_TOKEN_CLASSIFIER_DIR)"
                     .to_string(),
             );
+        }
+        if !self.adjudicator_repeat_penalty.is_finite() || !(1.0..=2.0).contains(&self.adjudicator_repeat_penalty) {
+            return Err("adjudicator repeat penalty must be finite and in 1.0..=2.0".into());
+        }
+        let adjudicator_fields = [self.adjudicator_model.is_some(), self.adjudicator_tokenizer.is_some(), self.adjudicator_prompt.is_some()];
+        if adjudicator_fields.iter().any(|&v|v) && !adjudicator_fields.iter().all(|&v|v) {
+            return Err("--adjudicator-model, --adjudicator-tokenizer and --adjudicator-prompt must be supplied together".into());
+        }
+        if self.adjudicator_model.is_some() && (!matches!(self.dtype, DtypeArg::F32) || !(128..=8192).contains(&self.adjudicator_context)) {
+            return Err("adjudicator requires --dtype f32 and --adjudicator-context 128..=8192".into());
         }
         Ok(())
     }
@@ -296,6 +324,11 @@ mod tests {
 
     fn base() -> Cli {
         Cli {
+            adjudicator_model: None,
+            adjudicator_tokenizer: None,
+            adjudicator_prompt: None,
+            adjudicator_context: 4096,
+            adjudicator_repeat_penalty: 1.05,
             embedder_dir: None,
             classifier_dir: None,
             router_dir: None,
@@ -340,6 +373,11 @@ mod tests {
     #[test]
     fn accepts_both_transports_and_all_three_models() {
         let cli = Cli {
+            adjudicator_model: None,
+            adjudicator_tokenizer: None,
+            adjudicator_prompt: None,
+            adjudicator_context: 4096,
+            adjudicator_repeat_penalty: 1.05,
             embedder_dir: Some("/tmp/e".into()),
             classifier_dir: Some("/tmp/c".into()),
             router_dir: Some("/tmp/r".into()),

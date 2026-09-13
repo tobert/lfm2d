@@ -69,6 +69,7 @@ fn load_meta(dir: &Path) -> Result<ModelMeta, String> {
 }
 
 pub struct RealEngine {
+    adjudicator_meta: Option<ModelInfo>,
     execution: crate::device::ExecutionDevice,
     dtype: lfm2_encoder::DType,
     embedder: Option<(Lfm2Embedding, ModelMeta)>,
@@ -205,6 +206,7 @@ impl RealEngine {
         }
 
         let engine = Self {
+            adjudicator_meta: None,
             execution,
             dtype,
             embedder,
@@ -217,6 +219,14 @@ impl RealEngine {
         };
         engine.smoke_test(dtype)?;
         Ok(engine)
+    }
+
+    pub fn register_adjudicator(&mut self, meta: ModelInfo) -> Result<(), String> {
+        if self.list_models().iter().any(|m| m.id == meta.id) {
+            return Err(format!("duplicate model id {}", meta.id));
+        }
+        self.adjudicator_meta = Some(meta);
+        Ok(())
     }
 
     pub fn execution_metadata(&self) -> crate::telemetry::ExecutionMetadata {
@@ -398,6 +408,7 @@ impl InferenceEngine for RealEngine {
                 hidden_size: meta.hidden_size,
             });
         }
+        out.extend(self.adjudicator_meta.iter().cloned());
         out
     }
 

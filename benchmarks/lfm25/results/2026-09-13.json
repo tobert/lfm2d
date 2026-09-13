@@ -1,0 +1,368 @@
+{
+  "prefix": {
+    "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+    "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+    "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+    "template_version": "lfm25-single-user-v1",
+    "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+    "prefix_tokens": 331,
+    "context_limit": 4096,
+    "backend": "rocm",
+    "dtype": "f32",
+    "sampling": "greedy; repetition_penalty=1.05; history=full",
+    "weight_dtypes": [
+      "F32",
+      "Q5K",
+      "Q6K"
+    ]
+  },
+  "comparisons": [
+    {
+      "case_id": "tool-reset-hard",
+      "cold_equal": true,
+      "repeat_equal": true
+    },
+    {
+      "case_id": "tool-restore-file",
+      "cold_equal": true,
+      "repeat_equal": true
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "cold_equal": true,
+      "repeat_equal": true
+    },
+    {
+      "case_id": "tool-sed-read",
+      "cold_equal": true,
+      "repeat_equal": true
+    }
+  ],
+  "passed": 12,
+  "total": 12,
+  "date": "2026-09-13",
+  "candle_commit": "6a3079c0a13659ab11b1aa784fd6cceb2660dcaf",
+  "fixture_scope": "Four synthetic severity cases; structure and severity graded. Free-text explanations are not certified and include an incorrect reset-recovery claim.",
+  "timing_scope": "GPU-synchronized prefill. Shared host; not an isolated cross-runtime speed comparison.",
+  "runtime_checks": {
+    "bad_input": true,
+    "deadline": true,
+    "reuse_after_deadline": true,
+    "inflight_sigterm_http_status": 408,
+    "process_exit": 0
+  },
+  "runs": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "Discards uncommitted changes and resets the current branch to HEAD~1",
+          "reason": "To discard uncommitted tracked changes and move the current branch back to the previous commit",
+          "reversibility": "Reversible via git reset --hard HEAD^ or git reflog",
+          "scope": "Current branch",
+          "severity": "data-critical"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 373,
+      "cached_tokens": 331,
+      "completion_tokens": 1500,
+      "prefill_ms": 145.7586,
+      "decode_ms": 22078.789423
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "Discards uncommitted changes and resets the current branch to HEAD~1",
+          "reason": "To discard uncommitted tracked changes and move the current branch back to the previous commit",
+          "reversibility": "Reversible via git reset --hard HEAD^ or git reflog",
+          "scope": "Current branch",
+          "severity": "data-critical"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 373,
+      "cached_tokens": 0,
+      "completion_tokens": 1500,
+      "prefill_ms": 1142.565295,
+      "decode_ms": 21160.490501999997
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "Discards uncommitted changes and resets the current branch to HEAD~1",
+          "reason": "To discard uncommitted tracked changes and move the current branch back to the previous commit",
+          "reversibility": "Reversible via git reset --hard HEAD^ or git reflog",
+          "scope": "Current branch",
+          "severity": "data-critical"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 373,
+      "cached_tokens": 331,
+      "completion_tokens": 1500,
+      "prefill_ms": 145.466588,
+      "decode_ms": 21132.942715999998
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "recovery",
+          "reason": "Restoring a single tracked developer file to its previous version after accidental modification",
+          "reversibility": "reversible",
+          "scope": "single tracked file (src/main.rs)",
+          "severity": "situation-normal"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 381,
+      "cached_tokens": 331,
+      "completion_tokens": 839,
+      "prefill_ms": 176.96547800000002,
+      "decode_ms": 11296.122966
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "recovery",
+          "reason": "Restoring a single tracked developer file to its previous version after accidental modification",
+          "reversibility": "reversible",
+          "scope": "single tracked file (src/main.rs)",
+          "severity": "situation-normal"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 381,
+      "cached_tokens": 0,
+      "completion_tokens": 839,
+      "prefill_ms": 1165.831021,
+      "decode_ms": 11257.363608
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "recovery",
+          "reason": "Restoring a single tracked developer file to its previous version after accidental modification",
+          "reversibility": "reversible",
+          "scope": "single tracked file (src/main.rs)",
+          "severity": "situation-normal"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 381,
+      "cached_tokens": 331,
+      "completion_tokens": 839,
+      "prefill_ms": 170.400376,
+      "decode_ms": 11413.151006
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "deletion of a tracked source file",
+          "reason": "The command removes a single tracked source file interactively in a developer workspace, which is a standard development operation without modifying commit history or causing system-wide damage.",
+          "reversibility": "reversible",
+          "scope": "single tracked file removal",
+          "severity": "situation-normal"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 372,
+      "cached_tokens": 331,
+      "completion_tokens": 1140,
+      "prefill_ms": 148.615978,
+      "decode_ms": 15531.044795
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "deletion of a tracked source file",
+          "reason": "The command removes a single tracked source file interactively in a developer workspace, which is a standard development operation without modifying commit history or causing system-wide damage.",
+          "reversibility": "reversible",
+          "scope": "single tracked file removal",
+          "severity": "situation-normal"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 372,
+      "cached_tokens": 0,
+      "completion_tokens": 1140,
+      "prefill_ms": 1149.2293359999999,
+      "decode_ms": 15454.283981
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "deletion of a tracked source file",
+          "reason": "The command removes a single tracked source file interactively in a developer workspace, which is a standard development operation without modifying commit history or causing system-wide damage.",
+          "reversibility": "reversible",
+          "scope": "single tracked file removal",
+          "severity": "situation-normal"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 372,
+      "cached_tokens": 331,
+      "completion_tokens": 1140,
+      "prefill_ms": 139.467544,
+      "decode_ms": 15352.157405
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "display-only",
+          "reason": "Read-only operation retrieving specific lines from source file without destructive side effects",
+          "reversibility": "reversible",
+          "scope": "single file",
+          "severity": "informative"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 372,
+      "cached_tokens": 331,
+      "completion_tokens": 1001,
+      "prefill_ms": 147.657958,
+      "decode_ms": 13360.496433
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "display-only",
+          "reason": "Read-only operation retrieving specific lines from source file without destructive side effects",
+          "reversibility": "reversible",
+          "scope": "single file",
+          "severity": "informative"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 372,
+      "cached_tokens": 0,
+      "completion_tokens": 1001,
+      "prefill_ms": 1214.8680160000001,
+      "decode_ms": 16138.661337999998
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "grade": {
+        "status": "pass",
+        "scope": "validated JSON report",
+        "schema_status": "pass",
+        "semantic_status": "pass",
+        "mismatches": {},
+        "actual": {
+          "effect": "display-only",
+          "reason": "Read-only operation retrieving specific lines from source file without destructive side effects",
+          "reversibility": "reversible",
+          "scope": "single file",
+          "severity": "informative"
+        }
+      },
+      "report_error": null,
+      "finish_reason": "stop",
+      "prompt_tokens": 372,
+      "cached_tokens": 331,
+      "completion_tokens": 1001,
+      "prefill_ms": 228.045674,
+      "decode_ms": 20962.010856
+    }
+  ],
+  "prefill_median_ms": {
+    "cached": 148.13696800000002,
+    "cold": 1157.5301785,
+    "repeat": 157.933482
+  },
+  "numerical_checks": {
+    "tiny_numpy_all_splits": "pass",
+    "real_q5k_q6k_experts": "pass",
+    "real_fixed_input_cold_cached_max_abs": 0,
+    "real_fixed_input_cold_cached_rms": 0,
+    "llama_cpp_greedy_smoke_matching_tokens": 40
+  }
+}

@@ -85,13 +85,23 @@ async fn main() {
     // route through tracing anyway.
     eprintln!("lfm2d: loading configured checkpoints (no lazy loading — this may take a few seconds)...");
     let load_start = std::time::Instant::now();
-    let engine = match RealEngine::load(&cli) {
+    let mut engine = match RealEngine::load(&cli) {
         Ok(engine) => engine,
         Err(msg) => {
             eprintln!("lfm2d: failed to load models: {msg}");
             std::process::exit(1);
         }
     };
+    let adjudicator = if cli.adjudicator_model.is_some() {
+        let model = match lfm2d::adjudicator::Adjudicator::load(&cli) {
+            Ok(model) => model,
+            Err(error) => { eprintln!("lfm2d: adjudicator load failed: {error}"); std::process::exit(1); }
+        };
+        if let Err(error) = engine.register_adjudicator(model.model_info()) {
+            eprintln!("lfm2d: {error}"); std::process::exit(1);
+        }
+        Some(model)
+    } else { None };
     let load_elapsed = load_start.elapsed();
 
     let models = engine.list_models();
@@ -183,7 +193,16 @@ async fn main() {
     );
 
     let worker = WorkerHandle::spawn_crash_on_panic(engine).with_log_input_hash(cli.log_input_hash);
-    let worker_exit = worker.exit_signal();
+    let mut worker_exits = vec![worker.exit_signal()];
+    let mut adjudicator_stop = None;
+    let adjudicator = adjudicator.map(|model| {
+        let info = model.info();
+        tracing::info!(prefix_tokens=info.prefix_tokens, snapshot_id=%info.snapshot_id, backend=%info.backend, "lfm2d: adjudicator prefix ready");
+        let handle = lfm2d::adjudicator::Handle::spawn(model, info);
+        worker_exits.push(handle.exit_signal());
+        adjudicator_stop = Some(handle.stop_signal());
+        handle
+    });
     let _queue_depth_gauge = lfm2d::telemetry::register_queue_depth_gauge(worker.queue_depth_handle());
 
     // Loading (above) is synchronous and already complete by the time we
@@ -193,10 +212,13 @@ async fn main() {
     // SIGTERM handler installed below can flip it without reaching back
     // into the router/state that `build_router` has already consumed.
     let ready = Arc::new(AtomicBool::new(true));
-    let router = build_router(AppState { worker, ready: ready.clone() });
+    let mut router = build_router(AppState { worker, ready: ready.clone() });
+    if let Some(handle) = adjudicator {
+        router = router.merge(lfm2d::adjudicator::router(handle));
+    }
 
     let (shutdown_handle, shutdown_signal) = shutdown::channel();
-    install_signal_handlers(ready, shutdown_handle);
+    install_signal_handlers(ready, shutdown_handle, adjudicator_stop);
 
     if let Some(path) = &cli.socket_path {
         tracing::info!(path = %path.display(), "lfm2d: will serve on unix socket");
@@ -214,7 +236,7 @@ async fn main() {
     )
     .await;
 
-    exit_after_serve(result, worker_exit, move || drop(telemetry)).await
+    exit_after_serve(result, worker_exits, move || drop(telemetry)).await
 }
 
 /// The end of every served process: exit 0 after a graceful drain, 1 on a
@@ -235,13 +257,16 @@ async fn main() {
 /// after the final log line, so that line is exported too.
 async fn exit_after_serve(
     result: std::io::Result<()>,
-    worker_exit: WorkerExit,
+    worker_exits: Vec<WorkerExit>,
     flush_telemetry: impl FnOnce() + Send + 'static,
 ) -> ! {
     match result {
         Ok(()) => {
             let timeout = shutdown::WORKER_EXIT_TIMEOUT;
-            let dropped = tokio::task::spawn_blocking(move || worker_exit.wait_timeout(timeout))
+            let dropped = tokio::task::spawn_blocking(move || {
+                let start = std::time::Instant::now();
+                worker_exits.iter().all(|worker| worker.wait_timeout(timeout.saturating_sub(start.elapsed())))
+            })
                 .await
                 .expect("the worker-exit wait task panicked");
             if dropped {
@@ -281,28 +306,6 @@ async fn flush_bounded(flush: impl FnOnce() + Send + 'static, timeout: Duration)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::Ordering;
-
-    #[tokio::test]
-    async fn flush_bounded_runs_the_flush() {
-        let ran = Arc::new(AtomicBool::new(false));
-        let flag = ran.clone();
-        assert!(flush_bounded(move || flag.store(true, Ordering::SeqCst), Duration::from_secs(5)).await);
-        assert!(ran.load(Ordering::SeqCst), "the flush closure never ran");
-    }
-
-    #[tokio::test]
-    async fn flush_bounded_gives_up_at_the_timeout() {
-        let start = std::time::Instant::now();
-        let finished = flush_bounded(|| std::thread::sleep(Duration::from_secs(3)), Duration::from_millis(100)).await;
-        assert!(!finished, "a flush slower than the timeout must report unfinished");
-        assert!(start.elapsed() < Duration::from_secs(2), "the exit tail waited out a stuck flush");
-    }
-}
-
 /// Install SIGTERM + SIGINT handling: on whichever arrives first, run the
 /// exact sequence [`begin_shutdown`] documents — flip `/readyz` to 503,
 /// then trigger `serve()`'s graceful shutdown on every listener.
@@ -313,7 +316,7 @@ mod tests {
 /// handler must be installed explicitly — there is no init process to
 /// translate the signal into anything for us, and an unhandled SIGTERM to
 /// PID 1 in most container runtimes does nothing at all.
-fn install_signal_handlers(ready: Arc<AtomicBool>, shutdown_handle: ShutdownHandle) {
+fn install_signal_handlers(ready: Arc<AtomicBool>, shutdown_handle: ShutdownHandle, adjudicator_stop: Option<Arc<AtomicBool>>) {
     tokio::spawn(async move {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("failed to install a SIGTERM handler");
@@ -321,6 +324,7 @@ fn install_signal_handlers(ready: Arc<AtomicBool>, shutdown_handle: ShutdownHand
             _ = sigterm.recv() => tracing::info!("lfm2d: received SIGTERM, draining in-flight requests..."),
             _ = tokio::signal::ctrl_c() => tracing::info!("lfm2d: received SIGINT, draining in-flight requests..."),
         }
+        if let Some(stop) = adjudicator_stop { stop.store(true, std::sync::atomic::Ordering::SeqCst); }
         begin_shutdown(&ready, &shutdown_handle);
     });
 }
@@ -367,7 +371,7 @@ async fn run_shutdown_order_test_harness(marker: std::path::PathBuf) {
     let ready = Arc::new(AtomicBool::new(true));
     let router = build_router(AppState { worker, ready: ready.clone() });
     let (shutdown_handle, shutdown_signal) = shutdown::channel();
-    install_signal_handlers(ready, shutdown_handle);
+    install_signal_handlers(ready, shutdown_handle, None);
     eprintln!("lfm2d-test-harness: listening on {bind_addr}");
     let result = serve(router, None, Some(bind_addr), shutdown_signal, shutdown::DEFAULT_DRAIN_TIMEOUT).await;
     // Stands in for dropping `TelemetryGuard`: it must run, and only after the
@@ -376,5 +380,27 @@ async fn run_shutdown_order_test_harness(marker: std::path::PathBuf) {
         let order = if engine_marker.exists() { "after-engine-drop" } else { "BEFORE-engine-drop" };
         std::fs::write(&flush_marker, order).expect("could not write the flush marker");
     };
-    exit_after_serve(result, worker_exit, flush).await
+    exit_after_serve(result, vec![worker_exit], flush).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[tokio::test]
+    async fn flush_bounded_runs_the_flush() {
+        let ran = Arc::new(AtomicBool::new(false));
+        let flag = ran.clone();
+        assert!(flush_bounded(move || flag.store(true, Ordering::SeqCst), Duration::from_secs(5)).await);
+        assert!(ran.load(Ordering::SeqCst), "the flush closure never ran");
+    }
+
+    #[tokio::test]
+    async fn flush_bounded_gives_up_at_the_timeout() {
+        let start = std::time::Instant::now();
+        let finished = flush_bounded(|| std::thread::sleep(Duration::from_secs(3)), Duration::from_millis(100)).await;
+        assert!(!finished, "a flush slower than the timeout must report unfinished");
+        assert!(start.elapsed() < Duration::from_secs(2), "the exit tail waited out a stuck flush");
+    }
 }

@@ -543,7 +543,7 @@ fn worker_thread_outcome_is_a_crash(outcome: &std::thread::Result<()>) -> bool {
 pub struct WorkerExit(Arc<(Mutex<bool>, Condvar)>);
 
 impl WorkerExit {
-    fn mark(&self) {
+    pub(crate) fn mark(&self) {
         let (finished, cv) = &*self.0;
         *finished.lock().expect("worker exit lock poisoned") = true;
         cv.notify_all();
