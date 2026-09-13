@@ -1,0 +1,158 @@
+{
+  "date": "2026-09-13",
+  "changes": [
+    "GPU greedy full-history repetition penalty and argmax",
+    "Merged packed MoE gate/up projection and fused SwiGLU",
+    "Fused one-token gated convolution with immutable prior state"
+  ],
+  "baseline_candle_commit": "6a3079c0",
+  "baseline_daemon_commit": "692b8b1",
+  "scope": "Four synthetic cases, each cold/cached/repeated. Shared host; no profiling or per-change ablation. Initial cached requests can include transient warm-up and build contention; use repeat rows for the latency comparison. Both runs passed cancellation and in-flight SIGTERM.",
+  "before_binary_sha256": "dfd6c2f6cfbeb451d1b9bf7b0ad31c091fa1ab12a753aeabfd5989049a8f0610",
+  "after_binary_sha256": "cbda361af4ee1f1f3ed60039986e4330d892625d839b60835d8b7262ed2d8056",
+  "prefix": {
+    "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+    "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+    "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+    "template_version": "lfm25-single-user-v1",
+    "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+    "prefix_tokens": 331,
+    "context_limit": 4096,
+    "backend": "rocm",
+    "dtype": "f32",
+    "sampling": "greedy; repetition_penalty=1.05; history=full",
+    "weight_dtypes": [
+      "F32",
+      "Q5K",
+      "Q6K"
+    ]
+  },
+  "passed": 12,
+  "total": 12,
+  "all_output_exact": true,
+  "warm_median_decode_time_reduction_pct": 8.907745152556,
+  "before_load_ms": 9181.753671999999,
+  "after_load_ms": 10329.480609999999,
+  "runs": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "output_exact": true,
+      "completion_tokens": 1500,
+      "before_prefill_ms": 190.41835500000002,
+      "after_prefill_ms": 409.130235,
+      "before_decode_ms": 24781.066325,
+      "after_decode_ms": 20990.124311
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "output_exact": true,
+      "completion_tokens": 1500,
+      "before_prefill_ms": 1165.38581,
+      "after_prefill_ms": 1359.99877,
+      "before_decode_ms": 21545.851801,
+      "after_decode_ms": 19631.264914
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "output_exact": true,
+      "completion_tokens": 1500,
+      "before_prefill_ms": 148.813622,
+      "after_prefill_ms": 156.70558200000002,
+      "before_decode_ms": 21590.998175,
+      "after_decode_ms": 19629.462449000002
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "output_exact": true,
+      "completion_tokens": 839,
+      "before_prefill_ms": 173.548494,
+      "after_prefill_ms": 183.833475,
+      "before_decode_ms": 11580.66095,
+      "after_decode_ms": 10627.472592
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "output_exact": true,
+      "completion_tokens": 839,
+      "before_prefill_ms": 1191.307063,
+      "after_prefill_ms": 1249.50726,
+      "before_decode_ms": 11585.551771,
+      "after_decode_ms": 10544.510392999999
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "output_exact": true,
+      "completion_tokens": 839,
+      "before_prefill_ms": 187.20493399999998,
+      "after_prefill_ms": 183.183125,
+      "before_decode_ms": 11569.617897,
+      "after_decode_ms": 10601.570666000001
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "output_exact": true,
+      "completion_tokens": 1140,
+      "before_prefill_ms": 148.152242,
+      "after_prefill_ms": 153.319665,
+      "before_decode_ms": 15986.828913,
+      "after_decode_ms": 14566.264667000001
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "output_exact": true,
+      "completion_tokens": 1140,
+      "before_prefill_ms": 1167.269088,
+      "after_prefill_ms": 1234.090583,
+      "before_decode_ms": 16068.793636999999,
+      "after_decode_ms": 14573.239354
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "output_exact": true,
+      "completion_tokens": 1140,
+      "before_prefill_ms": 145.518938,
+      "after_prefill_ms": 152.817356,
+      "before_decode_ms": 16088.967772,
+      "after_decode_ms": 14574.665018
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "output_exact": true,
+      "completion_tokens": 1001,
+      "before_prefill_ms": 146.36212,
+      "after_prefill_ms": 153.588393,
+      "before_decode_ms": 13915.864302999998,
+      "after_decode_ms": 12792.769462
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "output_exact": true,
+      "completion_tokens": 1001,
+      "before_prefill_ms": 1164.9936089999999,
+      "after_prefill_ms": 1265.8864649999998,
+      "before_decode_ms": 13987.369908,
+      "after_decode_ms": 12720.390458
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "output_exact": true,
+      "completion_tokens": 1001,
+      "before_prefill_ms": 147.045762,
+      "after_prefill_ms": 156.154441,
+      "before_decode_ms": 13928.723247,
+      "after_decode_ms": 12712.673248
+    }
+  ]
+}

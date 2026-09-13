@@ -17,6 +17,7 @@ use axum::{
     routing::{get, post},
 };
 use candle_core::{Tensor, quantized::gguf_file};
+use candle_nn::sampling::GreedySampler;
 use candle_transformers::models::quantized_lfm2_moe::{Model, State as ModelState};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -304,6 +305,14 @@ impl Adjudicator {
                 .forward(chunk, &mut prefix)
                 .map_err(|e| e.to_string())?;
         }
+        // Compile/warm device selection kernels before announcing readiness.
+        let _ = GreedySampler::new(
+            &execution.device,
+            model.vocab_size(),
+            &prefix_ids,
+            cli.adjudicator_repeat_penalty,
+        )
+        .map_err(|e| e.to_string())?;
         execution.device.synchronize().map_err(|e| e.to_string())?;
         let identity = serde_json::json!([
             TEMPLATE_VERSION,
@@ -408,20 +417,23 @@ impl Generator for Adjudicator {
         logits.device().synchronize()?;
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
         let decode = Instant::now();
+        let mut sampler = GreedySampler::new(
+            logits.device(),
+            self.model.vocab_size(),
+            &full,
+            self.repeat_penalty,
+        )?;
         let mut generated = Vec::new();
-        let mut history = full.clone();
         let mut finish_reason = "length";
         for i in 0..request.max_tokens {
             check()?;
-            let values = logits.flatten_all()?.to_vec1::<f32>()?;
-            let token = greedy_token(&values, &history, self.repeat_penalty)?;
+            let token = sampler.sample(&logits)?;
             if self.tokenizer.id_to_token(token).is_none() {
                 return Err(Failure::Internal(format!(
                     "model selected unused vocabulary row {token}"
                 )));
             }
             generated.push(token);
-            history.push(token);
             if token == self.eos {
                 finish_reason = "stop";
                 break;
@@ -741,44 +753,4 @@ async fn adjudicate(
     crate::server::ValidJson(request): crate::server::ValidJson<AdjudicateRequest>,
 ) -> Result<Json<AdjudicateResponse>, Response> {
     h.evaluate(request).await.map(Json)
-}
-
-/// Transformers-style sign-aware penalty, once for each token appearing in the
-/// full prompt or this branch's continuation. History never leaks across calls.
-fn greedy_token(values: &[f32], history: &[u32], penalty: f32) -> Result<u32, Failure> {
-    if values.is_empty() || values.iter().any(|v| !v.is_finite()) {
-        return Err(Failure::Internal("empty or nonfinite model logits".into()));
-    }
-    let mut values = values.to_vec();
-    let mut seen = std::collections::HashSet::new();
-    for &token in history {
-        if seen.insert(token) {
-            let v = values
-                .get_mut(token as usize)
-                .ok_or_else(|| Failure::Internal("history token outside vocabulary".into()))?;
-            *v = if *v < 0. { *v * penalty } else { *v / penalty };
-        }
-    }
-    let mut token = 0;
-    for i in 1..values.len() {
-        if values[i] > values[token] {
-            token = i;
-        }
-    }
-    Ok(token as u32)
-}
-
-#[cfg(test)]
-mod sampling_tests {
-    use super::*;
-    #[test]
-    fn repetition_penalty_changes_positive_and_negative_choices_once_per_token() {
-        assert_eq!(greedy_token(&[1.02, 1.0], &[0, 0], 1.05).unwrap(), 1);
-        assert_eq!(greedy_token(&[-1.0, -1.02], &[0, 0], 1.05).unwrap(), 1);
-        assert_eq!(greedy_token(&[1.08, 1.0], &[0, 0], 1.05).unwrap(), 0);
-        assert_eq!(greedy_token(&[1.02, 1.0], &[0], 1.0).unwrap(), 0);
-        assert_eq!(greedy_token(&[1.0, 1.0], &[], 1.05).unwrap(), 0);
-        assert!(greedy_token(&[f32::NAN], &[], 1.05).is_err());
-        assert!(greedy_token(&[1.0], &[2], 1.05).is_err());
-    }
 }
