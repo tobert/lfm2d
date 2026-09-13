@@ -78,6 +78,76 @@ corpus barely holds measures training noise until that form is taught
   policy belongs to the judge layer (`rulings.json`, prompt + rubric).
 - two-axis head → v11.
 
+## Device agreement — CPU vs ROCm (2026-09-12)
+
+A GPU rollout of this head was held until its verdicts were checked
+across devices. The hardware gate (`lfm2d/tests/device_real.rs`) shows
+scores agree within 0.005 on fixtures, but that is arithmetic, not
+verdicts: on 2026-08-16 torch flipped 2 of 60 verdicts moving CPU → ROCm.
+So this scores the real corpus through the daemon itself: same ROCm
+release binary, same weights (`e90e0ba8…`), `--device cpu --threads 8`
+(production parity) vs `--device rocm`. The clauses are the gate window
+(16,719 rows) plus live v10 traffic (20,630 rows) plus both probe files.
+
+| comparison | clauses | top-label flips | max \|Δp\| (any label) | closest call (top-two margin) |
+|---|---|---|---|---|
+| **CPU@8 vs ROCm** | **82,430** | **0** | 2.33e-5 | 2.28e-4 (13 clauses < 1e-3, 99 < 1e-2) |
+| CPU@8 vs CPU@32 (control) | 7,994 | 0 | 0.0, bit-identical | 3.43e-4 |
+| ROCm vs ROCm repeat (control) | 7,989 | 0 | 0.0, bit-identical | — |
+
+- **Hook decisions:** 0 disagreements on fired, cascade winner or top label.
+  That covers all 16,719 gate-window rows (11,085 cascade) and all 20,630
+  live v10 rows (17,469 cascade).
+- **Gates:** the committed scorers print byte-identical output on both
+  devices. `score_probes.py` passes 20/23 gating constraints.
+  `passthrough_gate.py` gives a floor of 0.5427, controls 7/7, benign shapes
+  45/49, and soak 98.7% of 11,085.
+- **Why both gates say FAIL anyway:** it is v10's standing state, not the
+  device. The committed CPU run `probes_run_v10F_candraw-e2.json` fails the
+  same 3 constraints. All 4 benign-shape failures are the bare build/test
+  probes added for v10.1 (`8a2c732`) after v10 shipped.
+- **Why 0 flips is structural, not luck:** a flip needs two labels to cross
+  the top-two margin. At the largest per-label difference measured, they can
+  close at most ~4.7e-5, under the closest call's 2.28e-4, so there is ~5×
+  headroom.
+- **Both controls are bit-identical.** candle's CPU path does not depend on
+  thread count, and ROCm repeats itself exactly. The CPU/ROCm difference is
+  systematic and tiny, not noise.
+
+What this does NOT settle:
+- **Other devices and dtypes:** CUDA, Metal, other ROCm GPUs, f16 and bf16
+  are all unmeasured.
+- **Other checkpoints:** a head whose closest call sits under ~5e-5 could
+  flip. Re-run on every new head; `margin_below` shows the exposure.
+- **Torch-scored numbers:** anything scored with torch, such as
+  `clause_replay.py --device cuda`, is still subject to the 08-16 drift.
+- **Whether to roll out at all:** throughput under burst, and sharing the
+  iGPU and its unified memory with the host llama-server, are the open
+  deployment questions.
+
+```
+# three daemons, one binary, one head (a ROCm build runs CPU too)
+target/release/lfm2d --classifier-dir .models/kube_ordinal_v10F_candraw-e2 --device cpu  --threads 8  --bind-addr 127.0.0.1:18140 2> cpu8.log &
+target/release/lfm2d --classifier-dir .models/kube_ordinal_v10F_candraw-e2 --device rocm --threads 8  --bind-addr 127.0.0.1:18141 2> rocm.log &
+target/release/lfm2d --classifier-dir .models/kube_ordinal_v10F_candraw-e2 --device cpu  --threads 32 --bind-addr 127.0.0.1:18142 2> cpu32.log &
+# collect (device read from each daemon's startup line; 0600, sha256 keys, resumable)
+D=training/v10/device_agreement.py; O=~/.cache/claude-hooks/device-agreement
+.venv-train/bin/python $D collect --name cpu8  --url http://127.0.0.1:18140 --daemon-log cpu8.log  --expect-device cpu --out $O/cpu8.json
+.venv-train/bin/python $D collect --name rocm0 --url http://127.0.0.1:18141 --daemon-log rocm.log  --expect-device gpu --out $O/rocm0.json
+.venv-train/bin/python $D collect --name cpu32-sample --url http://127.0.0.1:18142 --daemon-log cpu32.log --expect-device cpu --out $O/cpu32-sample.json --sample 8000
+.venv-train/bin/python $D collect --name rocm0-repeat --url http://127.0.0.1:18141 --daemon-log rocm.log  --expect-device gpu --out $O/rocm0-repeat.json --sample 8000
+# compare (live rows frozen before both runs read the log) + the committed gates per device
+.venv-train/bin/python $D compare $O/cpu8.json $O/rocm0.json --live-until 1789247897 --gate-dir $O/gate
+(cd training/v9/severity_probes && python3 score_probes.py --results $O/gate/probes_run_rocm0.json)
+python3 training/v10/passthrough_gate.py --model-id kube_ordinal_v10F_candraw-e2 \
+    --probes-run $O/gate/probes_run_rocm0.json --benign-run $O/gate/benign_run_rocm0.json --soak-rows $O/gate/soak_rocm0.json
+```
+
+Aggregates: `device_agreement_2026-09-12.json`. Tests:
+`.venv-train/bin/python training/v10/test_device_agreement.py` (29 checks).
+CPU@8 took ~2.5 h on zorak next to production. Bench startup cost the live
+hook a few timeouts, so run it when the node is quiet.
+
 ## Open
 
 - kaijutsu's escalation volume before/after on their 10,751-row window

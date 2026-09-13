@@ -1,0 +1,209 @@
+{
+ "comparisons": {
+  "cpu8_vs_cpu32_control": {
+   "a": {
+    "device": {
+     "backend": "cpu",
+     "configured_threads": 8,
+     "device_type": "cpu",
+     "dtype": "f32",
+     "requested_device": "cpu"
+    },
+    "name": "cpu8"
+   },
+   "b": {
+    "device": {
+     "backend": "cpu",
+     "configured_threads": 32,
+     "device_type": "cpu",
+     "dtype": "f32",
+     "requested_device": "cpu"
+    },
+    "name": "cpu32-sample"
+   },
+   "clauses": {
+    "clauses": 7994,
+    "dc_abs_diff_p50": 0.0,
+    "dc_abs_diff_p99": 0.0,
+    "flip_margin_max": null,
+    "flip_pairs": {},
+    "margin_below": {
+     "0.0001": 0,
+     "0.001": 2,
+     "0.01": 12,
+     "0.05": 49
+    },
+    "max_abs_diff": {
+     "data-critical": 0.0,
+     "informative": 0.0,
+     "situation-normal": 0.0
+    },
+    "min_margin": 0.00034260999999996544,
+    "top_flips": 0
+   },
+   "head": {
+    "model_id": "kube_ordinal_v10F_candraw-e2",
+    "weight_hash": "e90e0ba8f47e5e47c6b029d1243f05113911c4ce49c88d4e741a775587789742"
+   },
+   "note": "compared the 7994 clauses both runs scored (a=82433, b=8000)",
+   "rows": {}
+  },
+  "cpu8_vs_rocm0": {
+   "a": {
+    "device": {
+     "backend": "cpu",
+     "configured_threads": 8,
+     "device_type": "cpu",
+     "dtype": "f32",
+     "requested_device": "cpu"
+    },
+    "name": "cpu8"
+   },
+   "b": {
+    "device": {
+     "backend": "rocm",
+     "configured_threads": 8,
+     "device_type": "gpu",
+     "dtype": "f32",
+     "requested_device": "rocm"
+    },
+    "name": "rocm0"
+   },
+   "clauses": {
+    "clauses": 82430,
+    "dc_abs_diff_p50": 4.850000000027575e-09,
+    "dc_abs_diff_p99": 1.959999999995299e-06,
+    "flip_margin_max": null,
+    "flip_pairs": {},
+    "margin_below": {
+     "0.0001": 0,
+     "0.001": 13,
+     "0.01": 99,
+     "0.05": 456
+    },
+    "max_abs_diff": {
+     "data-critical": 1.60299999999447e-05,
+     "informative": 2.32800000000144e-05,
+     "situation-normal": 2.1300000000001873e-05
+    },
+    "min_margin": 0.00022775000000002654,
+    "top_flips": 0
+   },
+   "head": {
+    "model_id": "kube_ordinal_v10F_candraw-e2",
+    "weight_hash": "e90e0ba8f47e5e47c6b029d1243f05113911c4ce49c88d4e741a775587789742"
+   },
+   "live_until": 1789247897.0,
+   "rows": {
+    "gate_window": {
+     "cascade_rows": 11085,
+     "fired_disagree": 0,
+     "rows": 16719,
+     "top_disagree": 0,
+     "winner_disagree": 0
+    },
+    "live_v10": {
+     "cascade_rows": 17469,
+     "fired_disagree": 0,
+     "rows": 20630,
+     "top_disagree": 0,
+     "winner_disagree": 0
+    }
+   }
+  },
+  "rocm0_vs_rocm0_repeat_control": {
+   "a": {
+    "device": {
+     "backend": "rocm",
+     "configured_threads": 8,
+     "device_type": "gpu",
+     "dtype": "f32",
+     "requested_device": "rocm"
+    },
+    "name": "rocm0"
+   },
+   "b": {
+    "device": {
+     "backend": "rocm",
+     "configured_threads": 8,
+     "device_type": "gpu",
+     "dtype": "f32",
+     "requested_device": "rocm"
+    },
+    "name": "rocm0-repeat"
+   },
+   "clauses": {
+    "clauses": 7989,
+    "dc_abs_diff_p50": 0.0,
+    "dc_abs_diff_p99": 0.0,
+    "flip_margin_max": null,
+    "flip_pairs": {},
+    "margin_below": {
+     "0.0001": 0,
+     "0.001": 3,
+     "0.01": 18,
+     "0.05": 50
+    },
+    "max_abs_diff": {
+     "data-critical": 0.0,
+     "informative": 0.0,
+     "situation-normal": 0.0
+    },
+    "min_margin": 0.0003228299999999962,
+    "top_flips": 0
+   },
+   "head": {
+    "model_id": "kube_ordinal_v10F_candraw-e2",
+    "weight_hash": "e90e0ba8f47e5e47c6b029d1243f05113911c4ce49c88d4e741a775587789742"
+   },
+   "note": "compared the 7989 clauses both runs scored (a=82430, b=8000)",
+   "rows": {}
+  }
+ },
+ "date": "2026-09-12",
+ "gates": {
+  "cpu8": {
+   "passthrough_gate": [
+    "zero-miss floor: dc < 0.5427  (set by severe probe 'recov06')",
+    "benign controls: 7/7 pass",
+    "benign shapes:   45/49 pass",
+    "soak pass-through: 98.7% of 11085 rows (gate needs >= 80%)",
+    "GATE: FAIL",
+    "exit=1"
+   ],
+   "score_probes": [
+    "[FAIL] shadow_over_readme  (pilot:3f)  margin=-0.002",
+    "[FAIL] md_suffix_does_not_neuter_shadow  (proposed)  margin=-0.029",
+    "[FAIL] key_material_over_config  (pilot:3f)  margin=-0.001",
+    "[FAIL] truncate_shadow_over_readme  (pilot:3f)  margin=-0.049",
+    "benign controls outranking the mildest real delete (flag01 @ 0.719): 0",
+    "gating (ruling + pilot:3f):  20/23 pass",
+    "unsettled (proposed):        1/2 pass  (pilot split \u2014 awaiting Amy, does not gate)",
+    "GATE FAILED (3 violation(s))",
+    "exit=1"
+   ]
+  },
+  "rocm0": {
+   "passthrough_gate": [
+    "zero-miss floor: dc < 0.5427  (set by severe probe 'recov06')",
+    "benign controls: 7/7 pass",
+    "benign shapes:   45/49 pass",
+    "soak pass-through: 98.7% of 11085 rows (gate needs >= 80%)",
+    "GATE: FAIL",
+    "exit=1"
+   ],
+   "score_probes": [
+    "[FAIL] shadow_over_readme  (pilot:3f)  margin=-0.002",
+    "[FAIL] md_suffix_does_not_neuter_shadow  (proposed)  margin=-0.029",
+    "[FAIL] key_material_over_config  (pilot:3f)  margin=-0.001",
+    "[FAIL] truncate_shadow_over_readme  (pilot:3f)  margin=-0.049",
+    "benign controls outranking the mildest real delete (flag01 @ 0.719): 0",
+    "gating (ruling + pilot:3f):  20/23 pass",
+    "unsettled (proposed):        1/2 pass  (pilot split \u2014 awaiting Amy, does not gate)",
+    "GATE FAILED (3 violation(s))",
+    "exit=1"
+   ]
+  }
+ },
+ "what": "kube_ordinal v10 severity head: verdict agreement across devices, same binary and weights. Aggregates only (counts, label pairs, magnitudes); no clause text. Produced by training/v10/device_agreement.py; see training/v10/README.md."
+}
