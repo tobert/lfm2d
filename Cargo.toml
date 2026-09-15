@@ -51,3 +51,9 @@ tempfile = "3"
 # learns to type `--release`, which is how a suite quietly stops being run.
 [profile.dev.package."*"]
 opt-level = 3
+
+# Local LFM2.5 KV development; use the sibling feature worktree until publication.
+[patch."https://github.com/tobert/candle"]
+candle-core = { path = "../candle-lfm25/candle-core" }
+candle-nn = { path = "../candle-lfm25/candle-nn" }
+candle-transformers = { path = "../candle-lfm25/candle-transformers" }

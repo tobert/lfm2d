@@ -16,7 +16,15 @@ prompt/model observations.
 The [third pass](lfm25-qkv-input-cache.md) packs compatible QKV projections
 and adds an exact complete-input checkpoint with saved next-token logits.
 
+The [fourth pass](lfm25-kv-cache.md) adds append-efficient KV buffers with
+immutable snapshot prefixes and transactional failure behavior.
+
 ## Build and run
+
+**Local KV development:** the current checkout temporarily patches Candle to
+`../candle-lfm25`. Keep that sibling worktree at the revision recorded in the
+[KV guide](lfm25-kv-cache.md). The published pair described below predates
+this local pass.
 
 Clone the `lfm25-adjudicator` branch of
 [tobert/lfm2d](https://github.com/tobert/lfm2d/tree/lfm25-adjudicator).
@@ -93,15 +101,17 @@ explicitly in each response. The model reasons before answering, so 512 or
 
 ## Snapshot semantics
 
-Candle's new `quantized_lfm2_moe::{Model, State}` separates immutable weights
+Candle's `quantized_lfm2_moe::{Model, State}` separates immutable weights
 from attention K/V, convolution history, and position. `State::clone()` shares
-immutable tensor storage. Appends allocate replacement tensors; they never
-mutate the saved prefix. Forward commits the new state only after success.
+immutable prefixes of append-only KV buffers and immutable convolution state.
+KV appends reserve unused tail space, growing or forking the buffer when
+necessary. Convolution updates allocate replacement tensors. Forward commits
+the new state only after success; failed writes cannot overwrite saved data.
 Foreign-model state, bad tokens, and context overflow are errors.
 
-This provides CoW semantics at tensor boundaries. It is not a paged KV
-allocator: each append still copies prior KV into the new concatenation.
-That is a straightforward correctness baseline for subsequent optimization.
+The [KV allocator](lfm25-kv-cache.md) amortizes prefix copying over a linear
+continuation. Branches copy their prefix when their desired tail is occupied.
+Attention still materializes repeated KV heads; paged attention is not present.
 The daemon owns one fixed prefix and one complete-input checkpoint with
 saved logits, a bounded queue of eight, and one generation worker. Exact
 input repeats reuse the latter; `cached_tokens` then equals `prompt_tokens`.

@@ -1,0 +1,421 @@
+{
+  "date": "2026-09-15",
+  "scope": "Paired shared-host full-length four-case benchmark, cold/prefix-cached/exact-repeat. CPU builds/tests overlapped portions of both runs; no isolated GPU profiling or broad quality evaluation. Same model, prompt, greedy policy, repetition penalty 1.05, and 2048 output cap.",
+  "before_candle": "936a15a6fbcf1f29e38a27058738ffb4ce091753",
+  "after_candle": "332ba982caa146f2efb22269725319342c29a445",
+  "binary_sha256": {
+    "before": "4edf57a89ef771fe5c79f979ffd5fae76c14dba4d0aea267127884205f755ad3",
+    "after": "62e90227f6df47cf7ca05dc5f1d7c0e970bf603a3041b745160ffa3a96d04788"
+  },
+  "all_output_exact": true,
+  "warm_repeat_median_decode_time_reduction_pct": 7.824221472585419,
+  "all_rows_median_decode_time_reduction_pct": 7.714704866949046,
+  "rows": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 1141,
+        "prefill_ms": 170.062237,
+        "decode_ms": 14923.54378
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 1141,
+        "prefill_ms": 306.118406,
+        "decode_ms": 13269.673131
+      },
+      "decode_time_reduction_pct": 11.08229166866156
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 983,
+        "prefill_ms": 575.8756050000001,
+        "decode_ms": 12020.052528
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 983,
+        "prefill_ms": 573.472495,
+        "decode_ms": 11085.110863
+      },
+      "decode_time_reduction_pct": 7.77818285587446
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 1141,
+        "prefill_ms": 0.002635,
+        "decode_ms": 14077.925202999999
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 1141,
+        "prefill_ms": 0.002284,
+        "decode_ms": 13000.791206
+      },
+      "decode_time_reduction_pct": 7.651226878023632
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 1383,
+        "prefill_ms": 174.485764,
+        "decode_ms": 17418.873519
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 1383,
+        "prefill_ms": 164.078421,
+        "decode_ms": 16172.106736
+      },
+      "decode_time_reduction_pct": 7.157562638250193
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 996,
+        "prefill_ms": 610.1279979999999,
+        "decode_ms": 12304.955732
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 996,
+        "prefill_ms": 558.3674870000001,
+        "decode_ms": 12963.390235
+      },
+      "decode_time_reduction_pct": -5.350970107821595
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 1383,
+        "prefill_ms": 0.002876,
+        "decode_ms": 17488.744625
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 1383,
+        "prefill_ms": 0.0051,
+        "decode_ms": 16291.113794
+      },
+      "decode_time_reduction_pct": 6.848009143480748
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 1271,
+        "prefill_ms": 145.370346,
+        "decode_ms": 15815.270649
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 1271,
+        "prefill_ms": 137.224497,
+        "decode_ms": 14672.733516999999
+      },
+      "decode_time_reduction_pct": 7.224265441655553
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1088,
+        "prefill_ms": 575.705775,
+        "decode_ms": 13380.686908
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1088,
+        "prefill_ms": 582.340229,
+        "decode_ms": 12339.621154999999
+      },
+      "decode_time_reduction_pct": 7.780361054390806
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 1271,
+        "prefill_ms": 0.003346,
+        "decode_ms": 15961.45793
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 1271,
+        "prefill_ms": 0.001493,
+        "decode_ms": 14592.633886
+      },
+      "decode_time_reduction_pct": 8.575808362889326
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 748,
+        "prefill_ms": 152.88128600000002,
+        "decode_ms": 9082.30783
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 748,
+        "prefill_ms": 136.72973199999998,
+        "decode_ms": 8321.763162
+      },
+      "decode_time_reduction_pct": 8.373914232325685
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1283,
+        "prefill_ms": 574.6409620000001,
+        "decode_ms": 15843.247105
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1283,
+        "prefill_ms": 568.3499979999999,
+        "decode_ms": 14787.885122
+      },
+      "decode_time_reduction_pct": 6.6612732604980796
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 748,
+        "prefill_ms": 0.002395,
+        "decode_ms": 9024.888648
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 748,
+        "prefill_ms": 0.001092,
+        "decode_ms": 8303.148803
+      },
+      "decode_time_reduction_pct": 7.997216067147206
+    }
+  ],
+  "before_summary": {
+    "prefix": {
+      "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+      "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+      "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+      "template_version": "lfm25-single-user-v1",
+      "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+      "prefix_tokens": 331,
+      "input_cache_capacity": 1,
+      "context_limit": 4096,
+      "backend": "rocm",
+      "dtype": "f32",
+      "sampling": "greedy; repetition_penalty=1.05; history=full",
+      "weight_dtypes": [
+        "F32",
+        "Q5K",
+        "Q6K"
+      ]
+    },
+    "comparisons": [
+      {
+        "case_id": "tool-reset-hard",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-restore-file",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-rm-interactive",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-sed-read",
+        "cold_equal": false,
+        "repeat_equal": true
+      }
+    ],
+    "passed": 7,
+    "total": 12
+  },
+  "after_summary": {
+    "prefix": {
+      "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+      "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+      "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+      "template_version": "lfm25-single-user-v1",
+      "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+      "prefix_tokens": 331,
+      "input_cache_capacity": 1,
+      "context_limit": 4096,
+      "backend": "rocm",
+      "dtype": "f32",
+      "sampling": "greedy; repetition_penalty=1.05; history=full",
+      "weight_dtypes": [
+        "F32",
+        "Q5K",
+        "Q6K"
+      ]
+    },
+    "comparisons": [
+      {
+        "case_id": "tool-reset-hard",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-restore-file",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-rm-interactive",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-sed-read",
+        "cold_equal": false,
+        "repeat_equal": true
+      }
+    ],
+    "passed": 7,
+    "total": 12
+  },
+  "runtime_checks": [
+    "cached repeats exact",
+    "reuse after deadline exact",
+    "in-flight SIGTERM returned HTTP 408",
+    "both processes exited 0"
+  ],
+  "allocation_regression": {
+    "initial_tokens": 3,
+    "one_token_appends": 297,
+    "baseline_allocations": 298,
+    "new_allocation_upper_bound": 4
+  },
+  "mutation_test": "Disabling reservation conflicts causes four branch/partial-write tests to fail.",
+  "schema_valid": {
+    "before": 10,
+    "after": 10,
+    "total": 12
+  },
+  "validation": {
+    "candle_cpu_unit_passed": 12,
+    "candle_numpy_integration_passed": 2,
+    "candle_explicit_rocm_passed": 4,
+    "daemon_passed": 152,
+    "daemon_existing_ignored": 1,
+    "cpu_and_rocm_focused_clippy": "pass",
+    "daemon_clippy": "passes with existing clippy::collapsible_if allowed; unrestricted lint reports two nested-if findings in unchanged adjudicator.rs:241-242"
+  },
+  "measurement_note": "Paired binary predates review follow-ups: explicit CPU/ROCm backend selection, documentation and additional tests. ROCm copy arithmetic is unchanged. Final-source binary has separate 64-token runtime smoke.",
+  "final_source_smoke": {
+    "binary_sha256": "8ebe354f1123b3a73bd6507aedb8af62db34cec59f26ebfc9b0cfa07aef528fc",
+    "max_tokens": 64,
+    "all_outputs_match_baseline_prefixes": true,
+    "runtime_checks_passed": true,
+    "summary": {
+      "prefix": {
+        "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+        "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+        "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "template_version": "lfm25-single-user-v1",
+        "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+        "prefix_tokens": 331,
+        "input_cache_capacity": 1,
+        "context_limit": 4096,
+        "backend": "rocm",
+        "dtype": "f32",
+        "sampling": "greedy; repetition_penalty=1.05; history=full",
+        "weight_dtypes": [
+          "F32",
+          "Q5K",
+          "Q6K"
+        ]
+      },
+      "comparisons": [
+        {
+          "case_id": "tool-reset-hard",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-restore-file",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-rm-interactive",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-sed-read",
+          "cold_equal": false,
+          "repeat_equal": true
+        }
+      ],
+      "passed": 0,
+      "total": 12
+    }
+  }
+}
