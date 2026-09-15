@@ -68,10 +68,15 @@ Validation on restored source:
 - CPU and ROCm lint pass; ROCm retains only the two previously recorded
   unrelated core pointer-cast allowances.
 
-Hosted Kaibo DeepSeek review is **pending**, blocked by automatic approval review
-requiring authorization for this exact source packet. No external review is
-claimed. The complete review packet and local validation are saved in the private
-handoff.
+Hosted Kaibo review by **DeepSeek Flash** completed on September 15 after
+authorization for the prepared source packet. It found no confirmed correctness
+bug. The review covered the allocation paths, tests, allocator, and complete
+relevant producer functions; it did not independently verify the omitted MMQ
+tile definitions. No implementation changes were required. The raw review and
+packet hashes are saved in the private handoff.
+
+The review also proposed further optimizations. Source checks ruled out several
+assumptions and produced the [next-optimization assessment](lfm25-next-optimizations.md).
 
 ## Local build and follow-ups
 
