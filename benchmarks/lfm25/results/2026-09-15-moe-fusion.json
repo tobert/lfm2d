@@ -1,0 +1,502 @@
+{
+  "date": "2026-09-15",
+  "scope": "Paired full-length shared-host four-case comparison. CPU builds overlapped parts of the baseline; no dedicated GPU reservation or per-fusion timing attribution. Fixed Q5_K_M checkpoint, F32 activations, prompt, greedy sampling, full-history repetition penalty 1.05 and 2048-token cap. Separate four-token traces validate launch counts, not latency.",
+  "before_candle": "819573783dd422204d11dd9794d0e355754b49a3",
+  "after_candle": "68fde99c9dbf4916088dfacbf95c37094ededc4c",
+  "all_output_exact": true,
+  "warm_repeat_median_decode_time_reduction_pct": 5.619740427456065,
+  "cold_prefill_medians_ms": {
+    "before": 569.505455,
+    "after": 536.8544985000001
+  },
+  "cached_request_median_seconds": {
+    "before": 13.1385327445,
+    "after": 12.44733626
+  },
+  "rows": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 1141,
+        "queue_ms": 0.013405,
+        "prefill_ms": 453.01699,
+        "decode_ms": 12234.591203
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 1141,
+        "queue_ms": 0.024206000000000002,
+        "prefill_ms": 145.76307799999998,
+        "decode_ms": 11806.167968
+      },
+      "decode_reduction_pct": 3.5017372292336812
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 983,
+        "queue_ms": 0.014708,
+        "prefill_ms": 635.523588,
+        "decode_ms": 10317.855255999999
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 983,
+        "queue_ms": 0.016772000000000002,
+        "prefill_ms": 535.506206,
+        "decode_ms": 9791.544302
+      },
+      "decode_reduction_pct": 5.100972449617769
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 1141,
+        "queue_ms": 0.005992000000000001,
+        "prefill_ms": 0.002284,
+        "decode_ms": 12079.218269
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 1141,
+        "queue_ms": 0.029325,
+        "prefill_ms": 0.0030960000000000002,
+        "decode_ms": 11358.541261999999
+      },
+      "decode_reduction_pct": 5.966255356520389
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 1383,
+        "queue_ms": 0.0048389999999999996,
+        "prefill_ms": 162.43443599999998,
+        "decode_ms": 14676.207250000001
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 1383,
+        "queue_ms": 0.028113,
+        "prefill_ms": 154.951087,
+        "decode_ms": 14021.81821
+      },
+      "decode_reduction_pct": 4.458843002506674
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 996,
+        "queue_ms": 0.007734,
+        "prefill_ms": 570.726807,
+        "decode_ms": 10481.212955
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 996,
+        "queue_ms": 0.015349000000000002,
+        "prefill_ms": 538.202791,
+        "decode_ms": 9957.729244
+      },
+      "decode_reduction_pct": 4.994495515428643
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 1383,
+        "queue_ms": 0.006673,
+        "prefill_ms": 0.002946,
+        "decode_ms": 14830.113484
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 1383,
+        "queue_ms": 0.012444,
+        "prefill_ms": 0.003426,
+        "decode_ms": 13922.625807999999
+      },
+      "decode_reduction_pct": 6.119222735409791
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 1271,
+        "queue_ms": 0.006452,
+        "prefill_ms": 135.649721,
+        "decode_ms": 13453.807575
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 1271,
+        "queue_ms": 0.01066,
+        "prefill_ms": 129.77187700000002,
+        "decode_ms": 12812.969597000001
+      },
+      "decode_reduction_pct": 4.7632461994685515
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1088,
+        "queue_ms": 0.014436999999999998,
+        "prefill_ms": 568.284103,
+        "decode_ms": 11476.87011
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1088,
+        "queue_ms": 0.020890000000000002,
+        "prefill_ms": 541.2853739999999,
+        "decode_ms": 10862.706507
+      },
+      "decode_reduction_pct": 5.351316143805329
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 1271,
+        "queue_ms": 0.025468,
+        "prefill_ms": 0.003056,
+        "decode_ms": 13432.20456
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 1271,
+        "queue_ms": 2.576087,
+        "prefill_ms": 0.003647,
+        "decode_ms": 12807.725258999999
+      },
+      "decode_reduction_pct": 4.649119943122737
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 748,
+        "queue_ms": 0.01573,
+        "prefill_ms": 136.249154,
+        "decode_ms": 8203.404899000001
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 748,
+        "queue_ms": 0.03159,
+        "prefill_ms": 130.386537,
+        "decode_ms": 7352.698799
+      },
+      "decode_reduction_pct": 10.37015861674343
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1283,
+        "queue_ms": 0.005561,
+        "prefill_ms": 555.104061,
+        "decode_ms": 14314.599108
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1283,
+        "queue_ms": 0.009598,
+        "prefill_ms": 532.298465,
+        "decode_ms": 12963.995758
+      },
+      "decode_reduction_pct": 9.435146173567578
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "output_report_tokens_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 748,
+        "queue_ms": 0.00549,
+        "prefill_ms": 0.002355,
+        "decode_ms": 7760.690684
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 748,
+        "queue_ms": 0.023034,
+        "prefill_ms": 0.003787,
+        "decode_ms": 7351.451964
+      },
+      "decode_reduction_pct": 5.273225498391742
+    }
+  ],
+  "run_summaries": {
+    "before": {
+      "prefix": {
+        "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+        "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+        "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "template_version": "lfm25-single-user-v1",
+        "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+        "prefix_tokens": 331,
+        "input_cache_capacity": 1,
+        "context_limit": 4096,
+        "backend": "rocm",
+        "dtype": "f32",
+        "sampling": "greedy; repetition_penalty=1.05; history=full",
+        "weight_dtypes": [
+          "F32",
+          "Q5K",
+          "Q6K"
+        ]
+      },
+      "comparisons": [
+        {
+          "case_id": "tool-reset-hard",
+          "cold_equal": false,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-restore-file",
+          "cold_equal": false,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-rm-interactive",
+          "cold_equal": false,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-sed-read",
+          "cold_equal": false,
+          "repeat_equal": true
+        }
+      ],
+      "passed": 7,
+      "total": 12
+    },
+    "after": {
+      "prefix": {
+        "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+        "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+        "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "template_version": "lfm25-single-user-v1",
+        "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+        "prefix_tokens": 331,
+        "input_cache_capacity": 1,
+        "context_limit": 4096,
+        "backend": "rocm",
+        "dtype": "f32",
+        "sampling": "greedy; repetition_penalty=1.05; history=full",
+        "weight_dtypes": [
+          "F32",
+          "Q5K",
+          "Q6K"
+        ]
+      },
+      "comparisons": [
+        {
+          "case_id": "tool-reset-hard",
+          "cold_equal": false,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-restore-file",
+          "cold_equal": false,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-rm-interactive",
+          "cold_equal": false,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-sed-read",
+          "cold_equal": false,
+          "repeat_equal": true
+        }
+      ],
+      "passed": 7,
+      "total": 12
+    }
+  },
+  "binary_sha256": {
+    "before": "b8a8db1dfe1c202434179c624c3e57e91f44a62191864c17fe78dbd2293349c0",
+    "after": "5cb7b161d972a16fc44c3727043341bff6e7c562da0b97aec0ad027ef986210d"
+  },
+  "decode_kernel_trace": {
+    "before": {
+      "interval": "second-to-third greedy_finish, first four-token request",
+      "total_kernel_dispatches": 659,
+      "kernels": {
+        "__amd_rocclr_copyBuffer": 2,
+        "get_rows_q6_K": 1,
+        "rmsnorm_f32": 61,
+        "dequantize_mul_mat_vec_q5_k": 52,
+        "lfm2_conv_step": 18,
+        "badd_f32": 70,
+        "usilu_f32": 2,
+        "bmul_f32": 24,
+        "dequantize_mul_mat_vec_q6_k": 5,
+        "rope_f32": 12,
+        "__amd_rocclr_copyBufferRectAligned": 12,
+        "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS0_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR0_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM0_SUS256_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT2_2_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8": 28,
+        "affine_f32": 28,
+        "softmax_f32": 6,
+        "Cijk_Ailk_Bljk_SB_MT32x32x8_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS0_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR0_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM0_SUS256_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT2_2_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8": 6,
+        "usigmoid_f32": 22,
+        "asort_desc_f32": 22,
+        "gather_u32_f32": 22,
+        "fast_sum_f32": 44,
+        "bdiv_f32": 22,
+        "__amd_rocclr_fillBufferAligned": 88,
+        "quantize_q8_1": 44,
+        "indexed_moe_forward_q5k_q8_1": 34,
+        "lfm2_swiglu": 22,
+        "indexed_moe_forward_q6k_q8_1": 10,
+        "greedy_tiles": 1,
+        "greedy_finish": 1
+      }
+    },
+    "after": {
+      "interval": "second-to-third greedy_finish, first four-token request",
+      "total_kernel_dispatches": 505,
+      "kernels": {
+        "__amd_rocclr_copyBuffer": 2,
+        "get_rows_q6_K": 1,
+        "rmsnorm_f32": 61,
+        "dequantize_mul_mat_vec_q5_k": 52,
+        "lfm2_conv_step": 18,
+        "badd_f32": 48,
+        "usilu_f32": 2,
+        "bmul_f32": 2,
+        "dequantize_mul_mat_vec_q6_k": 5,
+        "rope_f32": 12,
+        "__amd_rocclr_copyBufferRectAligned": 12,
+        "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS0_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR0_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM0_SUS256_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT2_2_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8": 28,
+        "affine_f32": 6,
+        "softmax_f32": 6,
+        "Cijk_Ailk_Bljk_SB_MT32x32x8_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS0_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR0_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM0_SUS256_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT2_2_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8": 6,
+        "lfm2_route_32_4": 22,
+        "__amd_rocclr_fillBufferAligned": 88,
+        "quantize_q8_1": 44,
+        "indexed_moe_forward_q5k_q8_1": 34,
+        "lfm2_swiglu": 22,
+        "indexed_moe_forward_q6k_q8_1": 10,
+        "lfm2_combine_4": 22,
+        "greedy_tiles": 1,
+        "greedy_finish": 1
+      }
+    },
+    "kernel_count_delta": {
+      "affine_f32": -22,
+      "asort_desc_f32": -22,
+      "badd_f32": -22,
+      "bdiv_f32": -22,
+      "bmul_f32": -22,
+      "fast_sum_f32": -44,
+      "gather_u32_f32": -22,
+      "lfm2_combine_4": 22,
+      "lfm2_route_32_4": 22,
+      "usigmoid_f32": -22
+    }
+  },
+  "final_binary_sha256": "5cb7b161d972a16fc44c3727043341bff6e7c562da0b97aec0ad027ef986210d",
+  "final_smoke": {
+    "max_tokens": 64,
+    "all_twelve_outputs_match_full_baseline_prefixes": true,
+    "summary": {
+      "prefix": {
+        "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+        "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+        "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "template_version": "lfm25-single-user-v1",
+        "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+        "prefix_tokens": 331,
+        "input_cache_capacity": 1,
+        "context_limit": 4096,
+        "backend": "rocm",
+        "dtype": "f32",
+        "sampling": "greedy; repetition_penalty=1.05; history=full",
+        "weight_dtypes": [
+          "F32",
+          "Q5K",
+          "Q6K"
+        ]
+      },
+      "comparisons": [
+        {
+          "case_id": "tool-reset-hard",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-restore-file",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-rm-interactive",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-sed-read",
+          "cold_equal": false,
+          "repeat_equal": true
+        }
+      ],
+      "passed": 0,
+      "total": 12
+    }
+  }
+}
