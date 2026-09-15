@@ -25,11 +25,14 @@ and shares prepared expert-routing maps across compatible projections.
 The [sixth pass](lfm25-moe-fusion.md) fuses expert selection and weighted output
 reduction, removing 154 kernel launches per measured decode step.
 
+The [seventh pass](lfm25-expert-buffers.md) removes redundant expert-buffer
+initialization, eliminating another 88 fill dispatches per measured decode step.
+
 ## Build and run
 
 **Local LFM2.5 development:** the current checkout temporarily patches Candle to
 `../candle-lfm25`. Keep that sibling worktree at the revision recorded in the
-[latest optimization guide](lfm25-moe-fusion.md). The published pair described
+[latest optimization guide](lfm25-expert-buffers.md). The published pair described
 below predates this local pass.
 
 Clone the `lfm25-adjudicator` branch of
