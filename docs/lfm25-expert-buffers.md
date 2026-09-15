@@ -78,11 +78,11 @@ packet hashes are saved in the private handoff.
 The review also proposed further optimizations. Source checks ruled out several
 assumptions and produced the [next-optimization assessment](lfm25-next-optimizations.md).
 
-## Local build and follow-ups
+## Build and follow-ups
 
-Use sibling Candle revision `738184605809ca52e09f1dc228401d2ea470aab0` with the
-intentional local Cargo overrides. Build the daemon with `--features rocm`.
-No publication or deployment is part of this pass.
+The daemon pins published Candle revision
+`738184605809ca52e09f1dc228401d2ea470aab0`; no local Cargo overrides are needed.
+Build with `--features rocm`. See the [run guide](lfm25-adjudicator.md).
 
 The same quantizer is used by other dense integer matmul paths, whose allocation
 policy was not changed here. Their redundant initialization is a separate

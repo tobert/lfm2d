@@ -684,4 +684,4 @@ The task spec left a few things implicit; here's what was decided and why
 LFM2.5-8B-A1B GGUF inference, reusable hot-prefix state, and validated JSON
 reports are available as a development integration. See
 [the adjudicator guide](../docs/lfm25-adjudicator.md) for build/run commands,
-HTTP semantics, measured limitations, and the sibling Candle worktree setup.
+HTTP semantics, measured limitations, and the published Candle dependency.

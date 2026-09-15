@@ -28,23 +28,31 @@ reduction, removing 154 kernel launches per measured decode step.
 The [seventh pass](lfm25-expert-buffers.md) removes redundant expert-buffer
 initialization, eliminating another 88 fill dispatches per measured decode step.
 
+## Main integration validation — September 15
+
+The published dependency pin passed 269 workspace CPU tests, with one existing
+ignored GPU test, including the real encoder-model regression fixtures. The ROCm
+release build passed the 64-token cache/deadline/reuse/SIGTERM smoke; all twelve
+outputs match the saved full-run reference prefixes. This short smoke checks
+integration behavior, not report quality or new performance gains.
+
+Workspace Clippy completes with existing style/type warnings; `-D warnings`
+remains blocked by the recorded lint backlog. No runtime code changed when
+replacing the sibling Cargo overrides with the published dependency.
+
 ## Build and run
 
-**Local LFM2.5 development:** the current checkout temporarily patches Candle to
-`../candle-lfm25`. Keep that sibling worktree at the revision recorded in the
-[latest optimization guide](lfm25-expert-buffers.md). The published pair described
-below predates this local pass.
-
-Clone the `lfm25-adjudicator` branch of
-[tobert/lfm2d](https://github.com/tobert/lfm2d/tree/lfm25-adjudicator).
-Cargo pins the published Candle fork at `936a15a6fbcf1f29e38a27058738ffb4ce091753`
+Clone the `main` branch of
+[tobert/lfm2d](https://github.com/tobert/lfm2d).
+Cargo pins the published Candle fork at `738184605809ca52e09f1dc228401d2ea470aab0`
 on [lfm25-moe-snapshots](https://github.com/tobert/candle/tree/lfm25-moe-snapshots).
-That published baseline needs no sibling checkout. The ROCm build requires the
+All seven optimization passes are included. No sibling checkout or local Cargo
+patches are required. The ROCm build requires the
 ROCm development toolchain and a supported AMD GPU. Model paths below are
 examples; download the GGUF and matching tokenizer to your own paths.
 
 ```bash
-cd "$HOME/src/wt/lfm2d-lfm25"
+cd "$HOME/src/lfm2d"
 cargo build -p lfm2d --release --features rocm
 ./target/release/lfm2d \
   --device rocm --threads 8 --bind-addr '127.0.0.1:18152' \
@@ -160,7 +168,7 @@ cargo test -p candle-transformers --test lfm2_moe
 cargo test -p candle-transformers --release --features rocm --lib \
   'rocm_quantized_experts_match_dequantized_reference' -- --ignored
 
-cd "$HOME/src/wt/lfm2d-lfm25"
+cd "$HOME/src/lfm2d"
 cargo test -p lfm2d
 python3 benchmarks/lfm25/evaluate.py \
   --binary './target/release/lfm2d' \
