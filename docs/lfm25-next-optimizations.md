@@ -6,6 +6,10 @@ speedup yet. Keep the checkpoint, F32 activations, prompt, greedy sampling,
 repetition penalty and output cap fixed. The current measured decode step has
 417 kernel dispatches; launch counts alone do not identify the time bottleneck.
 
+A subsequent [local and public runtime comparison](lfm25-runtime-comparison.md)
+puts the existing local llama.cpp service about 5–6% ahead in decode throughput,
+with a larger cold-prefill gap. This is a shared-host snapshot, not an isolated A/B.
+
 ## Concrete next work
 
 ### 1. Fuse expert combination and residual addition

@@ -1,0 +1,149 @@
+{
+  "date": "2026-09-15",
+  "hardware": "zorak: Ryzen AI Max+ 395 / Radeon 8060S gfx1151",
+  "scope": "One 64-token warmup, then four full synthetic adjudication requests to existing local llama.cpp. Compared to saved same-day Candle results, not interleaved or isolated. Same Q5_K_M file, rendered prompt, prompt token counts, temperature 0, repetition penalty 1.05 over full history, 2048 output cap. Outputs and completion counts differ; no end-to-end latency or quality parity claim.",
+  "llama_cpp": {
+    "build": "b9820-3fc4e1052",
+    "url": "http://127.0.0.1:2031",
+    "context_allocation": 128000,
+    "parallel_slots": 1,
+    "gpu_layers": 99,
+    "backend_evidence": "Installed executable links libggml-hip, libamdhip64 and hipBLAS; host process maps unreadable. Local source default build is a separate Vulkan build and is not evidence of serving backend.",
+    "cache_prompt": false,
+    "speculative": false,
+    "samplers": [
+      "penalties",
+      "temperature"
+    ],
+    "model_path": "/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf"
+  },
+  "candle": {
+    "revision": "738184605809ca52e09f1dc228401d2ea470aab0",
+    "binary_sha256": "93650effe49e40b9deb7e5cc0eac1e99854952b8c3f44aa4bf241014dd477396",
+    "context_allocation": 4096,
+    "activation_dtype": "F32",
+    "source": "2026-09-15-expert-buffers.json"
+  },
+  "rows": [
+    {
+      "case_id": "tool-reset-hard",
+      "prompt_tokens": 373,
+      "llama_cpp": {
+        "decode_tokens_per_second": 108.22721356643616,
+        "prefill_ms": 147.357,
+        "completion_tokens": 1886,
+        "wall_seconds": 17.592773175099865,
+        "finish": "eos"
+      },
+      "candle_cold": {
+        "decode_tokens_per_second": 102.9809854309833,
+        "prefill_ms": 535.1296639999999,
+        "completion_tokens": 983
+      },
+      "candle_repeat": {
+        "decode_tokens_per_second": 102.44864923772073,
+        "completion_tokens": 1141
+      }
+    },
+    {
+      "case_id": "tool-restore-file",
+      "prompt_tokens": 381,
+      "llama_cpp": {
+        "decode_tokens_per_second": 109.06214456847852,
+        "prefill_ms": 148.834,
+        "completion_tokens": 842,
+        "wall_seconds": 7.8961806239094585,
+        "finish": "eos"
+      },
+      "candle_cold": {
+        "decode_tokens_per_second": 102.93481155560656,
+        "prefill_ms": 536.898636,
+        "completion_tokens": 996
+      },
+      "candle_repeat": {
+        "decode_tokens_per_second": 101.57624611489808,
+        "completion_tokens": 1383
+      }
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "prompt_tokens": 372,
+      "llama_cpp": {
+        "decode_tokens_per_second": 108.81720027825824,
+        "prefill_ms": 147.839,
+        "completion_tokens": 1082,
+        "wall_seconds": 10.112588988966309,
+        "finish": "eos"
+      },
+      "candle_cold": {
+        "decode_tokens_per_second": 102.68390753219785,
+        "prefill_ms": 532.66649,
+        "completion_tokens": 1088
+      },
+      "candle_repeat": {
+        "decode_tokens_per_second": 102.02050801402535,
+        "completion_tokens": 1271
+      }
+    },
+    {
+      "case_id": "tool-sed-read",
+      "prompt_tokens": 372,
+      "llama_cpp": {
+        "decode_tokens_per_second": 104.16655829529932,
+        "prefill_ms": 147.525,
+        "completion_tokens": 801,
+        "wall_seconds": 7.844369908096269,
+        "finish": "eos"
+      },
+      "candle_cold": {
+        "decode_tokens_per_second": 101.93502385806515,
+        "prefill_ms": 532.4017610000001,
+        "completion_tokens": 1283
+      },
+      "candle_repeat": {
+        "decode_tokens_per_second": 103.78816177155349,
+        "completion_tokens": 748
+      }
+    }
+  ],
+  "medians": {
+    "llama_decode_tps": 108.52220692234721,
+    "candle_cold_decode_tps": 102.8093595439022,
+    "candle_repeat_decode_tps": 102.23457862587304,
+    "llama_cold_prefill_ms": 147.68200000000002,
+    "candle_cold_prefill_ms": 533.898077
+  },
+  "public_references": [
+    {
+      "url": "https://localaifrontier.com/benchmarks/lfm25-8b-apu-ryzen-ai-max-395-unified-memory/",
+      "date": "2026-07-18",
+      "model": "LFM2.5-8B-A1B",
+      "quant": "Q4_K_M",
+      "backend": "llama.cpp ROCm/HIP 7.2.2",
+      "build": "c57607016",
+      "decode_tps": 150.16,
+      "prefill_tps": 3661.53,
+      "workload": "llama-bench pp512/tg256, 3 repetitions; artifact checksum not captured"
+    },
+    {
+      "url": "https://github.com/hogeheer499-commits/strix-halo-guide/blob/main/BENCHMARKS.md",
+      "date": "2026-06-11",
+      "model": "LFM2.5-8B-A1B",
+      "quant": "Q4_K_M",
+      "backend": "llama.cpp Vulkan RADV",
+      "build": "ac4cddeb0",
+      "decode_tps": 171.17,
+      "prefill_tps": 3364,
+      "workload": "llama-bench pp512/tg128; other June builds report 168.96-176.48"
+    },
+    {
+      "url": "https://www.liquid.ai/blog/lfm2-5-8b-a1b",
+      "date": "2026-05-28",
+      "model": "LFM2.5-8B-A1B",
+      "backend": "llama.cpp CPU",
+      "decode_tps": 146,
+      "workload": "Vendor CPU result on Ryzen AI Max+ 395; insufficient precision/workload detail in article text for matched comparison. GPU chart is SGLang/H100/BF16, not vLLM/Strix Halo."
+    }
+  ],
+  "vllm_status": "No matched single-request LFM2.5-8B-A1B result on gfx1151 found in this search; no vLLM host process found."
+}
