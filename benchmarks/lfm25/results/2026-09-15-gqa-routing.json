@@ -1,0 +1,446 @@
+{
+  "date": "2026-09-15",
+  "scope": "Paired full-length shared-host four-case comparison; CPU builds/tests overlapped portions. No isolated GPU or per-operation attribution. Greedy decoding, full-history repetition penalty 1.05, same checkpoint/prompt and 2048-token cap.",
+  "before_candle": "332ba982caa146f2efb22269725319342c29a445",
+  "after_candle": "819573783dd422204d11dd9794d0e355754b49a3",
+  "all_output_exact": true,
+  "warm_repeat_median_decode_time_reduction_pct": 6.863382305907079,
+  "cold_prefill_medians_ms": {
+    "before": 572.0698155,
+    "after": 567.591159
+  },
+  "cached_request_median_seconds": {
+    "before": 14.063106005000002,
+    "after": 13.515001311999999
+  },
+  "rows": [
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 1141,
+        "queue_ms": 0.030207,
+        "prefill_ms": 138.29950799999997,
+        "decode_ms": 13246.121616
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 331,
+        "completion_tokens": 1141,
+        "queue_ms": 0.014648,
+        "prefill_ms": 153.117092,
+        "decode_ms": 13261.425067999999
+      },
+      "decode_reduction_pct": -0.11553156798373987
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 983,
+        "queue_ms": 0.015889999999999998,
+        "prefill_ms": 572.724652,
+        "decode_ms": 11111.276167
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 0,
+        "completion_tokens": 983,
+        "queue_ms": 0.011902000000000001,
+        "prefill_ms": 557.62283,
+        "decode_ms": 11874.137111
+      },
+      "decode_reduction_pct": -6.865646506615164
+    },
+    {
+      "case_id": "tool-reset-hard",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 1141,
+        "queue_ms": 0.03168,
+        "prefill_ms": 0.003336,
+        "decode_ms": 13011.917917
+      },
+      "after": {
+        "prompt_tokens": 373,
+        "cached_tokens": 373,
+        "completion_tokens": 1141,
+        "queue_ms": 0.012764,
+        "prefill_ms": 0.0034070000000000003,
+        "decode_ms": 12380.891395999999
+      },
+      "decode_reduction_pct": 4.849604224566839
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 1383,
+        "queue_ms": 0.030196999999999998,
+        "prefill_ms": 164.126713,
+        "decode_ms": 16084.216906999998
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 331,
+        "completion_tokens": 1383,
+        "queue_ms": 1.5352510000000001,
+        "prefill_ms": 170.643084,
+        "decode_ms": 15092.849658000001
+      },
+      "decode_reduction_pct": 6.163602833337478
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 996,
+        "queue_ms": 0.029675999999999998,
+        "prefill_ms": 572.1964849999999,
+        "decode_ms": 11346.53046
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 0,
+        "completion_tokens": 996,
+        "queue_ms": 0.022522,
+        "prefill_ms": 571.359734,
+        "decode_ms": 10448.3405
+      },
+      "decode_reduction_pct": 7.915987738863384
+    },
+    {
+      "case_id": "tool-restore-file",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 1383,
+        "queue_ms": 0.013335,
+        "prefill_ms": 0.003015,
+        "decode_ms": 16078.984321
+      },
+      "after": {
+        "prompt_tokens": 381,
+        "cached_tokens": 381,
+        "completion_tokens": 1383,
+        "queue_ms": 0.013015,
+        "prefill_ms": 0.009067,
+        "decode_ms": 14721.63666
+      },
+      "decode_reduction_pct": 8.441750012948468
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 1271,
+        "queue_ms": 0.029385,
+        "prefill_ms": 136.760189,
+        "decode_ms": 14605.030697
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 1271,
+        "queue_ms": 0.013686,
+        "prefill_ms": 136.292306,
+        "decode_ms": 13479.168158
+      },
+      "decode_reduction_pct": 7.708731069160035
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1088,
+        "queue_ms": 0.008406,
+        "prefill_ms": 571.943146,
+        "decode_ms": 12366.463007
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1088,
+        "queue_ms": 0.019185999999999998,
+        "prefill_ms": 568.865051,
+        "decode_ms": 11480.510727
+      },
+      "decode_reduction_pct": 7.164152591557571
+    },
+    {
+      "case_id": "tool-rm-interactive",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 1271,
+        "queue_ms": 0.030728000000000002,
+        "prefill_ms": 0.002124,
+        "decode_ms": 14620.670876
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 1271,
+        "queue_ms": 0.028253,
+        "prefill_ms": 0.0028150000000000002,
+        "decode_ms": 13472.339807999999
+      },
+      "decode_reduction_pct": 7.854161260718895
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cached",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 748,
+        "queue_ms": 0.028062999999999998,
+        "prefill_ms": 136.437319,
+        "decode_ms": 8319.733247
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 331,
+        "completion_tokens": 748,
+        "queue_ms": 0.028223,
+        "prefill_ms": 135.870849,
+        "decode_ms": 7773.633818
+      },
+      "decode_reduction_pct": 6.5639055097940435
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "cold",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1283,
+        "queue_ms": 0.013135,
+        "prefill_ms": 568.530077,
+        "decode_ms": 14767.719964
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 0,
+        "completion_tokens": 1283,
+        "queue_ms": 0.028975,
+        "prefill_ms": 566.3172669999999,
+        "decode_ms": 13712.345037000001
+      },
+      "decode_reduction_pct": 7.146498779586407
+    },
+    {
+      "case_id": "tool-sed-read",
+      "mode": "repeat",
+      "output_equal": true,
+      "before": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 748,
+        "queue_ms": 0.019166,
+        "prefill_ms": 0.001573,
+        "decode_ms": 8320.951949
+      },
+      "after": {
+        "prompt_tokens": 372,
+        "cached_tokens": 372,
+        "completion_tokens": 748,
+        "queue_ms": 0.016962,
+        "prefill_ms": 0.002564,
+        "decode_ms": 7832.295446
+      },
+      "decode_reduction_pct": 5.872603351095263
+    }
+  ],
+  "binary_sha256": {
+    "before": "8ebe354f1123b3a73bd6507aedb8af62db34cec59f26ebfc9b0cfa07aef528fc",
+    "after": "6d80ddac61e54ad6bce01b778c491d877754327eda2064ea3030810b6a5885c3"
+  },
+  "before_summary": {
+    "prefix": {
+      "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+      "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+      "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+      "template_version": "lfm25-single-user-v1",
+      "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+      "prefix_tokens": 331,
+      "input_cache_capacity": 1,
+      "context_limit": 4096,
+      "backend": "rocm",
+      "dtype": "f32",
+      "sampling": "greedy; repetition_penalty=1.05; history=full",
+      "weight_dtypes": [
+        "F32",
+        "Q5K",
+        "Q6K"
+      ]
+    },
+    "comparisons": [
+      {
+        "case_id": "tool-reset-hard",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-restore-file",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-rm-interactive",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-sed-read",
+        "cold_equal": false,
+        "repeat_equal": true
+      }
+    ],
+    "passed": 7,
+    "total": 12
+  },
+  "after_summary": {
+    "prefix": {
+      "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+      "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+      "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+      "template_version": "lfm25-single-user-v1",
+      "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+      "prefix_tokens": 331,
+      "input_cache_capacity": 1,
+      "context_limit": 4096,
+      "backend": "rocm",
+      "dtype": "f32",
+      "sampling": "greedy; repetition_penalty=1.05; history=full",
+      "weight_dtypes": [
+        "F32",
+        "Q5K",
+        "Q6K"
+      ]
+    },
+    "comparisons": [
+      {
+        "case_id": "tool-reset-hard",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-restore-file",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-rm-interactive",
+        "cold_equal": false,
+        "repeat_equal": true
+      },
+      {
+        "case_id": "tool-sed-read",
+        "cold_equal": false,
+        "repeat_equal": true
+      }
+    ],
+    "passed": 7,
+    "total": 12
+  },
+  "schema_valid": {
+    "before": 10,
+    "after": 10
+  },
+  "runtime_checks": [
+    "exact cached repeats",
+    "reuse after deadline",
+    "in-flight SIGTERM HTTP 408",
+    "process exit 0"
+  ],
+  "validation": {
+    "candle_cpu_model_tests": 13,
+    "numpy_integration_tests": 2,
+    "rocm_grouped_routing_tests": 7,
+    "rocm_model_tests": 6,
+    "daemon_passed": 152,
+    "daemon_existing_ignored": 1,
+    "model_routing_mutation": "Disabling model prepared-routing selection makes the wiring test fail: observed (0 maps, 0 uses), expected (1 map, 2 uses). Restored source passes merged and mixed-format cases."
+  },
+  "review": "Kaibo DeepSeek / deepseek-flash; full report retained in private exomemory.",
+  "measurement_note": "Post-measurement changes add test-only model wiring counters/test and clarify support-query documentation; serving arithmetic is unchanged.",
+  "final_binary_sha256": "b8a8db1dfe1c202434179c624c3e57e91f44a62191864c17fe78dbd2293349c0",
+  "final_binary_matches_measured": false,
+  "final_smoke": {
+    "max_tokens": 64,
+    "all_outputs_match_baseline_prefixes": true,
+    "runtime_checks_passed": true,
+    "summary": {
+      "prefix": {
+        "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+        "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+        "tokenizer_hash": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "template_version": "lfm25-single-user-v1",
+        "snapshot_id": "5709d41eca4b8ae7cec1bdc606f4bc7ff5914f5ec58adca88e89c15055302ee2",
+        "prefix_tokens": 331,
+        "input_cache_capacity": 1,
+        "context_limit": 4096,
+        "backend": "rocm",
+        "dtype": "f32",
+        "sampling": "greedy; repetition_penalty=1.05; history=full",
+        "weight_dtypes": [
+          "F32",
+          "Q5K",
+          "Q6K"
+        ]
+      },
+      "comparisons": [
+        {
+          "case_id": "tool-reset-hard",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-restore-file",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-rm-interactive",
+          "cold_equal": true,
+          "repeat_equal": true
+        },
+        {
+          "case_id": "tool-sed-read",
+          "cold_equal": false,
+          "repeat_equal": true
+        }
+      ],
+      "passed": 0,
+      "total": 12
+    }
+  }
+}

@@ -19,18 +19,21 @@ and adds an exact complete-input checkpoint with saved next-token logits.
 The [fourth pass](lfm25-kv-cache.md) adds append-efficient KV buffers with
 immutable snapshot prefixes and transactional failure behavior.
 
+The [fifth pass](lfm25-gqa-routing.md) removes repeated KV-head materialization
+and shares prepared expert-routing maps across compatible projections.
+
 ## Build and run
 
-**Local KV development:** the current checkout temporarily patches Candle to
+**Local LFM2.5 development:** the current checkout temporarily patches Candle to
 `../candle-lfm25`. Keep that sibling worktree at the revision recorded in the
-[KV guide](lfm25-kv-cache.md). The published pair described below predates
-this local pass.
+[latest optimization guide](lfm25-gqa-routing.md). The published pair described
+below predates this local pass.
 
 Clone the `lfm25-adjudicator` branch of
 [tobert/lfm2d](https://github.com/tobert/lfm2d/tree/lfm25-adjudicator).
 Cargo pins the published Candle fork at `936a15a6fbcf1f29e38a27058738ffb4ce091753`
 on [lfm25-moe-snapshots](https://github.com/tobert/candle/tree/lfm25-moe-snapshots).
-No sibling checkout or Cargo patch is required. The ROCm build requires the
+That published baseline needs no sibling checkout. The ROCm build requires the
 ROCm development toolchain and a supported AMD GPU. Model paths below are
 examples; download the GGUF and matching tokenizer to your own paths.
 
