@@ -3,16 +3,6 @@
   "output_schema": {
     "type": "object",
     "properties": {
-      "severity": {
-        "type": "string",
-        "description": "The severity under the supplied operator-safety rubric.",
-        "enum": [
-          "informative",
-          "situation-normal",
-          "data-critical",
-          "undecidable"
-        ]
-      },
       "effect": {
         "type": "string",
         "description": "The effect under the supplied operator-safety rubric."
@@ -28,14 +18,24 @@
       "reason": {
         "type": "string",
         "description": "The reason under the supplied operator-safety rubric."
+      },
+      "severity": {
+        "type": "string",
+        "description": "The severity under the supplied operator-safety rubric.",
+        "enum": [
+          "informative",
+          "situation-normal",
+          "data-critical",
+          "undecidable"
+        ]
       }
     },
     "required": [
-      "severity",
       "effect",
       "scope",
       "reversibility",
-      "reason"
+      "reason",
+      "severity"
     ],
     "additionalProperties": false
   }
