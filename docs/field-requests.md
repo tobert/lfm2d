@@ -116,12 +116,32 @@ Every model-filled field carries its distribution. Two rules on top:
 Ranking is within a record. Thresholding across records is not supported and
 `docs/integration.md` says so.
 
-### 6. Descriptive fields earn their tokens; generative fields must prove it
+### 6. Every field you add is a field the model will fill
 
-A model-filled field that asks the model to **describe the input** is cheap and
-often helps. One that asks it to **invent an artifact not present in the input**
-needs evidence before it ships, and belongs after any decision it could
-contaminate — or in a static provider, where the artifact is computable.
+**Open: the mechanism below is not settled, and the first version of this
+decision over-claimed.** Four added fields were measured and all four cost
+data-critical recall against the `p0` baseline of 61/76: integer counts 10/75,
+an invented undo command 21/75, 0-10 severity scores 29/75, a `writes` boolean
+59/76 (which instead cost 129 informative rows, escalating them to
+data-critical). The first draft of this section attributed the damage to
+*generative* fields — ones that invent an artifact absent from the input — and
+predicted that *descriptive* fields would be safe. The 0-10 scores are
+descriptive and lost 32 data-critical rows anyway, so that prediction failed.
+
+A confound runs through all four: each put its new field **first**, ahead of
+`effect`/`scope`/`reversibility`/`reason`. Severity stayed last, so decision 2
+was satisfied, but the position actually under test never was. The scaffold may
+work because it is descriptive *and* because nothing precedes it, and anything
+committed ahead of it may anchor the verdict whatever its kind. The untested
+cell is a new field placed **after** the scaffold and before severity. Until
+that runs, prefer adding nothing.
+
+What does hold, and is worth keeping regardless of mechanism:
+
+A field that asks the model to **invent an artifact not present in the input**
+produces an invention, and the invention then anchors every field after it. Such
+a field belongs in a static provider, where the artifact is computable, or
+nowhere.
 
 A sentinel value is **not** an abstention. If a field offers "NONE" for the
 unanswerable case, measure how often that value is actually emitted; near zero
