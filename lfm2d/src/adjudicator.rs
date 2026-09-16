@@ -100,6 +100,12 @@ pub struct AdjudicateRequest {
     pub use_cache: bool,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
+    /// Per-generated-token distributions (top-k logprobs, raw named-set
+    /// mass). Omitted entirely (the default) => `AdjudicateResponse` is
+    /// today's shape, byte-identical; see `docs/field-requests.md`
+    /// decision 5 and [`crate::types::DistributionRequest`].
+    #[serde(default)]
+    pub distributions: Option<crate::types::DistributionRequest>,
 }
 fn default_max_tokens() -> usize {
     2048
@@ -121,6 +127,9 @@ impl AdjudicateRequest {
         }
         if self.timeout_ms == 0 || self.timeout_ms > 120000 {
             return Err("timeout_ms must be 1..=120000".into());
+        }
+        if let Some(d) = &self.distributions {
+            d.validate()?;
         }
         Ok(())
     }
@@ -156,6 +165,14 @@ pub struct AdjudicateResponse {
     pub queue_ms: f64,
     pub prefill_ms: f64,
     pub decode_ms: f64,
+    /// One entry per generated token (including a trailing eos, if any),
+    /// same count as `completion_tokens`. Present only when the request set
+    /// `distributions` — `#[serde(skip_serializing_if)]` keeps the field
+    /// entirely absent from the JSON body otherwise, so a request that
+    /// never asked for it gets byte-identical output to before this field
+    /// existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distributions: Option<Vec<crate::types::StepDistribution>>,
 }
 
 #[derive(Debug)]
@@ -465,6 +482,10 @@ impl Generator for Adjudicator {
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<AdjudicateResponse, Failure> {
         request.validate().map_err(Failure::BadRequest)?;
+        if let Some(d) = &request.distributions {
+            d.validate_vocab(self.model.vocab_size())
+                .map_err(Failure::BadRequest)?;
+        }
         check()?;
         let suffix = format!(
             "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -502,6 +523,12 @@ impl Generator for Adjudicator {
             self.repeat_penalty,
         )?;
         let mut generated = Vec::new();
+        // Allocated only when asked for: the distribution computation below
+        // costs nothing on the request path that doesn't request it.
+        let mut distributions = request
+            .distributions
+            .as_ref()
+            .map(|_| Vec::with_capacity(request.max_tokens));
         let mut finish_reason = "length";
         for i in 0..request.max_tokens {
             check()?;
@@ -510,6 +537,21 @@ impl Generator for Adjudicator {
                 return Err(Failure::Internal(format!(
                     "model selected unused vocabulary row {token}"
                 )));
+            }
+            if let Some(spec) = &request.distributions {
+                let raw: Vec<f32> = logits.flatten_all()?.to_vec1()?;
+                let step = crate::types::step_distribution(
+                    &raw,
+                    token,
+                    spec.top_k,
+                    &spec.token_sets,
+                    |id| self.tokenizer.id_to_token(id),
+                )
+                .map_err(Failure::Internal)?;
+                distributions
+                    .as_mut()
+                    .expect("allocated above whenever distributions is requested")
+                    .push(step);
             }
             generated.push(token);
             if token == self.eos {
@@ -550,6 +592,7 @@ impl Generator for Adjudicator {
             queue_ms: 0.,
             prefill_ms,
             decode_ms: decode.elapsed().as_secs_f64() * 1000.,
+            distributions,
         })
     }
 }
@@ -923,6 +966,58 @@ mod prompt_cache_tests {
             3
         );
     }
+    #[test]
+    fn step_distribution_over_real_model_logits_is_deterministic_and_internally_consistent() {
+        // Exercises crate::types::step_distribution against an ACTUAL Tensor
+        // -> Vec<f32> extraction from the real (tiny) model, not just
+        // hand-built float arrays — the same `flatten_all().to_vec1()` path
+        // the decode-loop hunk in `generate` uses. Two independent forward
+        // passes from a fresh state on identical tokens must agree exactly:
+        // this stack has been bit-deterministic elsewhere (see
+        // `prepared_prompt_keeps_logits_and_hybrid_state_isolated` above),
+        // and if it were NOT deterministic here, that would be a finding to
+        // report, not paper over.
+        let (model, _cache) = fixture();
+        let mut state_a = model.new_state();
+        let raw_a = values(&model.forward(&[1, 2, 3, 4], &mut state_a).unwrap());
+        let mut state_b = model.new_state();
+        let raw_b = values(&model.forward(&[1, 2, 3, 4], &mut state_b).unwrap());
+        assert_eq!(
+            raw_a, raw_b,
+            "identical prompt tokens from a fresh state must produce bit-identical logits"
+        );
+
+        let text = |id: u32| Some(format!("<{id}>"));
+        let mut sets = std::collections::BTreeMap::new();
+        sets.insert("probe".to_string(), vec![0u32, 1]);
+        let step_a = crate::types::step_distribution(&raw_a, 0, 5, &sets, text).unwrap();
+        let step_b = crate::types::step_distribution(&raw_b, 0, 5, &sets, text).unwrap();
+        assert_eq!(step_a.logprob, step_b.logprob);
+        assert_eq!(
+            step_a
+                .top_logprobs
+                .iter()
+                .map(|t| (t.token, t.logprob))
+                .collect::<Vec<_>>(),
+            step_b
+                .top_logprobs
+                .iter()
+                .map(|t| (t.token, t.logprob))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(step_a.set_mass["probe"].logprob, step_b.set_mass["probe"].logprob);
+
+        assert!(step_a.logprob <= 0.0);
+        for w in step_a.top_logprobs.windows(2) {
+            assert!(w[0].logprob >= w[1].logprob, "{:?} not descending", step_a.top_logprobs);
+        }
+        let total: f32 = raw_a
+            .iter()
+            .cloned()
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(total.is_finite(), "tiny fixture must produce finite logits");
+    }
+
     #[test]
     fn failed_or_cancelled_prefill_does_not_replace_ready_input() {
         let (model, mut cache) = fixture();
