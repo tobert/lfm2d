@@ -495,9 +495,20 @@ impl Generator for Adjudicator {
             .prepare(&self.model, &full, request.use_cache, check)?;
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
         let decode = Instant::now();
-        let mut sampler = GreedySampler::new(
+        // Constrained decoding. With an `output_schema` this masks the logits
+        // against a compiled JSON grammar before every greedy selection, so an
+        // invalid report is unreachable rather than merely detected afterwards
+        // by `validate_report`. Without a schema it is `GreedySampler` itself.
+        // See `crate::constrain` for the grammar's scope and rulings. It never
+        // mutates `logits`: the mask is combined into a separate tensor, so
+        // `logits` at the `sample` call below is still the raw model
+        // distribution for anything that wants to read mass out of it.
+        let mut sampler = crate::constrain::Decoder::new(
+            self.output_schema.as_ref(),
+            &self.tokenizer,
             logits.device(),
             self.model.vocab_size(),
+            self.eos,
             &full,
             self.repeat_penalty,
         )?;
