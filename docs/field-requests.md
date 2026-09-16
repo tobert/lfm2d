@@ -116,7 +116,30 @@ Every model-filled field carries its distribution. Two rules on top:
 Ranking is within a record. Thresholding across records is not supported and
 `docs/integration.md` says so.
 
-### 6. What a field is, versus what it may decide
+### 6. Descriptive fields earn their tokens; generative fields must prove it
+
+A model-filled field that asks the model to **describe the input** is cheap and
+often helps. One that asks it to **invent an artifact not present in the input**
+needs evidence before it ships, and belongs after any decision it could
+contaminate — or in a static provider, where the artifact is computable.
+
+A sentinel value is **not** an abstention. If a field offers "NONE" for the
+unanswerable case, measure how often that value is actually emitted; near zero
+means the field has no way to say "I don't know" and every value it carries is
+suspect.
+
+*Forced by:* an `undo_command` field offering `NONE` (nothing can undo this) and
+`NOTHING` (nothing to undo) was asked on 75 data-critical rows and used the
+sentinel **zero** times. It answered `shred -u ~/.gnupg/secring.gpg` with the
+same command back, misspelled; `rm -f ~/.ssh/authorized_keys` with itself;
+`git clone` with `false`; and an SQL insert with the string
+`situation-normal` — a severity label, in a free-text command field. Severity
+then read off that invention and data-critical recall fell to 21/75. Meanwhile
+`effect`/`scope`/`reversibility`/`reason`, equally free-text but *descriptive*,
+are worth 40/40 against 17/40. A grammar guarantees a field is filled, never
+that it is answered.
+
+### 7. What a field is, versus what it may decide
 
 Fusing representations is free; letting a provider silently set a shipped label
 is a policy choice. A field may be filled by any provider. Which fields the
