@@ -24,12 +24,32 @@ Both facts are in here, because the corrections are the useful part.
 | `collision` | `ctl-p0` minus `(data only)` | 446 | 397/419 | 7/238 | 42/76 | 51 | .510 |
 | `p0-orig` | `ctl-p0`, severity stated first | 483 | 399/419 | 22/238 | **62/76** | 43 | **.620** |
 | `ste` | STE rewrite | 480 | 396/419 | 32/238 | 52/76 | 39 | .588 |
-| `ste-labels` | STE + collision-free labels | **494** | **405/419** | **39/238** | 50/76 | — | .596 |
+| `ste-labels` | STE + collision-free labels | 494 | 405/419 | 39/238 | 50/76 | 41 | .596 |
+| `ste-live` | STE + "about to run on a live system" | 475 | **409/419** | 7/238 | **59/76** | 50 | .594 |
+| `ste-labels-first` | `ste-labels`, severity stated first | **531** | 399/419 | **90/238** | 42/76 | **19** | **.628** |
 | `anti` | deliberately bad prose | **291** | 134/419 | 96/238 | 61/76 | **188** | .509 |
 
 All arms hold the same facts, the same empty think block, greedy decoding, and
 severity emitted last. Prompts are constants in `ste_experiment.py`, and each
 rendered system prompt is sha-hashed into its results.
+
+### There is a frontier, not a winner
+
+The campaign ends with three configurations that are each best at something,
+and choosing between them is policy rather than measurement.
+
+- **`ste-labels-first`** (531, balanced .628, dc precision 69%) is the best
+  classifier: highest total, fewest false alarms, and by far the best
+  situation-normal recall of any honest arm. It misses 34 severe rows.
+- **`ste-live`** (dc 59/76) is the best gate: it sharpens both extremes,
+  informative 97.6% and the highest data-critical recall of any arm without an
+  artifact propping it up, and gives up the middle rung to get there.
+- **`p0-orig`** reaches dc 62 but only with the token pump and the
+  stated/enforced mismatch working together, so it should not be built on.
+
+For a gate, missing a destructive command costs more than over-warning on an
+ordinary one, which argues for `ste-live`. For a three-way classifier,
+`ste-labels-first`.
 
 ### Prompt style is the largest lever
 
@@ -88,8 +108,12 @@ the arms in **exactly** their order of situation-normal recall over 733 rows:
 | `p0-orig` | 0.008 | 22/238 |
 | `ste` | 0.086 | 32/238 |
 | `ste-labels` | 0.117 | 39/238 |
+| `ste-live` | 0.055 | 7/238 |
+| `ste-labels-first` | 0.123 | 90/238 |
 
-Five for five, one forward pass instead of twelve minutes. It also explains the
+Seven for seven, one forward pass instead of twelve minutes. It ranks; it does
+not scale — the 0.123 prior correctly predicted the highest situation-normal
+recall in the campaign, but not that it would be 90 rather than 40. It also explains the
 collapse mechanically: under the shipped prompt situation-normal has a prior of
 **0.001**. The middle rung was never a live hypothesis, so no evidence in the
 clause could lift it.
