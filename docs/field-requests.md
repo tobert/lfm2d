@@ -150,11 +150,12 @@ suspect.
 
 *Forced by:* an `undo_command` field offering `NONE` (nothing can undo this) and
 `NOTHING` (nothing to undo) was asked on 75 data-critical rows and used the
-sentinel **zero** times. It answered `shred -u ~/.gnupg/secring.gpg` with the
-same command back, misspelled; `rm -f ~/.ssh/authorized_keys` with itself;
-`git clone` with `false`; and an SQL insert with the string
-`situation-normal` — a severity label, in a free-text command field. Severity
-then read off that invention and data-critical recall fell to 21/75. Meanwhile
+sentinel **zero** times. Its answers, by shape rather than by row: for an
+unrecoverable single-file wipe it echoed the wiping command back at itself,
+misspelled; for a credential-file removal it named that same removal as the
+undo; for a repository clone it answered `false`; and for a database insert it
+answered with a severity label, in a free-text command field. Severity then read
+off that invention and data-critical recall fell to 21/75. Meanwhile
 `effect`/`scope`/`reversibility`/`reason`, equally free-text but *descriptive*,
 are worth 40/40 against 17/40. A grammar guarantees a field is filled, never
 that it is answered.
