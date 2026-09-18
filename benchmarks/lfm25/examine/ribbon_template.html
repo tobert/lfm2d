@@ -1,0 +1,496 @@
+<title>LFM2.5 Verdict Ribbon</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --page: #f1f2f0; --surface: #fcfcfb; --surface-2: #eceeec; --hairline: #e1e0d9; --axis: #c3c2b7;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #898781; --focus: #104281;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --ctx: #898781; --attn: #e6e9ee;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #121312; --surface: #1a1a19; --surface-2: #262725; --hairline: #2c2c2a; --axis: #4a4a46;
+    --text: #ffffff; --text-2: #c3c2b7; --muted: #898781; --focus: #9ec5f4;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --ctx: #898781; --attn: #23262b;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #121312; --surface: #1a1a19; --surface-2: #262725; --hairline: #2c2c2a; --axis: #4a4a46;
+  --text: #ffffff; --text-2: #c3c2b7; --muted: #898781; --focus: #9ec5f4;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --ctx: #898781; --attn: #23262b;
+}
+body { background: var(--page); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 18px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 16px; font-weight: 600; margin: 10px 0 0; }
+header p { margin: 0; color: var(--text-2); max-width: 70ch; }
+code { font-family: var(--mono); font-size: 0.93em; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+.controls .lab { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-right: 8px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; color: var(--text-2); background: none; border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--axis); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+button:focus-visible, svg:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.runnote { margin: 0; padding: 8px 12px; border: 1px solid var(--axis); border-left: 4px solid var(--text); border-radius: 4px; background: var(--surface); font-size: 13px; max-width: 86ch; }
+.panel { background: var(--surface); border: 1px solid var(--hairline); border-radius: 8px; padding: 16px; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-bottom: 6px; }
+.legend button { font: inherit; font-size: 12px; color: var(--text); background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px 3px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
+.legend button i { display: block; width: 16px; height: 0; border-top: 3px solid var(--c); border-radius: 2px; }
+.legend button span { color: var(--text-2); }
+.legend button[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+.legend button[aria-pressed="false"] i { border-top-color: var(--axis); }
+.key { color: var(--text-2); font-size: 12px; margin: 0 0 10px; max-width: 86ch; }
+.scroll { overflow-x: auto; }
+svg { display: block; width: 100%; min-width: 660px; height: auto; font-family: var(--sans); }
+svg text { fill: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg text.ptitle { fill: var(--text); font-size: 12.5px; font-weight: 600; }
+svg text.psub { fill: var(--text-2); font-size: 11.5px; }
+svg text.dim { fill: var(--muted); font-size: 10px; }
+svg text.end { fill: var(--text); font-size: 11.5px; }
+.notes { color: var(--text-2); font-size: 13.5px; max-width: 76ch; display: grid; gap: 8px; }
+.notes p { margin: 0; }
+.notes b { color: var(--text); font-weight: 600; }
+details summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+table { border-collapse: collapse; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 10px; }
+th, td { text-align: right; padding: 3px 14px 3px 0; white-space: nowrap; }
+th { color: var(--muted); font-weight: 400; vertical-align: bottom; }
+td:first-child, th:first-child, td:nth-child(2), th:nth-child(2) { text-align: left; }
+tr.attn td { background: var(--attn); }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--text); color: var(--surface); font: 12px/1.5 var(--mono); padding: 7px 10px; border-radius: 5px; max-width: min(92vw, 440px); }
+#tip .h { font-family: var(--sans); font-weight: 600; margin-bottom: 3px; }
+#tip .r { display: flex; gap: 8px; align-items: center; white-space: pre; }
+#tip .r i { display: block; width: 12px; height: 0; border-top: 3px solid var(--c); flex: none; }
+#tip .r span { opacity: 0.72; }
+#tip .sep { border-top: 1px solid color-mix(in oklab, var(--surface) 28%, transparent); margin: 5px 0; }
+</style>
+<div class="wrap">
+  <header>
+    <h1>LFM2.5 Verdict Ribbon</h1>
+    <p><span id="nrows"></span> judged commands, each read through the logit lens after every layer, standing at the slot where the model is about to write its <code id="field"></code> field. The top chart is how far the residual leans toward <code id="wup"></code> over <code id="wdown"></code>; the middle one is whether the output head would say one of those words at all; the bottom one is how cleanly the lean separates the rows. Shaded columns are the attention layers.</p>
+  </header>
+  <div class="controls">
+    <div id="runWrap"><span class="lab">Slot</span><span class="seg" id="run"></span></div>
+    <div id="modeWrap"><span class="lab">Group rows by</span><span class="seg" id="mode"></span></div>
+    <div><span class="lab">Draw</span><span class="seg" id="draw"></span></div>
+  </div>
+  <p class="runnote" id="runnote" hidden></p>
+  <section class="panel">
+    <div class="legend" id="legend"></div>
+    <p class="key" id="key"></p>
+    <div class="scroll"><svg id="chart" tabindex="0" role="img"></svg></div>
+  </section>
+  <div>
+    <h2>What this run shows</h2>
+  </div>
+  <div class="notes" id="findings"></div>
+  <div>
+    <h2>How far to trust it</h2>
+  </div>
+  <div class="notes">
+    <p><b>The lens is a borrowed ruler.</b> Every depth is read through the final norm and the output head, which were trained on the last depth only. A flat or reversed curve early on says this one direction does not separate the rows there, not that the residual could not.</p>
+    <p><b>The lean and the mass are different questions.</b> The lean is a difference of two logits, so the softmax normaliser cancels and it means the same thing at any mass. The mass says whether the head would emit a verdict word. Only an argmax inside the set is poisoned by low mass, so none is computed.</p>
+    <p><b>The slot follows the model's own fields.</b> Each row is prefilled with the fields the daemon generated before this slot, in the order it generated them, so the curves show this value being read off those fields as much as off the command. At the first closed-choice slot there is only the free-text effect sentence in front of it.</p>
+    <p><b>Examiner, not daemon.</b> Groups come from the daemon's token-by-token decode; curves come from a cold chunked prefill of the same bytes. <span id="mismatch"></span> In "every row" those rows are drawn dashed.</p>
+    <p><b>One arm, one corpus, one backend.</b> And this corpus has now been looked at under this prompt; confirm on a fresh split before believing a change made because of this page.</p>
+  </div>
+  <section class="panel">
+    <details>
+      <summary>Table view: every value the charts draw</summary>
+      <div class="scroll" id="table"></div>
+    </details>
+  </section>
+</div>
+<div id="tip" hidden></div>
+<script>
+const RUNS = /*__RIBBON__*/;
+const NS = 'http://www.w3.org/2000/svg';
+let D, K, UPT, DOWNT, MODES, ALL_MASS;
+function prepare(run) {
+  if (run.ready) return;
+  const k = run.depths.length;
+  if (run.layers.length !== k - 1) throw new Error('expected one depth per layer plus the embedding');
+  run.layers.forEach((l, i) => { if (run.depths[i + 1] !== 'layer ' + l.layer) throw new Error('depth ' + (i + 1) + ' is not layer ' + l.layer); });
+  run.rows.forEach(r => {
+    r.m = r.lean;
+    r.mass10 = r.mass_logprob.map(v => v / Math.LN10);
+    r.mismatch = r.examiner_top !== r.wrote;
+  });
+  run.ready = true;
+}
+
+const MASS_FLOOR = -8;
+const OUTCOME_KEY = { 'caught': 'gold ask, daemon flagged', 'missed': 'gold ask, daemon allowed',
+                      'false-alarm': 'gold allow, daemon flagged', 'allowed': 'gold allow, daemon allowed' };
+const MODE_DEFS = [
+  { key: 'group', label: 'outcome', order: ['caught', 'missed', 'false-alarm', 'allowed'] },
+  { key: 'undo', label: "the undo value the model wrote", order: null },
+];
+const SLOTS = ['--s1', '--s2', '--s3'];
+
+function quantile(sorted, p) {
+  const i = p * (sorted.length - 1), lo = Math.floor(i), hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+function bands(rows, field) {
+  return Array.from({ length: K }, (_, k) => {
+    const s = rows.map(r => r[field][k]).sort((a, b) => a - b);
+    return { p25: quantile(s, 0.25), p50: quantile(s, 0.5), p75: quantile(s, 0.75) };
+  });
+}
+function groupsFor(mode) {
+  const counts = new Map();
+  D.rows.forEach(r => counts.set(r[mode.key], (counts.get(r[mode.key]) || 0) + 1));
+  const names = mode.order ? mode.order.filter(n => counts.has(n)) : [...counts.keys()].sort();
+  if (mode.order && names.length !== counts.size) throw new Error('a row has an outcome this page does not know');
+  const context = names.reduce((a, b) => (counts.get(b) > counts.get(a) ? b : a));
+  const rest = names.filter(n => n !== context);
+  if (rest.length > SLOTS.length) return null;       // too many series for colour to carry: no such view
+  return names.map(name => {
+    const rows = D.rows.filter(r => r[mode.key] === name);
+    return { name, n: rows.length, rows, context: name === context,
+             color: name === context ? 'var(--ctx)' : 'var(' + SLOTS[rest.indexOf(name)] + ')',
+             margin: bands(rows, 'm'), mass: bands(rows, 'mass10') };
+  });
+}
+const state = { run: 0, mode: null, draw: 'bands', hidden: new Set(), k: null };
+
+// ---- geometry: one x scale shared by three plots
+const W = 940, ML = 56, MR = 112, X0 = ML, X1 = W - MR;
+const P = { lean: { top: 46, h: 300 }, mass: { top: 410, h: 104 }, auc: { top: 582, h: 128 } };
+const H = P.auc.top + P.auc.h + 76;
+const X = k => X0 + (X1 - X0) * k / (K - 1);
+const scale = (p, lo, hi) => v => p.top + p.h * (1 - (v - lo) / (hi - lo));
+
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const a in attrs) e.setAttribute(a, attrs[a]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function ticks(lo, hi, target) {
+  const raw = (hi - lo) / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v / step) * step);
+  return out;
+}
+const signed = v => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(2);
+const sup = n => String(n).replace('-', '⁻').replace(/\d/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+const massText = log10 => log10 > -0.005 ? '1.00' : log10 > -2 ? Math.pow(10, log10).toFixed(2) : Math.pow(10, log10).toExponential(1);
+const depthName = k => k === 0 ? 'the embedding' : 'layer ' + D.layers[k - 1].layer;
+const depthKind = k => k === 0 ? '' : D.layers[k - 1].operator + (D.layers[k - 1].ffn === 'moe' ? ' + experts' : ' + dense ffn');
+const isAttn = k => k > 0 && D.layers[k - 1].operator === 'attention';
+const path = (ys, y) => ys.map((v, k) => (k ? 'L' : 'M') + X(k).toFixed(1) + ' ' + y(v).toFixed(1)).join('');
+
+const svg = document.getElementById('chart');
+svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+let live = {};      // what the hover layer needs from the last render
+
+function frame(p, title, sub) {
+  for (let k = 1; k < K; k++) if (isAttn(k))
+    el('rect', { x: X(k - 1), y: p.top, width: X(k) - X(k - 1), height: p.h, fill: 'var(--attn)' }, svg);
+  el('text', { x: X0, y: p.top - 22, class: 'ptitle' }, svg, title);
+  el('text', { x: X0, y: p.top - 8, class: 'psub' }, svg, sub);
+}
+function yAxis(p, y, values, fmt, strong) {
+  values.forEach(v => {
+    el('line', { x1: X0, x2: X1, y1: y(v), y2: y(v), stroke: v === strong ? 'var(--axis)' : 'var(--hairline)', 'stroke-width': 1 }, svg);
+    el('text', { x: X0 - 8, y: y(v) + 3.5, 'text-anchor': 'end' }, svg, fmt(v));
+  });
+}
+function endLabels(items, p) {       // items: {y, text, color}; spread so they never stack
+  items.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < items.length; i++) items[i].y = Math.max(items[i].y, items[i - 1].y + 13);
+  const over = items.length ? items[items.length - 1].y - (p.top + p.h) : 0;
+  if (over > 0) items.forEach(it => { it.y -= over; });
+  items.forEach(it => {
+    el('line', { x1: X1 + 6, x2: X1 + 18, y1: it.y, y2: it.y, stroke: it.color, 'stroke-width': 3, 'stroke-linecap': 'round' }, svg);
+    el('text', { x: X1 + 23, y: it.y + 4, class: 'end' }, svg, it.text);
+  });
+}
+
+function render() {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const groups = state.mode.groups.filter(g => !state.hidden.has(g.name));
+  const ordered = [...groups].sort((a, b) => b.context - a.context);      // context underneath
+  const clip = el('clipPath', { id: 'leanclip' }, el('defs', {}, svg));
+  el('rect', { x: X0 - 2, y: P.lean.top, width: X1 - X0 + 4, height: P.lean.h }, clip);
+
+  // ---- 1. the lean
+  let lo = Infinity, hi = -Infinity;
+  if (state.draw === 'rows') {
+    const all = groups.flatMap(g => g.rows.flatMap(r => r.m.slice(1))).sort((a, b) => a - b);
+    if (all.length) { lo = quantile(all, 0.005); hi = quantile(all, 0.995); }
+  } else groups.forEach(g => g.margin.slice(1).forEach(b => { lo = Math.min(lo, b.p25); hi = Math.max(hi, b.p75); }));
+  if (!isFinite(lo)) { lo = -1; hi = 1; }
+  lo = Math.min(lo, 0); hi = Math.max(hi, 0);
+  const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+  const yL = scale(P.lean, lo, hi);
+  frame(P.lean, 'Lean toward ' + UPT, 'logit(' + UPT + ') − logit(' + DOWNT + ') at the ' + D.field + ' slot, nats' +
+        (state.draw === 'bands' ? ' · line = median, band = middle half of the rows' : ' · one line per row'));
+  yAxis(P.lean, yL, ticks(lo, hi, 7), v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v), 0);
+  el('text', { x: X0 + 5, y: P.lean.top + 26, class: 'dim' }, svg, '↑ ' + UPT);
+  el('text', { x: X0 + 5, y: P.lean.top + P.lean.h - 6, class: 'dim' }, svg, '↓ ' + DOWNT);
+  for (let k = 1; k < K; k++) if (isAttn(k))
+    el('text', { x: (X(k - 1) + X(k)) / 2, y: P.lean.top + 11, 'text-anchor': 'middle', class: 'dim' }, svg, 'attn');
+  const plot = el('g', { 'clip-path': 'url(#leanclip)' }, svg);
+  if (state.draw === 'rows') {
+    ordered.forEach(g => g.rows.forEach(r => el('path', {
+      d: path(r.m, yL), fill: 'none', stroke: g.color, 'stroke-width': 1, 'stroke-linejoin': 'round',
+      'stroke-opacity': g.context ? 0.13 : 0.5, 'stroke-dasharray': r.mismatch ? '3 2' : 'none' }, plot)));
+  } else {
+    ordered.forEach(g => el('path', { fill: g.color, 'fill-opacity': g.context ? 0.2 : 0.17, stroke: 'none',
+      d: path(g.margin.map(b => b.p75), yL) + [...g.margin].reverse().map((b, i) => 'L' + X(K - 1 - i).toFixed(1) + ' ' + yL(b.p25).toFixed(1)).join('') + 'Z' }, plot));
+  }
+  ordered.forEach(g => {
+    if (state.draw === 'rows') el('path', { d: path(g.margin.map(b => b.p50), yL), fill: 'none', stroke: 'var(--surface)', 'stroke-width': 5, 'stroke-linejoin': 'round' }, plot);
+    el('path', { d: path(g.margin.map(b => b.p50), yL), fill: 'none', stroke: g.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, plot);
+  });
+  endLabels(groups.map(g => ({ y: Math.min(Math.max(yL(g.margin[K - 1].p50), P.lean.top + 6), P.lean.top + P.lean.h), text: g.name, color: g.color })), P.lean);
+
+  // ---- 2. the mass
+  const yM = scale(P.mass, MASS_FLOOR, 0);
+  frame(P.mass, 'Mass on the ' + D.field + ' words', 'raw probability of {' + D.words.join(', ') + '} together, never renormalised · median per group, log scale');
+  yAxis(P.mass, yM, [0, -2, -4, -6, -8], v => v === 0 ? '1' : '10' + sup(v), null);
+  const clamp = v => Math.max(v, MASS_FLOOR);
+  ordered.forEach(g => el('path', { d: path(g.mass.map(b => clamp(b.p50)), yM), fill: 'none', stroke: g.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg));
+  if (ALL_MASS[0].p50 < MASS_FLOOR)
+    el('text', { x: X(0) + 5, y: P.mass.top + P.mass.h - 5, class: 'dim' }, svg, 'embedding: 10' + sup(Math.round(ALL_MASS[0].p50)) + ', off the scale');
+
+  // ---- 3. separability (does not follow the grouping: its contrasts are fixed by the extractor)
+  const inks = [['var(--text)', 'none'], ['var(--text-2)', 'none'], ['var(--muted)', '5 3']];
+  const aucLo = Math.min(0.2, ...D.separability.flatMap(s => s.auc.filter(v => v !== null)));
+  const yA = scale(P.auc, Math.floor(aucLo * 10) / 10, 1);
+  frame(P.auc, 'How cleanly the lean separates the rows', 'AUC: chance that a row from the first group leans further toward ' + UPT + ' than a row from the second');
+  yAxis(P.auc, yA, ticks(Math.floor(aucLo * 10) / 10, 1, 4), v => v.toFixed(1), 0.5);
+  el('text', { x: X1 - 4, y: yA(0.5) - 4, 'text-anchor': 'end', class: 'dim' }, svg, 'chance');
+  let lx = X0, ly = P.auc.top + P.auc.h + 32;
+  D.separability.forEach((s, i) => {
+    el('path', { d: path(s.auc, yA), fill: 'none', stroke: inks[i][0], 'stroke-width': 2, 'stroke-dasharray': inks[i][1], 'stroke-linejoin': 'round' }, svg);
+    const key = el('line', { y1: ly, y2: ly, stroke: inks[i][0], 'stroke-width': 2, 'stroke-dasharray': inks[i][1] }, svg);
+    const t = el('text', {}, svg, s.name + ' (' + s.n[0] + ' vs ' + s.n[1] + ')');
+    const w = 24 + t.getComputedTextLength();
+    if (lx > X0 && lx + w > W - 4) { lx = X0; ly += 16; }
+    key.setAttribute('x1', lx); key.setAttribute('x2', lx + 18); key.setAttribute('y1', ly); key.setAttribute('y2', ly);
+    t.setAttribute('x', lx + 24); t.setAttribute('y', ly + 4);
+    lx += w + 22;
+  });
+  endLabels(D.separability.map((s, i) => ({ y: yA(s.auc[K - 1]), text: s.auc[K - 1].toFixed(2), color: inks[i][0] })), P.auc);
+
+  // ---- x axis, once, under the last plot
+  for (let k = 0; k < K; k++)
+    el('text', { x: X(k), y: P.auc.top + P.auc.h + 14, 'text-anchor': 'middle' }, svg, k === 0 ? 'emb' : String(D.layers[k - 1].layer));
+  el('text', { x: X1 + 22, y: P.auc.top + P.auc.h + 14, class: 'dim' }, svg, '\u2190 read after layer');
+
+  live = { groups, yL, yM, yA, inks,
+           cross: el('line', { x1: 0, x2: 0, y1: P.lean.top, y2: P.auc.top + P.auc.h, stroke: 'var(--text-2)', 'stroke-width': 1, visibility: 'hidden' }, svg),
+           rowHi: el('path', { fill: 'none', stroke: 'var(--text)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'clip-path': 'url(#leanclip)', visibility: 'hidden' }, svg),
+           dots: el('g', {}, svg) };
+  svg.setAttribute('aria-label', 'Three stacked line charts over ' + K + ' depths for ' + groups.map(g => g.name + ' (' + g.n + ')').join(', ') + '. The table view below holds every value.');
+  if (state.k !== null) hover(state.k, null);
+}
+
+// ---- hover / keyboard: the crosshair finds the depth, one tooltip lists every series
+const tip = document.getElementById('tip');
+function tipRow(parent, color, dash, text, dim) {
+  const r = document.createElement('div'); r.className = 'r';
+  const i = document.createElement('i'); i.style.setProperty('--c', color); if (dash) i.style.borderTopStyle = 'dashed';
+  r.appendChild(i); r.appendChild(document.createTextNode(text));
+  if (dim) { const s = document.createElement('span'); s.textContent = dim; r.appendChild(s); }
+  parent.appendChild(r);
+}
+function hover(k, py) {
+  state.k = k;
+  const x = X(k);
+  live.cross.setAttribute('x1', x); live.cross.setAttribute('x2', x); live.cross.setAttribute('visibility', 'visible');
+  while (live.dots.firstChild) live.dots.removeChild(live.dots.firstChild);
+  const dot = (y, c) => el('circle', { cx: x, cy: y, r: 4, fill: c, stroke: 'var(--surface)', 'stroke-width': 2 }, live.dots);
+  live.groups.forEach(g => { dot(live.yL(g.margin[k].p50), g.color); dot(live.yM(Math.max(g.mass[k].p50, MASS_FLOOR)), g.color); });
+  D.separability.forEach((s, i) => dot(live.yA(s.auc[k]), live.inks[i][0]));
+
+  tip.textContent = '';
+  const h = document.createElement('div'); h.className = 'h';
+  h.textContent = k === 0 ? 'Embedding, before any layer' : 'After ' + depthName(k) + ' · ' + depthKind(k);
+  tip.appendChild(h);
+  live.groups.forEach(g => tipRow(tip, g.color, false, signed(g.margin[k].p50).padStart(6) + '  ',
+    g.name + '  [' + signed(g.margin[k].p25) + ' to ' + signed(g.margin[k].p75) + ']  mass ' + massText(g.mass[k].p50)));
+  const sep = document.createElement('div'); sep.className = 'sep'; tip.appendChild(sep);
+  D.separability.forEach((s, i) => tipRow(tip, live.inks[i][0], live.inks[i][1] !== 'none', s.auc[k].toFixed(3) + '  ', 'AUC ' + s.name));
+
+  let near = null;
+  if (state.draw === 'rows' && py !== null) {
+    live.groups.forEach(g => g.rows.forEach(r => {
+      const d = Math.abs(live.yL(r.m[k]) - py);
+      if (!near || d < near.d) near = { d, r, g };
+    }));
+  }
+  if (near && near.d < 24) {
+    live.rowHi.setAttribute('d', path(near.r.m, live.yL)); live.rowHi.setAttribute('visibility', 'visible');
+    const s2 = document.createElement('div'); s2.className = 'sep'; tip.appendChild(s2);
+    const r = near.r;
+    tipRow(tip, 'var(--surface)', r.mismatch, signed(r.m[k]).padStart(6) + '  ',
+      'row ' + String(r.n).padStart(4, '0') + ' · ' + r.group + ' · gold label ' + r.label);
+    tipRow(tip, 'transparent', false, '        ', 'scope ' + r.scope + ' · undo ' + r.undo + ' · daemon wrote ' + r.wrote + ' · examiner top ' + r.examiner_top);
+  } else live.rowHi.setAttribute('visibility', 'hidden');
+  tip.hidden = false;
+}
+function placeTip(cx, cy) {
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let left = cx + 16; if (left + w > innerWidth - 8) left = cx - w - 16;
+  tip.style.left = Math.max(8, left) + 'px';
+  tip.style.top = Math.max(8, Math.min(cy - h / 2, innerHeight - h - 8)) + 'px';
+}
+function leave() { state.k = null; tip.hidden = true; live.cross.setAttribute('visibility', 'hidden'); live.rowHi.setAttribute('visibility', 'hidden'); while (live.dots.firstChild) live.dots.removeChild(live.dots.firstChild); }
+svg.addEventListener('pointermove', e => {
+  const b = svg.getBoundingClientRect(), f = W / b.width;
+  const vx = (e.clientX - b.left) * f, vy = (e.clientY - b.top) * f;
+  if (vx < X0 - 16 || vx > X1 + 16) return leave();
+  hover(Math.max(0, Math.min(K - 1, Math.round((vx - X0) / (X1 - X0) * (K - 1)))), vy >= P.lean.top && vy <= P.lean.top + P.lean.h ? vy : null);
+  placeTip(e.clientX, e.clientY);
+});
+svg.addEventListener('pointerleave', leave);
+svg.addEventListener('blur', leave);
+svg.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const k = state.k === null ? K - 1 : Math.max(0, Math.min(K - 1, state.k + (e.key === 'ArrowRight' ? 1 : -1)));
+  hover(k, null);
+  const b = svg.getBoundingClientRect();
+  placeTip(b.left + X(k) * b.width / W, b.top + 80);
+});
+
+// ---- controls
+function seg(id, options, current, pick) {
+  const box = document.getElementById(id); box.textContent = '';
+  options.forEach(o => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = id + '-' + o.value; b.textContent = o.label; b.setAttribute('aria-pressed', String(o.value === current()));
+    b.addEventListener('click', () => { pick(o.value); [...box.children].forEach(c => c.setAttribute('aria-pressed', String(c === b))); });
+    box.appendChild(b);
+  });
+}
+function legend() {
+  const box = document.getElementById('legend'); box.textContent = '';
+  state.mode.groups.forEach((g, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = 'series-' + state.mode.key + '-' + i; b.style.setProperty('--c', g.color);
+    b.setAttribute('aria-pressed', String(!state.hidden.has(g.name)));
+    b.title = 'Show or hide ' + g.name;
+    b.appendChild(document.createElement('i')); b.appendChild(document.createTextNode(g.name));
+    const n = document.createElement('span'); n.textContent = g.n; b.appendChild(n);
+    b.addEventListener('click', () => { state.hidden.has(g.name) ? state.hidden.delete(g.name) : state.hidden.add(g.name); legend(); render(); });
+    box.appendChild(b);
+  });
+  const key = document.getElementById('key');
+  key.textContent = state.mode.key === 'group'
+    ? state.mode.groups.map(g => g.name + ' = ' + OUTCOME_KEY[g.name]).join(' · ') + '. Gold comes from the corpus label; flagged or allowed is the verdict the daemon went on to give.'
+    : 'The value the model itself wrote into its undo field. The largest group is drawn in grey as context.';
+}
+seg('draw', [{ value: 'bands', label: 'bands' }, { value: 'rows', label: 'every row' }], () => state.draw, v => { state.draw = v; render(); });
+
+// ---- findings, written from the data so they cannot go stale against it
+function note(lead, body) {
+  const p = document.createElement('p'), b = document.createElement('b');
+  b.textContent = lead + ' '; p.appendChild(b); p.appendChild(document.createTextNode(body));
+  document.getElementById('findings').appendChild(p);
+}
+function findings() {
+  document.getElementById('findings').textContent = '';
+  const main = D.separability[0], attn = D.layers.filter(l => l.operator === 'attention').map(l => l.layer);
+  let same = 0;
+  while (same < K && D.rows.every(r => Math.abs(r.m[same] - D.rows[0].m[same]) < 1e-6)) same++;
+  const ce = D.chunk_effect;
+  const modalShare = k => { const c = new Map(); D.rows.forEach(r => { const v = r.m[k].toFixed(2); c.set(v, (c.get(v) || 0) + 1); }); return Math.max(...c.values()) / D.rows.length; };
+  let fan = 1; while (fan < K - 1 && modalShare(fan) >= 0.5) fan++;
+  if (ce) note(ce.on_line + ' of ' + D.rows.length + ' rows are one line until ' + depthName(fan) + ' (' + D.layers[fan - 1].operator + ').',
+    'After ' + depthName(ce.depth) + ' they still read identically: the short convolutions have seen only the tokens that spell the key of the field, the same in every row. The other ' +
+    ce.off_line + ' differ by up to ' + ce.max_shift.toFixed(2) + ' nats, and ' +
+    (ce.on_line_rows_in_those_offsets === 0 ? 'every one of them, and no other row,' : 'all of them, with ' + ce.on_line_rows_in_those_offsets + ' rows on the line,') +
+    ' has its slot ' + ce.offsets[0] + ' to ' + ce.offsets[1] + ' tokens into a ' + ce.chunk + '-token prefill chunk. That is the examiner, not the model.');
+  else if (same > 1) note('Every row is the same line through ' + depthName(same - 1) + '.',
+    'The first ' + same + ' readings are identical across all ' + D.rows.length + ' rows and fan out only after ' + depthName(same) + ' (' + D.layers[same - 1].operator +
+    '). Until then the slot has seen nothing that differs between rows.');
+  const first = main.auc.findIndex(v => v !== null && v >= 0.95);
+  if (first > 0) note(K - 1 - first >= 6 ? 'The decision is readable long before the head would say it.' : 'The decision becomes readable only near the end of the stack.',
+    'The lean separates "' + main.name + '" at AUC ' + main.auc[first].toFixed(2) + ' after ' + depthName(first) + ', where the ' + D.field + ' words together hold a median mass of ' +
+    massText(ALL_MASS[first].p50) + '. It ends at ' + main.auc[K - 1].toFixed(2) + ': the ' + (K - 1 - first) + ' layers after that add ' + (main.auc[K - 1] - main.auc[first]).toFixed(2) +
+    ' of separability and nearly all of the mass.');
+  const gains = main.auc.map((v, k) => ({ k, gain: k ? v - main.auc[k - 1] : 0 })).sort((a, b) => b.gain - a.gain).slice(0, 3);
+  const loss = main.auc.map((v, k) => ({ k, gain: k ? v - main.auc[k - 1] : 0 })).sort((a, b) => a.gain - b.gain)[0];
+  note('Separability moves in steps, and the steps are layers.',
+    'Largest single-layer gains for "' + main.name + '": ' + gains.map(g => depthName(g.k) + ' (' + D.layers[g.k - 1].operator + ') ' + signed(g.gain)).join(', ') +
+    '. Largest loss: ' + depthName(loss.k) + ' (' + D.layers[loss.k - 1].operator + ') ' + signed(loss.gain) +
+    '. Attention layers in this stack: ' + attn.join(', ') + '. Attention is the only operator here that reaches arbitrarily far back; a short convolution sees a few tokens per layer.');
+  const by = name => MODES[0].groups.find(g => g.name === name), miss = by('missed'), ok = by('allowed'), hit = by('caught');
+  if (miss && ok && hit) {
+    const mid = first > 0 ? first : K - 1;
+    const crossed = miss.margin.slice(mid).some(b => b.p50 > 0);
+    note(crossed ? 'Missed rows reach the ' + UPT + ' side and are pulled back.' : 'Missed rows travel with the allowed ones.',
+      'After ' + depthName(mid) + ' the median missed row leans ' + signed(miss.margin[mid].p50) + ', beside ' + signed(ok.margin[mid].p50) + ' for rightly allowed rows and ' +
+      signed(hit.margin[mid].p50) + ' for caught ones. At the last depth: ' + signed(miss.margin[K - 1].p50) + ', ' + signed(ok.margin[K - 1].p50) + ', ' + signed(hit.margin[K - 1].p50) +
+      (crossed ? '. Somewhere past that depth the median missed row leans toward ' + UPT + ' and then loses it.'
+               : '. From that depth onward the median missed row never leans toward ' + UPT + ': it is lost before the split forms, not argued down afterwards.'));
+  }
+  const tied = D.separability[2];
+  if (tied) {
+    const last = tied.auc[K - 1], peak = tied.auc.reduce((best, v, k) => (v > tied.auc[best] ? k : best), 0);
+    note(last >= 0.75 ? 'Severe rows read differently even when the model goes on to write the same thing.'
+       : last >= 0.6 ? 'A faint signal separates severe rows that got the same value.' : 'Severe rows that got the same value read like benign ones.',
+      'Among rows where the daemon wrote the same undo value ("' + tied.name + '"), AUC ends at ' + last.toFixed(2) + ' and peaks at ' + tied.auc[peak].toFixed(2) + ' after ' + depthName(peak) +
+      (last >= 0.6 ? '. The model registers something about those rows that the word it writes does not carry forward.' : '.'));
+  }
+  const sw = D.sweep, at = sw && sw.points.find(pt => pt.false_alarms === sw.daemon_false_alarms);
+  if (at) note('What writing one word throws away.',
+    'Read as a score instead of an argmax, the last-depth lean at this slot flags ' + at.severe_flagged + ' of ' + sw.gold_severe + ' gold-severe rows at ' + at.false_alarms +
+    ' false alarms. The daemon, decoding greedily through to its verdict, flagged ' + sw.daemon_flagged + ' at the same ' + sw.daemon_false_alarms + '. Other budgets: ' +
+    sw.points.filter(pt => pt !== at).map(pt => pt.severe_flagged + ' at ' + pt.false_alarms).join(', ') +
+    '. A diagnostic of what the distribution holds, not a gate: one cutoff across statements has failed here before, and this split has been looked at.');
+  const exact = (D.first_tokens || []).filter(f => f.word_tokens > 1);
+  if (exact.length) note('Some of these readings are a first-token proxy.',
+    exact.map(f => '"' + f.word + '" is followed by its first token "' + f.piece + '" (' + f.word_tokens + ' tokens)').join('; ') +
+    '. A one-token word is read exactly; a first token is shared with every other word that starts the same way.');
+  const bad = D.rows.filter(r => r.mismatch).length;
+  document.getElementById('mismatch').textContent = 'They name a different top word on ' + bad + ' of ' + D.rows.length + ' rows.';
+}
+
+// ---- table view
+function table() {
+  document.getElementById('table').textContent = '';
+  const t = document.createElement('table'), head = t.insertRow();
+  const cols = ['read after', 'operator', ...MODES[0].groups.map(g => g.name + ' p50'), 'mass p50', ...D.separability.map(s => 'AUC ' + s.name)];
+  cols.forEach(c => { const th = document.createElement('th'); th.textContent = c; head.appendChild(th); });
+  for (let k = 0; k < K; k++) {
+    const tr = t.insertRow(); if (isAttn(k)) tr.className = 'attn';
+    [k === 0 ? 'embedding' : 'layer ' + D.layers[k - 1].layer, k === 0 ? '' : D.layers[k - 1].operator,
+     ...MODES[0].groups.map(g => signed(g.margin[k].p50)), massText(ALL_MASS[k].p50),
+     ...D.separability.map(s => s.auc[k] === null ? '' : s.auc[k].toFixed(3))].forEach(v => { tr.insertCell().textContent = v; });
+  }
+  document.getElementById('table').appendChild(t);
+}
+
+function load(i) {
+  state.run = i; D = RUNS[i]; prepare(D);
+  K = D.depths.length; UPT = D.up.join(' + '); DOWNT = D.down.join(' + ');
+  MODES = MODE_DEFS.map(m => Object.assign({}, m, { groups: null }));
+  MODES.forEach(m => { m.groups = groupsFor(m); });
+  ALL_MASS = bands(D.rows, 'mass10');
+  const usable = MODES.filter(m => m.groups);
+  state.mode = usable.find(m => state.mode && m.key === state.mode.key) || usable[0];
+  state.hidden = new Set(); state.k = null; tip.hidden = true;
+  document.getElementById('modeWrap').hidden = usable.length < 2;
+  seg('mode', usable.map(m => ({ value: m.key, label: m.label })), () => state.mode.key,
+      v => { state.mode = MODES.find(m => m.key === v); state.hidden = new Set(); legend(); render(); });
+  document.getElementById('nrows').textContent = D.rows.length;
+  document.getElementById('field').textContent = D.field;
+  document.getElementById('wup').textContent = UPT;
+  document.getElementById('wdown').textContent = DOWNT;
+  const rn = document.getElementById('runnote'); rn.hidden = !D.note; rn.textContent = D.note || '';
+  legend(); findings(); table(); render();
+}
+document.getElementById('runWrap').hidden = RUNS.length < 2;
+seg('run', RUNS.map((r, i) => ({ value: i, label: r.label })), () => state.run, load);
+load(0);
+</script>

@@ -1,0 +1,323 @@
+<title>LFM2.5 Expert Contrast</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --page: #f1f2f0; --surface: #fcfcfb; --surface-2: #eceeec; --hairline: #dcdedb;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #898781; --mid: #f0efec;
+  --pole-a: #0554a3; --pole-b: #972620; --bar-off: #cbcac4; --focus: #104281;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #121312; --surface: #1a1a19; --surface-2: #262725; --hairline: #343532;
+    --text: #ffffff; --text-2: #c3c2b7; --muted: #898781; --mid: #383835;
+    --pole-a: #8cc3fc; --pole-b: #fda296; --bar-off: #4a4a46; --focus: #9ec5f4;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #121312; --surface: #1a1a19; --surface-2: #262725; --hairline: #343532;
+  --text: #ffffff; --text-2: #c3c2b7; --muted: #898781; --mid: #383835;
+  --pole-a: #8cc3fc; --pole-b: #fda296; --bar-off: #4a4a46; --focus: #9ec5f4;
+}
+body { background: var(--page); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 18px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--text-2); max-width: 70ch; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; color: var(--text-2); background: none; border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--hairline); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.panel { background: var(--surface); border: 1px solid var(--hairline); border-radius: 8px; padding: 16px; min-width: 0; }
+.sub { color: var(--text-2); font-size: 13px; margin: 0 0 12px; max-width: 74ch; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12px; color: var(--text-2); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.legend i.bar { display: block; width: 180px; height: 9px; border-radius: 4px; border: 1px solid var(--hairline); background: linear-gradient(to right in oklab, var(--pole-b), var(--mid), var(--pole-a)); }
+.legend i.ring { display: block; width: 11px; height: 9px; border-radius: 2px; border: 2px solid var(--text); }
+.scroll { overflow-x: auto; }
+svg { display: block; width: 100%; min-width: 560px; height: auto; font-family: var(--sans); }
+svg text { fill: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 3px 14px 3px 0; } th { color: var(--muted); font-weight: 400; }
+.notes { color: var(--text-2); font-size: 13px; max-width: 74ch; display: grid; gap: 6px; }
+.notes b { color: var(--text); font-weight: 600; }
+h2 { font-size: 16px; font-weight: 600; margin: 10px 0 0; }
+.lede { color: var(--text-2); margin: 4px 0 0; max-width: 72ch; }
+figure { margin: 0; }
+figcaption { color: var(--text-2); font-size: 13px; margin-top: 10px; max-width: 74ch; }
+figcaption b { color: var(--text); font-weight: 600; }
+.mech { color: var(--text); }
+.mech text { fill: currentColor; font-size: 12px; }
+.mech .dim { fill: var(--text-2); font-size: 11px; }
+.mech .lever { fill: var(--pole-a); font-weight: 600; }
+.mech .leverdim { fill: var(--pole-a); font-size: 11px; }
+.pair { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.pair svg { min-width: 0; }
+.chartlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+.chartlegend span { display: inline-flex; align-items: center; gap: 6px; }
+.chartlegend i { display: block; width: 12px; height: 10px; border-radius: 2px; background: var(--c); }
+.chartlegend i.tick { width: 12px; height: 0; border-radius: 0; background: none; border-top: 2px solid var(--c); }
+.chartlegend i.line { width: 14px; height: 0; border-radius: 0; background: none; border-top: 2px solid var(--c); }
+table.levers { font-family: var(--sans); font-size: 13px; width: 100%; }
+table.levers th, table.levers td { text-align: left; vertical-align: top; padding: 6px 14px 6px 0; border-top: 1px solid var(--hairline); }
+table.levers th { border-top: 0; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+table.levers td:first-child { font-weight: 600; white-space: nowrap; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--text); color: var(--surface); font: 12px/1.45 var(--mono); padding: 6px 9px; border-radius: 5px; white-space: pre; }
+</style>
+<div class="wrap">
+  <header>
+    <h1>LFM2.5 Expert Contrast</h1>
+    <p>Two ways of asking which of each layer's 32 experts matter to a verdict. The usage contrasts show which experts <i>travel with</i> a verdict across 733 judged commands. The knockout view removes experts one at a time and shows which <i>carry</i> it. They disagree, and the second is the one to believe.</p>
+  </header>
+  <div class="seg" id="pick"></div>
+  <section class="panel">
+    <p class="sub" id="sub"></p>
+    <div class="legend"><span id="lo"></span><i class="bar"></i><span id="hi"></span><span><i class="ring" style="display:inline-block;vertical-align:-1px"></i>&nbsp; <span id="ringWhat"></span></span></div>
+    <div class="scroll" id="map"></div>
+  </section>
+  <section class="panel">
+    <p class="sub">Cells over the bar, largest first.</p>
+    <div class="scroll" id="table"></div>
+  </section>
+  <div>
+    <h2>What a router is, and where we can push</h2>
+    <p class="lede">The map above says which experts differ. This is the mechanism behind a single cell of it, drawn from the same 733 rows.</p>
+  </div>
+
+  <section class="panel">
+    <figure>
+      <div class="scroll">
+      <svg class="mech" viewBox="0 0 880 338" role="img" aria-label="A prompt becomes text, token ids and embeddings before the forward pass; inside the pass 22 of 24 layers each run their own router for every token. Inside one layer the residual is scored by a router matrix, passed through a sigmoid, a selection bias is added, the top four experts are kept, they run, and their outputs are combined using the scores without the bias. Four levers act at the residual, the router matrix, the bias and the top-four choice.">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+        <text x="200" y="14" text-anchor="middle" class="dim">before the pass: ours to inspect and change</text>
+        <text x="588" y="14" text-anchor="middle" class="dim">inside the pass: 24 layers, 22 with a router</text>
+        <g fill="none" stroke="currentColor" stroke-width="1.2">
+          <rect x="10" y="24" width="110" height="34" rx="4"/><rect x="150" y="24" width="100" height="34" rx="4"/><rect x="280" y="24" width="110" height="34" rx="4"/><rect x="790" y="24" width="80" height="34" rx="4"/>
+          <line x1="120" y1="41" x2="148" y2="41" marker-end="url(#ah)"/><line x1="250" y1="41" x2="278" y2="41" marker-end="url(#ah)"/><line x1="390" y1="41" x2="418" y2="41" marker-end="url(#ah)"/><line x1="756" y1="41" x2="788" y2="41" marker-end="url(#ah)"/>
+        </g>
+        <text x="65" y="45" text-anchor="middle">prompt text</text><text x="200" y="45" text-anchor="middle">token ids</text><text x="335" y="45" text-anchor="middle">embeddings</text><text x="830" y="45" text-anchor="middle">verdict</text>
+        <text x="65" y="74" text-anchor="middle" class="dim">rewrite it</text><text x="200" y="74" text-anchor="middle" class="dim">respell it</text><text x="335" y="74" text-anchor="middle" class="dim">soft prompt</text><text x="335" y="88" text-anchor="middle" class="dim">(needs gradients)</text>
+        <g id="stack"></g>
+        <text x="640" y="74" text-anchor="end" class="dim">each router decides again for every token</text>
+        <g fill="none" stroke="currentColor" stroke-width="0.8" stroke-dasharray="3 3"><path d="M650 58 V102 M650 102 L30 128 M650 102 L850 128"/></g>
+        <rect x="30" y="128" width="820" height="200" rx="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="44" y="148" style="font-weight:600">inside layer 16, for one token</text>
+        <g fill="none" stroke="currentColor" stroke-width="1.2">
+          <rect x="50" y="192" width="80" height="40" rx="4"/><rect x="160" y="192" width="110" height="40" rx="4"/><rect x="300" y="192" width="76" height="40" rx="4"/><rect x="406" y="192" width="76" height="40" rx="4"/><rect x="512" y="192" width="90" height="40" rx="4"/><rect x="632" y="192" width="80" height="40" rx="4"/><rect x="742" y="192" width="90" height="40" rx="4"/>
+          <line x1="130" y1="212" x2="158" y2="212" marker-end="url(#ah)"/><line x1="270" y1="212" x2="298" y2="212" marker-end="url(#ah)"/><line x1="376" y1="212" x2="404" y2="212" marker-end="url(#ah)"/><line x1="482" y1="212" x2="510" y2="212" marker-end="url(#ah)"/><line x1="602" y1="212" x2="630" y2="212" marker-end="url(#ah)"/><line x1="712" y1="212" x2="740" y2="212" marker-end="url(#ah)"/>
+          <path d="M338 192 V170 H787 V190" marker-end="url(#ah)"/>
+        </g>
+        <text x="90" y="216" text-anchor="middle">residual</text>
+        <text x="215" y="210" text-anchor="middle">router matrix</text><text x="215" y="224" text-anchor="middle" class="dim">32 × 2048</text>
+        <text x="338" y="216" text-anchor="middle">sigmoid</text><text x="444" y="216" text-anchor="middle">+ bias</text>
+        <text x="557" y="216" text-anchor="middle">keep top 4</text><text x="672" y="216" text-anchor="middle">4 experts run</text>
+        <text x="787" y="210" text-anchor="middle">weighted sum</text><text x="787" y="224" text-anchor="middle" class="dim">back into residual</text>
+        <text x="284" y="186" text-anchor="middle" class="dim">32 scores</text>
+        <text x="562" y="164" text-anchor="middle" class="dim">the weights use the scores WITHOUT the bias</text>
+        <g stroke="var(--pole-a)" stroke-width="1.4"><line x1="90" y1="234" x2="90" y2="260"/><line x1="215" y1="234" x2="215" y2="260"/><line x1="444" y1="234" x2="444" y2="260"/><line x1="557" y1="234" x2="557" y2="260"/></g>
+        <text x="90" y="276" text-anchor="middle" class="lever">the prompt</text><text x="90" y="292" text-anchor="middle" class="leverdim">changes what it reads</text>
+        <text x="215" y="276" text-anchor="middle" class="lever">fine-tune</text><text x="215" y="292" text-anchor="middle" class="leverdim">1.4M weights, all 22</text>
+        <text x="444" y="276" text-anchor="middle" class="lever">bias delta</text><text x="444" y="292" text-anchor="middle" class="leverdim">22 × 32 numbers</text>
+        <text x="557" y="276" text-anchor="middle" class="lever">force or knock out</text><text x="557" y="292" text-anchor="middle" class="leverdim">the experiment</text>
+        <text x="44" y="316" class="dim">Blue marks the four places a routing choice can be pushed. Everything else is fixed weights.</text>
+      </svg>
+      </div>
+      <figcaption><b>The routers are inside the pass, not before it.</b> Text, token ids and embeddings can all be changed before the model runs, but no router has acted yet. Each of the 22 expert layers then scores all 32 experts from that token's residual, adds a fixed per-expert bias to pick four, and combines their outputs using the scores <i>without</i> that bias. So the bias changes who is chosen and never how much they count.</figcaption>
+    </figure>
+  </section>
+
+  <div class="pair">
+    <section class="panel">
+      <figure>
+        <div class="chartlegend" id="decLegend"></div>
+        <div id="decision"></div>
+        <figcaption id="decCap"></figcaption>
+      </figure>
+    </section>
+    <section class="panel">
+      <figure>
+        <div class="chartlegend" id="nudgeLegend"></div>
+        <div id="nudge"></div>
+        <figcaption id="nudgeCap"></figcaption>
+      </figure>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="scroll">
+    <table class="levers">
+      <tr><th>Lever</th><th>Acts on</th><th>Can it tell rows apart?</th><th>Needs</th></tr>
+      <tr><td>The prompt</td><td>The residual every router reads. A 3-token edit re-routed 40&ndash;50% of the tokens after it, at every layer.</td><td>Yes: it is different for every request. It is also the only lever in use today.</td><td>Nothing. The session dialog is this lever, made larger.</td></tr>
+      <tr><td>Bias delta</td><td>Selection only, at chosen layers. Added to a tensor that already exists, so free at run time.</td><td>Not by itself: the chart above. A fixed delta moves wanted and unwanted rows alike. It becomes selective only if something else decides per request when to apply it.</td><td>A write seam beside the read-only observer. The delta must be part of the cached snapshot's identity.</td></tr>
+      <tr><td>Force or knock out</td><td>One routing choice at one position, or an expert everywhere.</td><td>It is not for serving. It is the experiment, and it has been run: see the knockout view. The experts that carry the verdict are chosen in every probe, so a usage contrast cannot see them.</td><td>Built: a replacement selection bias for one forward call.</td></tr>
+      <tr><td>Fine-tune the routers</td><td>The 22 router matrices and biases, about 1.4M of 8B parameters.</td><td>Yes: the matrix reads the residual, so what it learns is conditional on content.</td><td>Gradients, so PyTorch on ROCm rather than candle, and a corpus built for the question.</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div><b>Correlation.</b> Rows the model flags differ in content from rows it allows, and content alone sets about half of routing. Only forcing or removing an expert can show it carries the verdict.</div>
+    <div><b>The null.</b> Group labels are shuffled and the largest difference anywhere on the map is kept. A ringed cell beats 95% of those maxima, so the ring already pays for looking at 704 cells.</div>
+    <div><b>Windows.</b> <i>Answer slot</i> is the single token where the verdict is chosen, after the model's own description fields. <i>All tokens</i> is the input and those fields together.</div>
+  </section>
+</div>
+<div id="tip" hidden></div>
+<script>
+const DATA = /*__CONTRAST__*/;
+const $ = id => document.getElementById(id);
+// Open on the contrast with the most cells over its bar.
+const over = c => c.diff.flat().filter(d => Math.abs(d) > c.bar).length;
+// The causal view, when the page has one, is the one to open on.
+let at = DATA.contrasts.findIndex(c => c.kind === 'knockout');
+if (at < 0) at = DATA.contrasts.reduce((best, c, i) => over(c) > over(DATA.contrasts[best]) ? i : best, 0);
+function svgEl(tag, attrs, parent, text) {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (text != null) n.textContent = text;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function tip(text, x, y) {
+  const t = $('tip'); if (text == null) { t.hidden = true; return; }
+  t.textContent = text; t.hidden = false;
+  t.style.left = Math.max(8, Math.min(x + 14, innerWidth - t.offsetWidth - 8)) + 'px';
+  t.style.top = (y + 18 + t.offsetHeight > innerHeight ? y - t.offsetHeight - 10 : y + 18) + 'px';
+}
+function render() {
+  const c = DATA.contrasts[at], [ga, gb] = c.name.split(' vs ');
+  [...$('pick').children].forEach((b, i) => b.setAttribute('aria-pressed', i === at));
+  const scale = Math.max(c.bar, ...c.diff.flat().map(Math.abs));
+  const ko = c.kind === 'knockout', MIN_N = 8;
+  // A knockout cell is only as good as the probes that could test it.
+  const counts = (i, x) => !ko || c.count[i][x] >= MIN_N;
+  $('ringWhat').textContent = ko ? 'pushes over ' + c.bar.toFixed(1) + ' nats, tested in at least ' + MIN_N + ' probes' : 'beats the shuffled-label maximum (family-wise 95%)';
+  $('sub').textContent = ko
+    ? 'CAUSAL. Each chosen expert was knocked out at the answer slot of ' + c.n[0] + ' probes, one at a time, and the margin logp(' + ga + ') − logp(' + gb + ') re-read. A cell shows how far that expert pushes, in nats: what the margin LOST when it was removed. Hollow cells were never chosen, so never tested. Ringed: a push over ' + c.bar.toFixed(1) + ' nats in at least ' + MIN_N + ' probes. Of the ' + c.ringed_checked + ' cells the usage contrast ringed, ' + c.ringed_same_direction + ' push in the direction their usage suggested: no better than chance.'
+    : 'CORRELATION. Usage rate in the ' + c.n[0] + ' "' + ga + '" rows minus the ' + c.n[1] + ' "' + gb + '" rows, ' + (c.window === 'slot' ? 'at the answer slot' : 'over all recorded tokens') + '. A difference has to exceed ' + c.bar.toFixed(3) + ' to be ringed.';
+  $('lo').textContent = (ko ? 'pushes toward "' : 'more in "') + gb + '"  −' + scale.toFixed(2); $('hi').textContent = '+' + scale.toFixed(2) + (ko ? '  pushes toward "' : '  more in "') + ga + '"';
+  const host = $('map'); host.textContent = '';
+  const n = DATA.n_experts, R = DATA.layers.length, cw = 16, ch = 14, gap = 2, mL = 50, mT = 18;
+  const W = mL + n * (cw + gap) + 4, H = mT + R * (ch + gap) + 4;
+  const svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': c.name + ' expert usage difference'}, host);
+  for (let x = 0; x < n; x += 4) svgEl('text', {x: mL + x * (cw + gap) + cw / 2, y: 11, 'text-anchor': 'middle'}, svg, String(x));
+  DATA.layers.forEach((layer, i) => {
+    const y = mT + i * (ch + gap), op = DATA.layer_kinds[layer].operator === 'attention' ? 'A' : 'c';
+    svgEl('text', {x: mL - 8, y: y + 11, 'text-anchor': 'end'}, svg, layer + ' ' + op);
+    for (let x = 0; x < n; x++) {
+      const d = c.diff[i][x], pct = Math.round(100 * Math.min(1, Math.abs(d) / scale));
+      const cx = mL + x * (cw + gap);
+      const untested = ko && !c.count[i][x];
+      svgEl('rect', {x: cx + (untested ? 0.5 : 0), y: y + (untested ? 0.5 : 0), width: cw - (untested ? 1 : 0), height: ch - (untested ? 1 : 0), rx: 2, style: untested ? 'fill:none;stroke:var(--hairline)' : 'fill:color-mix(in oklab, var(' + (d >= 0 ? '--pole-a' : '--pole-b') + ') ' + pct + '%, var(--mid))'}, svg);
+      if (Math.abs(d) > c.bar && counts(i, x)) svgEl('rect', {x: cx + 1, y: y + 1, width: cw - 2, height: ch - 2, rx: 2, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 2}, svg);
+      const hit = svgEl('rect', {x: cx - 1, y: y - 1, width: cw + 2, height: ch + 2, fill: 'transparent'}, svg);
+      if (ko) { hit.addEventListener('pointermove', ev => tip('layer ' + layer + ' · expert ' + x + '\n' + (c.count[i][x] ? 'chosen in   ' + c.count[i][x] + ' of ' + c.n[0] + ' probes\npush        ' + (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(3) + ' nats toward ' + (d >= 0 ? ga : gb) + '\nverdict flips ' + c.flips[i][x] : 'never chosen at the slot'), ev.clientX, ev.clientY)); hit.addEventListener('pointerleave', () => tip(null)); continue; }
+      hit.addEventListener('pointermove', ev => tip('layer ' + layer + ' · expert ' + x + '\n' + ga.padEnd(8) + (100 * c.rate_a[i][x]).toFixed(0).padStart(4) + '%\n' + gb.padEnd(8) + (100 * c.rate_b[i][x]).toFixed(0).padStart(4) + '%\ndiff    ' + (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2), ev.clientX, ev.clientY));
+      hit.addEventListener('pointerleave', () => tip(null));
+    }
+  });
+  const hits = [];
+  c.diff.forEach((row, i) => row.forEach((d, x) => { if (Math.abs(d) > c.bar && counts(i, x)) hits.push([Math.abs(d), i, x, d]); }));
+  hits.sort((p, q) => q[0] - p[0]);
+  if (ko) {
+    $('table').innerHTML = '<table><tr><th>layer</th><th>expert</th><th>chosen in</th><th>push (nats)</th><th>toward</th><th>flips</th></tr>' + hits.map(([_, i, x, d]) => '<tr><td>' + DATA.layers[i] + '</td><td>' + x + '</td><td>' + c.count[i][x] + ' of ' + c.n[0] + '</td><td>' + Math.abs(d).toFixed(2) + '</td><td>' + (d >= 0 ? ga : gb) + '</td><td>' + c.flips[i][x] + '</td></tr>').join('') + '</table>';
+    return;
+  }
+  $('table').innerHTML = hits.length
+    ? '<table><tr><th>layer</th><th>expert</th><th>' + ga + '</th><th>' + gb + '</th><th>diff</th></tr>' + hits.map(([_, i, x, d]) => '<tr><td>' + DATA.layers[i] + '</td><td>' + x + '</td><td>' + (100 * c.rate_a[i][x]).toFixed(0) + '%</td><td>' + (100 * c.rate_b[i][x]).toFixed(0) + '%</td><td>' + (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2) + '</td></tr>').join('') + '</table>'
+    : '<p class="sub">None. Nothing on this map is distinguishable from shuffled labels.</p>';
+}
+// the layer stack in the mechanism figure: a dot marks a layer with a router
+(function stack() {
+  const g = $('stack'), kinds = DATA.layer_kinds;
+  kinds.forEach((k, i) => {
+    const x = 420 + i * 14, open = DATA.lever && k.layer === DATA.lever.layer;
+    svgEl('rect', {x, y: 24, width: 12, height: 34, rx: 2, fill: open ? 'var(--pole-a)' : 'none', stroke: 'currentColor', 'stroke-width': 1}, g);
+    if (k.ffn === 'moe') svgEl('circle', {cx: x + 6, cy: 41, r: 2.2, fill: open ? 'var(--surface)' : 'currentColor'}, g);
+  });
+})();
+
+function axisChart(host, W, H, m, xmax, ymax, xticks, yticks, xfmt, yfmt, xlabel) {
+  const svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img'}, host);
+  const X = v => m.l + (W - m.l - m.r) * v / xmax, Y = v => m.t + (H - m.t - m.b) * (1 - v / ymax);
+  yticks.forEach(v => { svgEl('line', {x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), style: 'stroke:var(--hairline)'}, svg); svgEl('text', {x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end'}, svg, yfmt(v)); });
+  xticks.forEach(v => svgEl('text', {x: X(v), y: H - m.b + 16, 'text-anchor': 'middle'}, svg, xfmt(v)));
+  svgEl('text', {x: m.l, y: H - 4}, svg, xlabel);
+  return {svg, X, Y};
+}
+function legend(host, items) {
+  host.textContent = '';
+  items.forEach(([cls, c, text]) => { const s = document.createElement('span'), i = document.createElement('i'); if (cls) i.className = cls; i.style.setProperty('--c', 'var(' + c + ')'); s.appendChild(i); s.appendChild(document.createTextNode(text)); host.appendChild(s); });
+}
+function renderLever() {
+  const L = DATA.lever; if (!L) return;
+  // --- one real decision
+  const ex = L.example, n = ex.score.length, k = ex.chosen.length;
+  const sel = ex.score.map((s, i) => s + ex.bias[i]);
+  const order = [...Array(n).keys()].sort((a, b) => sel[b] - sel[a]);
+  const ymax = Math.ceil(Math.max(...sel, ...ex.score) * 10) / 10;
+  $('decision').textContent = '';
+  const W = 460, H = 270, m = {l: 34, r: 10, t: 22, b: 40};
+  const ticks = []; for (let v = 0; v <= ymax + 1e-9; v += 0.2) ticks.push(+v.toFixed(1));
+  const c = axisChart($('decision'), W, H, m, n, ymax, [], ticks, String, v => v.toFixed(1), 'experts, ranked by selection score');
+  c.svg.setAttribute('aria-label', 'Layer ' + L.layer + ' router scores for one missed severe row');
+  const bw = (W - m.l - m.r) / n;
+  order.forEach((e, rank) => {
+    const x = m.l + rank * bw, chosen = ex.chosen.includes(e), watch = e === L.expert_up;
+    svgEl('rect', {x: x + 1, y: c.Y(ex.score[e]), width: bw - 2, height: c.Y(0) - c.Y(ex.score[e]), rx: 2, style: 'fill:var(' + (watch ? '--pole-a' : chosen ? '--text-2' : '--bar-off') + ')'}, c.svg);
+    svgEl('line', {x1: x, x2: x + bw, y1: c.Y(sel[e]), y2: c.Y(sel[e]), style: 'stroke:var(--text)', 'stroke-width': 2}, c.svg);
+    if (watch || e === L.expert_down) {
+      // The two named experts are often neighbours in rank: lift one label clear of the other.
+      const top = c.Y(Math.max(sel[e], ex.score[e])), ly = top - (watch ? 34 : 8);
+      if (watch) svgEl('line', {x1: x + bw / 2, x2: x + bw / 2, y1: ly + 4, y2: top - 3, style: 'stroke:var(--muted)'}, c.svg);
+      // The watched expert reads to the right of its leader, the other to the left, so neighbours never share a line.
+      svgEl('text', {x: x + bw / 2 + (watch ? 5 : -2), y: ly, 'text-anchor': watch ? 'start' : 'end', style: 'fill:var(--text)'}, c.svg, 'expert ' + e);
+    }
+    const hit = svgEl('rect', {x, y: m.t, width: bw, height: H - m.t - m.b, fill: 'transparent'}, c.svg);
+    hit.addEventListener('pointermove', ev => tip('expert ' + e + '  rank ' + (rank + 1) + (chosen ? '  chosen' : '') + '\nscore          ' + ex.score[e].toFixed(3) + '\nbias          ' + (ex.bias[e] >= 0 ? '+' : '\u2212') + Math.abs(ex.bias[e]).toFixed(3) + '\nselection      ' + sel[e].toFixed(3), ev.clientX, ev.clientY));
+    hit.addEventListener('pointerleave', () => tip(null));
+  });
+  const cut = m.l + k * bw;
+  svgEl('line', {x1: cut, x2: cut, y1: m.t - 6, y2: H - m.b, style: 'stroke:var(--text)', 'stroke-dasharray': '4 3'}, c.svg);
+  svgEl('text', {x: cut + 5, y: m.t + 2, style: 'fill:var(--text)'}, c.svg, 'top ' + k + ' | left out');
+  legend($('decLegend'), [['', '--text-2', 'score of a chosen expert: what it is weighted by'], ['', '--bar-off', 'score of one left out'], ['tick', '--text', 'score + bias: what it is chosen by'], ['', '--pole-a', 'expert ' + L.expert_up]]);
+  $('decCap').innerHTML = '<b>One real decision.</b> Layer ' + L.layer + ' at the answer slot of a severe row the model allowed. Expert ' + L.expert_up + ', the one flagged rows use, missed the cut by <b>' + ex.need.toFixed(3) + '</b>. The bias ticks sit visibly above or below their bars: the fixed bias reorders experts by far more than the gap at the cut.';
+
+  // --- how big a nudge
+  $('nudge').textContent = '';
+  const xmax = 0.12, m2 = {l: 40, r: 104, t: 14, b: 40};
+  const d = axisChart($('nudge'), W, H, m2, xmax, 1, [0, 0.03, 0.06, 0.09, 0.12], [0, 0.25, 0.5, 0.75, 1], v => v.toFixed(2), v => Math.round(v * 100) + '%', 'bias added to layer ' + L.layer + ' expert ' + L.expert_up);
+  d.svg.setAttribute('aria-label', 'Share of rows where the expert would be chosen, by size of bias nudge');
+  const series = [['missed', '--pole-a', 'severe, missed'], ['allowed', '--pole-b', 'benign, allowed']];
+  const share = (vs, x) => vs.filter(v => v <= x).length / vs.length;
+  const ends = [];
+  series.forEach(([key, col, label]) => {
+    const vs = L.needs[key]; let path = '';
+    for (let i = 0; i <= 120; i++) { const x = xmax * i / 120; path += (i ? 'L' : 'M') + d.X(x).toFixed(1) + ' ' + d.Y(share(vs, x)).toFixed(1); }
+    svgEl('path', {d: path, fill: 'none', style: 'stroke:var(' + col + ')', 'stroke-width': 2, 'stroke-linejoin': 'round'}, d.svg);
+    svgEl('circle', {cx: d.X(xmax), cy: d.Y(share(vs, xmax)), r: 4, style: 'fill:var(' + col + ');stroke:var(--surface)', 'stroke-width': 2}, d.svg);
+    ends.push({y: d.Y(share(vs, xmax)), label: key + ' (' + vs.length + ')'});
+  });
+  ends.sort((p, q) => p.y - q.y); if (ends[1].y - ends[0].y < 14) ends[1].y = ends[0].y + 14;
+  ends.forEach(e => svgEl('text', {x: W - m2.r + 8, y: e.y + 4, style: 'fill:var(--text)'}, d.svg, e.label));
+  const mx = d.X(L.slot_margin_p50);
+  svgEl('line', {x1: mx, x2: mx, y1: m2.t, y2: H - m2.b, style: 'stroke:var(--muted)', 'stroke-dasharray': '3 3'}, d.svg);
+  svgEl('text', {x: mx + 4, y: H - m2.b - 6}, d.svg, 'typical margin ' + L.slot_margin_p50.toFixed(3));
+  const cross = svgEl('line', {y1: m2.t, y2: H - m2.b, style: 'stroke:var(--muted)', visibility: 'hidden'}, d.svg);
+  const box = svgEl('rect', {x: m2.l, y: m2.t, width: W - m2.l - m2.r, height: H - m2.t - m2.b, fill: 'transparent'}, d.svg);
+  box.addEventListener('pointermove', ev => {
+    const r = d.svg.getBoundingClientRect(), x = Math.max(0, Math.min(xmax, ((ev.clientX - r.left) * W / r.width - m2.l) / (W - m2.l - m2.r) * xmax));
+    cross.setAttribute('x1', d.X(x)); cross.setAttribute('x2', d.X(x)); cross.setAttribute('visibility', 'visible');
+    tip('nudge +' + x.toFixed(3) + '\n' + series.map(([key, _, label]) => label.padEnd(16) + Math.round(100 * share(L.needs[key], x)) + '%').join('\n'), ev.clientX, ev.clientY);
+  });
+  box.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); tip(null); });
+  legend($('nudgeLegend'), series.map(([_, col, label]) => ['line', col, label]));
+  const at05 = key => Math.round(100 * share(L.needs[key], 0.05));
+  $('nudgeCap').innerHTML = '<b>A small nudge flips the choice, and it cannot tell rows apart.</b> Share of rows where expert ' + L.expert_up + ' would be in the top four, against the bias added. At +0.05 that is ' + at05('missed') + '% of the severe rows the model missed, and ' + at05('allowed') + '% of the benign rows it rightly allowed. The two curves lie on top of each other. Entering the top four is also not the same as changing the verdict: seven more routers act afterwards.';
+}
+renderLever();
+new MutationObserver(renderLever).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+
+DATA.contrasts.forEach((c, i) => { const b = document.createElement('button'); b.textContent = c.kind === 'knockout' ? 'knockout · what carries ' + c.name : c.name + ' · ' + (c.window === 'slot' ? 'answer slot' : 'all tokens'); b.onclick = () => { at = i; render(); }; $('pick').appendChild(b); });
+new MutationObserver(render).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+render();
+</script>

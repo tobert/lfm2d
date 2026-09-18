@@ -1,0 +1,397 @@
+<title>LFM2.5 Prompt Anatomy</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --page: #f1f2f0; --surface: #fcfcfb; --surface-2: #eceeec; --hairline: #dcdedb;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #898781; --axis: #c3c2b7;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --mag-hi: #044b94; --pin-hi: #934404; --ramp-text-hi: #ffffff; --ramp-text-lo: #0b0b0b;
+  --off: #7b7a75; --focus: #104281;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #121312; --surface: #1a1a19; --surface-2: #262725; --hairline: #343532;
+    --text: #ffffff; --text-2: #c3c2b7; --muted: #898781; --axis: #383835;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --mag-hi: #a3cffd; --pin-hi: #fbbb87; --ramp-text-hi: #0b0b0b; --ramp-text-lo: #ffffff;
+    --off: #9a9992; --focus: #9ec5f4;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #121312; --surface: #1a1a19; --surface-2: #262725; --hairline: #343532;
+  --text: #ffffff; --text-2: #c3c2b7; --muted: #898781; --axis: #383835;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --mag-hi: #a3cffd; --pin-hi: #fbbb87; --ramp-text-hi: #0b0b0b; --ramp-text-lo: #ffffff;
+  --off: #9a9992; --focus: #9ec5f4;
+}
+/*__SERIES_TOKENS__*/
+body { background: var(--page); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 20px; }
+header h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 0; color: var(--text-2); max-width: 68ch; }
+.ident { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end; }
+.field { display: grid; gap: 4px; }
+.field > span { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; color: var(--text-2); background: none; border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--hairline); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+select, input[type="range"] { font: inherit; accent-color: var(--mag-hi); }
+select { color: var(--text); background: var(--surface); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 8px; }
+button:focus-visible, select:focus-visible, input:focus-visible, .strip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.panel { background: var(--surface); border: 1px solid var(--hairline); border-radius: 8px; padding: 16px; min-width: 0; }
+.panel h2 { font-size: 14px; font-weight: 600; margin: 0; }
+.panel .sub { color: var(--text-2); font-size: 13px; margin: 2px 0 12px; max-width: 72ch; }
+.strip { font-family: var(--mono); font-size: 12.5px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow-y: auto; border-radius: 4px; padding: 2px; }
+.tok { cursor: pointer; border-radius: 2px; box-shadow: inset -1px 0 var(--hairline); padding-block: 2px; }
+.tok.ctl { color: var(--muted); }
+.tok.hit { border-bottom: 2px solid var(--c); }
+.tok.sel { outline: 2px solid var(--text); outline-offset: 0; position: relative; z-index: 1; }
+.tok.pin { outline: 2px dashed var(--pin-hi); outline-offset: 0; position: relative; z-index: 1; }
+.tok:hover { outline: 1px solid var(--muted); }
+.ramp { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin-top: 10px; font-variant-numeric: tabular-nums; }
+.ramp i { display: block; width: 140px; height: 8px; border-radius: 4px; border: 1px solid var(--hairline); background: linear-gradient(to right in oklab, var(--surface), var(--mag-hi)); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; align-items: center; }
+.chips .lab { font-size: 12px; color: var(--muted); margin-right: 2px; }
+.chip { font: 12px var(--mono); color: var(--text); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: block; }
+.pair { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
+.who { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; }
+.who code { font-family: var(--mono); background: var(--surface-2); border-radius: 3px; padding: 1px 5px; }
+.who button { font: inherit; font-size: 12px; color: var(--text); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: block; width: 14px; height: 0; border-top: 2px solid var(--c); }
+.legend i.dash { border-top-style: dashed; }
+.legend i.dot { border-top-style: dotted; }
+.legend i.box { width: 10px; height: 10px; border: 0; border-radius: 2px; background: var(--c); }
+svg { display: block; width: 100%; height: auto; font-family: var(--sans); }
+svg text { fill: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg .lbl { fill: var(--text); font-size: 11.5px; }
+.scroll { overflow-x: auto; }
+.scroll svg { min-width: 520px; }
+.next { font-family: var(--mono); font-size: 12px; color: var(--text-2); margin-top: 10px; min-height: 3.2em; overflow-wrap: anywhere; }
+.next b { color: var(--text); font-weight: 500; }
+details { margin-top: 12px; font-size: 12px; }
+details summary { cursor: pointer; color: var(--text-2); }
+table { border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; margin-top: 8px; }
+th, td { text-align: right; padding: 2px 10px 2px 0; }
+th { color: var(--muted); font-weight: 400; } td:first-child, th:first-child { text-align: left; }
+.notes { color: var(--text-2); font-size: 13px; max-width: 72ch; display: grid; gap: 6px; }
+.notes b { color: var(--text); font-weight: 600; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--text); color: var(--surface); font: 12px/1.45 var(--mono); padding: 6px 9px; border-radius: 5px; max-width: 320px; white-space: pre-wrap; }
+@media (prefers-reduced-motion: no-preference) { .tok { transition: background-color 120ms; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>LFM2.5 Prompt Anatomy</h1>
+    <p>One prefill, observed from inside. Every token of the prompt, which experts each layer routed it to, and how the answer takes shape through the depth of the stack. Click a token to examine it.</p>
+    <div class="ident" id="ident"></div>
+  </header>
+
+  <div class="controls">
+    <label class="field"><span>Examination</span><div class="seg" id="exams"></div></label>
+    <label class="field" for="metric"><span>Shade tokens by</span>
+      <select id="metric">
+        <option value="mass">probability the next token opens a label</option>
+        <option value="norm">residual stream norm</option>
+        <option value="overlap">expert overlap with the selected token</option>
+        <option value="none">nothing</option>
+      </select></label>
+    <label class="field" for="depth"><span>Read at depth: <b id="depthName"></b></span>
+      <input type="range" id="depth" min="0" max="0" step="1"></label>
+  </div>
+
+  <section class="panel">
+    <h2>The prompt, token by token</h2>
+    <p class="sub">Underlined tokens are the same token id that opens a label at the answer slot, so each is that label being activated in context. Arrow keys move the selection.</p>
+    <div class="strip" id="strip" tabindex="0" role="listbox" aria-label="Prompt tokens"></div>
+    <div class="ramp"><span id="rampLo"></span><i></i><span id="rampHi"></span><span id="rampWhat"></span></div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <div class="who" id="who"></div>
+
+  <div class="pair">
+    <section class="panel">
+      <h2>The answer, by depth</h2>
+      <p class="sub">The residual stream after each layer at the selected token, read through the model's own output head: what it would say next if the stack ended there.</p>
+      <div class="controls" style="margin-bottom:10px"><div class="seg" id="ymode">
+        <button data-y="logprob" aria-pressed="true">log-probability</button><button data-y="prob" aria-pressed="false">probability</button></div></div>
+      <div class="legend" id="lensLegend"></div>
+      <div id="lens"></div>
+      <div class="next" id="next"></div>
+      <details><summary>Table view</summary><div class="scroll" id="lensTable"></div></details>
+    </section>
+    <section class="panel">
+      <h2>Expert routing</h2>
+      <p class="sub" id="routeSub"></p>
+      <div class="legend" id="routeLegend"></div>
+      <div class="scroll" id="route"></div>
+    </section>
+  </div>
+
+  <section class="notes">
+    <div><b>Position p predicts token p + 1.</b> The lens at the last token is the distribution over what the model writes next.</div>
+    <div><b>Mass is raw, never renormalised.</b> The dashed line is the total probability on the label-opening tokens over the full vocabulary. Near zero means the model is not choosing among the labels at all, whatever their ratio to each other says.</div>
+    <div><b>Early depths are read through a head trained on the last one.</b> A dark lens in the first layers means the residual is not yet in the output head's language, not that nothing is being computed.</div>
+  </section>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const EXAMS = /*__EXAMINATIONS__*/;
+const LADDER = /*__LADDER__*/0;
+// With a ladder, tokens past its last rung are off the scale: neutral and dotted.
+const seriesOf = i => LADDER && i >= LADDER ? {c: '--off', dash: '1 4', cls: 'dot'} : {c: '--series-' + (i % (LADDER || 4) + 1), dash: '', cls: ''};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const show = piece => piece == null ? '?' : piece.replace(/Ġ/g, ' ').replace(/Ċ/g, '↵');
+const state = {exam: 0, sel: null, pin: null, metric: 'mass', depth: null, y: 'logprob'};
+const E = () => EXAMS[state.exam];
+const setName = e => Object.keys(e.lens)[0];
+const lens = e => setName(e) ? e.lens[setName(e)] : null;
+const seriesNames = L => L.tokens.map((t, i) => (L.words[i] || show(t.piece)));
+
+function tip(html, x, y) {
+  const t = $('tip');
+  if (html == null) { t.hidden = true; return; }
+  t.innerHTML = html; t.hidden = false;
+  const w = t.offsetWidth, h = t.offsetHeight;
+  t.style.left = Math.max(8, Math.min(x + 14, innerWidth - w - 8)) + 'px';
+  t.style.top = Math.max(8, (y + 18 + h > innerHeight ? y - h - 10 : y + 18)) + 'px';
+}
+function svgEl(tag, attrs, parent, text) {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (text != null) n.textContent = text;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function jaccardTo(e, p) {
+  return e.tokens.map((_, q) => {
+    let s = 0;
+    for (const r of e.routing) {
+      const a = r.experts[p], b = r.experts[q];
+      const shared = a.filter(x => b.includes(x)).length;
+      s += shared / (a.length + b.length - shared);
+    }
+    return s / e.routing.length;
+  });
+}
+function metricValues(e) {
+  const d = state.depth, L = lens(e);
+  if (state.metric === 'mass' && L) return {v: L.mass_logprob[d].map(Math.exp), lo: '0', hi: '1', what: 'P(next token opens a label) at ' + e.depths[d]};
+  if (state.metric === 'norm') {
+    const row = e.residual_norm[d], max = Math.max(...row.slice(1), 1e-9);
+    return {v: row.map(x => Math.min(1, x / max)), lo: '0', hi: max.toFixed(1), what: 'L2 norm at ' + e.depths[d] + ' (first token excluded from the scale)'};
+  }
+  if (state.metric === 'overlap') return {v: jaccardTo(e, state.sel), lo: '0', hi: '1', what: 'mean Jaccard overlap of expert sets with token ' + state.sel + ', across all expert layers'};
+  return {v: null, lo: '', hi: '', what: ''};
+}
+
+function renderStrip() {
+  const e = E(), L = lens(e), m = metricValues(e);
+  const hit = new Map(); if (L) L.tokens.forEach((t, i) => hit.set(t.id, i));
+  const strip = $('strip'); strip.textContent = '';
+  e.tokens.forEach((t, p) => {
+    const s = document.createElement('span');
+    const raw = t.piece == null ? '?' : t.piece;
+    s.className = 'tok' + (/^<\|.*\|>$/.test(raw) ? ' ctl' : '') + (p === state.sel ? ' sel' : '') + (p === state.pin ? ' pin' : '');
+    s.textContent = show(raw) + (raw.endsWith('Ċ') ? '\n' : '');
+    s.dataset.p = p;
+    if (hit.has(t.id)) { s.classList.add('hit'); s.style.setProperty('--c', 'var(' + seriesOf(hit.get(t.id)).c + ')'); }
+    if (m.v) {
+      // Linear in OKLab lightness from the surface itself: zero is no ink at
+      // all. Ink flips where its contrast against the mixed ground would
+      // drop under 4.5:1, which is 62% in both themes.
+      const x = Math.round(Math.max(0, Math.min(1, m.v[p])) * 100);
+      s.style.backgroundColor = 'color-mix(in oklab, var(--mag-hi) ' + x + '%, var(--surface))';
+      if (x > 62) s.style.color = 'var(--ramp-text-hi)';
+    }
+    strip.appendChild(s);
+  });
+  $('rampLo').textContent = m.lo; $('rampHi').textContent = m.hi; $('rampWhat').textContent = m.what;
+  document.querySelector('.ramp i').style.visibility = m.v ? 'visible' : 'hidden';
+
+  const chips = $('chips'); chips.textContent = '';
+  const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = 'Jump to'; chips.appendChild(lab);
+  const add = (p, label, c) => {
+    const b = document.createElement('button'); b.className = 'chip';
+    if (c) { const i = document.createElement('i'); i.style.setProperty('--c', 'var(' + c + ')'); b.appendChild(i); }
+    b.appendChild(document.createTextNode(label)); b.onclick = () => select(p); chips.appendChild(b);
+  };
+  add(e.tokens.length - 1, 'answer slot · ' + (e.tokens.length - 1));
+  e.tokens.forEach((t, p) => { if (hit.has(t.id)) add(p, show(t.piece) + ' · ' + p, seriesOf(hit.get(t.id)).c); });
+}
+
+function renderWho() {
+  const e = E(), w = $('who'), t = p => '<code>' + esc(show(e.tokens[p].piece)) + '</code> at ' + p;
+  w.innerHTML = '<span>Selected ' + t(state.sel) + '</span>' +
+    (state.pin == null ? '<button id="pinBtn">Pin it, then select another to compare routing</button>'
+      : '<span>Pinned ' + t(state.pin) + '</span><button id="unpinBtn">Unpin</button>');
+  if ($('pinBtn')) $('pinBtn').onclick = () => { state.pin = state.sel; render(); };
+  if ($('unpinBtn')) $('unpinBtn').onclick = () => { state.pin = null; render(); };
+}
+
+function renderLens() {
+  const e = E(), L = lens(e), host = $('lens'); host.textContent = '';
+  $('lensLegend').textContent = ''; $('lensTable').textContent = ''; $('next').textContent = '';
+  if (!L) { host.textContent = 'This examination followed no token set.'; return; }
+  const p = state.sel, D = e.depths.length, names = seriesNames(L);
+  const f = state.y === 'prob' ? Math.exp : (x => x);
+  const series = names.map((n, i) => ({name: n, ...seriesOf(i), v: L.logprob.map(d => f(d[p][i]))}));
+  series.push({name: 'raw mass', c: '--text-2', dash: '6 4', cls: 'dash', v: L.mass_logprob.map(d => f(d[p]))});
+  const lo = state.y === 'prob' ? 0 : Math.max(-32, Math.floor(Math.min(...series.flatMap(s => s.v))));
+  const hi = state.y === 'prob' ? 1 : 0;
+  const W = 580, H = 300, mL = 34, mR = 168, mT = 10, mB = 46;
+  const X = d => mL + (W - mL - mR) * d / (D - 1), Y = v => mT + (H - mT - mB) * (1 - (Math.max(lo, v) - lo) / (hi - lo));
+  const svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Label ' + state.y + ' by depth at token ' + p}, host);
+  const ticks = state.y === 'prob' ? [0, 0.25, 0.5, 0.75, 1] : [0, 1, 2, 3, 4].map(i => lo + (hi - lo) * i / 4);
+  ticks.forEach(v => {
+    svgEl('line', {x1: mL, x2: W - mR, y1: Y(v), y2: Y(v), style: 'stroke:var(--hairline)', 'stroke-width': 1}, svg);
+    svgEl('text', {x: mL - 6, y: Y(v) + 4, 'text-anchor': 'end'}, svg, state.y === 'prob' ? v.toFixed(2) : v.toFixed(0));
+  });
+  // the stack itself, as the x axis: attention layers are the filled marks
+  for (let d = 0; d < D; d++) {
+    const layer = d === 0 ? null : e.layers[d - 1];
+    const attn = layer && layer.operator === 'attention';
+    svgEl('rect', {x: X(d) - (attn ? 4 : 1), y: H - mB + 6, width: attn ? 8 : 2, height: 8, rx: 1, style: 'fill:var(' + (attn ? '--text-2' : '--axis') + ')'}, svg);
+    if (d === 0 || (d > 1 && (d - 1) % 4 === 0 && d < D - 2) || d === D - 1) svgEl('text', {x: X(d), y: H - mB + 28, 'text-anchor': 'middle'}, svg, d === 0 ? 'emb' : String(d - 1));
+  }
+  svgEl('text', {x: mL, y: H - 4}, svg, 'layer · wide marks are attention, thin are short convolution');
+  const ends = [];
+  series.forEach(s => {
+    const path = s.v.map((v, d) => (d ? 'L' : 'M') + X(d).toFixed(1) + ' ' + Y(v).toFixed(1)).join('');
+    svgEl('path', {d: path, fill: 'none', style: 'stroke:var(' + s.c + ')', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dash}, svg);
+    svgEl('circle', {cx: X(D - 1), cy: Y(s.v[D - 1]), r: 4, style: 'fill:var(' + s.c + ');stroke:var(--surface)', 'stroke-width': 2}, svg);
+    ends.push({s, y: Y(s.v[D - 1])});
+    const li = document.createElement('span'), i = document.createElement('i');
+    i.style.setProperty('--c', 'var(' + s.c + ')'); if (s.cls) i.className = s.cls;
+    li.appendChild(i); li.appendChild(document.createTextNode(s.name)); $('lensLegend').appendChild(li);
+  });
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  const over = ends.length ? ends[ends.length - 1].y - (H - mB) : 0;
+  if (over > 0) ends.forEach(x => x.y -= over);
+  ends.forEach(({s, y}) => svgEl('text', {x: W - mR + 10, y: y + 4, class: 'lbl'}, svg, s.name + '  ' + (state.y === 'prob' ? s.v[D - 1].toFixed(3) : s.v[D - 1].toFixed(2))));
+
+  const cross = svgEl('line', {y1: mT, y2: H - mB, style: 'stroke:var(--muted)', 'stroke-width': 1, visibility: 'hidden'}, svg);
+  const top = e.top.find(t => t.position === p);
+  const nextAt = d => {
+    if (!top) { $('next').textContent = 'No top-k record for this position; the examination kept them for ' + e.top.map(t => t.position).join(', ') + '.'; return; }
+    $('next').innerHTML = 'Most likely next at <b>' + esc(e.depths[d]) + '</b>: ' + top.by_depth[d].map(t => '<b>' + esc(show(t.piece)) + '</b> ' + Math.exp(t.logprob).toFixed(3)).join(' · ');
+  };
+  nextAt(D - 1);
+  const hitbox = svgEl('rect', {x: mL - 8, y: mT, width: W - mL - mR + 16, height: H - mT - mB + 30, fill: 'transparent'}, svg);
+  hitbox.addEventListener('pointermove', ev => {
+    const r = svg.getBoundingClientRect(), x = (ev.clientX - r.left) * W / r.width;
+    const d = Math.max(0, Math.min(D - 1, Math.round((x - mL) / (W - mL - mR) * (D - 1))));
+    cross.setAttribute('x1', X(d)); cross.setAttribute('x2', X(d)); cross.setAttribute('visibility', 'visible');
+    const layer = d ? e.layers[d - 1] : null;
+    tip('<b>' + esc(e.depths[d]) + '</b>' + (layer ? '  ' + layer.operator + ' + ' + layer.ffn : '') + '\n' +
+      series.map((s, i) => esc(s.name.padEnd(18)) + ' ' + (i < names.length ? L.logprob[d][p][i] : L.mass_logprob[d][p]).toFixed(2).padStart(7) + '  p=' + Math.exp(i < names.length ? L.logprob[d][p][i] : L.mass_logprob[d][p]).toFixed(4)).join('\n'), ev.clientX, ev.clientY);
+    nextAt(d);
+  });
+  hitbox.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); tip(null); nextAt(D - 1); });
+
+  const tbl = document.createElement('table');
+  tbl.innerHTML = '<tr><th>depth</th>' + series.map(s => '<th>' + esc(s.name) + '</th>').join('') + '</tr>' +
+    e.depths.map((dn, d) => '<tr><td>' + esc(dn) + '</td>' + names.map((_, i) => '<td>' + L.logprob[d][p][i].toFixed(2) + '</td>').join('') + '<td>' + L.mass_logprob[d][p].toFixed(2) + '</td></tr>').join('');
+  $('lensTable').appendChild(tbl);
+}
+
+function renderRoute() {
+  const e = E(), host = $('route'); host.textContent = ''; $('routeLegend').textContent = '';
+  const a = state.sel, b = state.pin, R = e.routing, n = R[0].n_experts;
+  const hasMargin = R.every(r => r.margin), mW = hasMargin ? 74 : 0;
+  const cw = 14, ch = 11, gap = 2, mL = 46, mT = 18, gridW = n * (cw + gap), W = mL + gridW + mW + 4, H = mT + R.length * (ch + gap) + 4;
+  const svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Experts chosen per layer'}, host);
+  for (let x = 0; x < n; x += 4) svgEl('text', {x: mL + x * (cw + gap) + cw / 2, y: 11, 'text-anchor': 'middle'}, svg, String(x));
+  if (hasMargin) svgEl('text', {x: mL + gridW + 10, y: 11}, svg, 'margin');
+  let shared = 0, slots = 0;
+  R.forEach((r, i) => {
+    const y = mT + i * (ch + gap), op = e.layers[r.layer].operator === 'attention' ? 'A' : 'c';
+    svgEl('text', {x: mL - 8, y: y + 9, 'text-anchor': 'end'}, svg, r.layer + ' ' + op);
+    const wa = new Map(r.experts[a].map((x, k) => [x, r.weights[a][k]]));
+    const wb = b == null ? new Map() : new Map(r.experts[b].map((x, k) => [x, r.weights[b][k]]));
+    slots += wa.size; wa.forEach((_, x) => { if (wb.has(x)) shared++; });
+    for (let x = 0; x < n; x++) {
+      const cx = mL + x * (cw + gap), ina = wa.has(x), inb = wb.has(x);
+      svgEl('rect', {x: cx, y, width: cw, height: ch, rx: 2, style: 'fill:var(--surface-2)'}, svg);
+      // Weight is luminance: the two hue ends sit at one lightness, so a
+      // selected and a pinned cell of equal weight are equally dark.
+      const ink = (hi, w) => 'fill:color-mix(in oklab, var(' + hi + ') ' + Math.round(30 + 70 * Math.min(1, w / 0.5)) + '%, var(--surface-2))';
+      if (ina) svgEl('rect', {x: cx, y, width: inb ? cw / 2 - 1 : cw, height: ch, rx: 2, style: ink('--mag-hi', wa.get(x))}, svg);
+      if (inb) svgEl('rect', {x: ina ? cx + cw / 2 + 1 : cx, y, width: ina ? cw / 2 - 1 : cw, height: ch, rx: 2, style: ink('--pin-hi', wb.get(x))}, svg);
+      const hit = svgEl('rect', {x: cx - 1, y: y - 1, width: cw + 2, height: ch + 2, fill: 'transparent'}, svg);
+      hit.addEventListener('pointermove', ev => tip('layer ' + r.layer + ' · expert ' + x + '\n' +
+        (ina ? 'selected  weight ' + wa.get(x).toFixed(3) : 'selected  not chosen') +
+        (b == null ? '' : '\n' + (inb ? 'pinned    weight ' + wb.get(x).toFixed(3) : 'pinned    not chosen')), ev.clientX, ev.clientY));
+      hit.addEventListener('pointerleave', () => tip(null));
+    }
+  });
+  if (hasMargin) R.forEach((r, i) => {
+    const y = mT + i * (ch + gap), m = r.margin[a], x0 = mL + gridW + 10, full = mW - 14;
+    svgEl('rect', {x: x0, y: y + 3, width: full, height: ch - 6, rx: 2, style: 'fill:var(--surface-2)'}, svg);
+    svgEl('rect', {x: x0, y: y + 3, width: Math.max(1, full * Math.min(1, m / 0.1)), height: ch - 6, rx: 2, style: 'fill:var(--text-2)'}, svg);
+    const hit = svgEl('rect', {x: x0, y, width: full, height: ch, fill: 'transparent'}, svg);
+    hit.addEventListener('pointermove', ev => tip('layer ' + r.layer + ' selection margin ' + m.toFixed(4) + '\nlast chosen expert minus best unchosen,\non a 0 to 1 score. Bar is full at 0.1.', ev.clientX, ev.clientY));
+    hit.addEventListener('pointerleave', () => tip(null));
+  });
+  const leg = (c, text) => { const s = document.createElement('span'), i = document.createElement('i'); i.className = 'box'; i.style.setProperty('--c', 'var(' + c + ')'); s.appendChild(i); s.appendChild(document.createTextNode(text)); $('routeLegend').appendChild(s); };
+  leg('--mag-hi', 'selected token ' + a);
+  if (b != null) leg('--pin-hi', 'pinned token ' + b);
+  $('routeSub').textContent = (b == null
+    ? 'Every expert layer has its own router: one small matrix that scores all ' + n + ' experts from this token’s residual stream at that depth. Each row is one layer’s decision; filled cells are the ' + R[0].experts[a].length + ' it chose, darker for a larger combine weight.' + (hasMargin ? ' The margin bar shows how firmly: a short bar is a near-tie that a small numerical change would flip.' : '')
+    : 'The two tokens share ' + shared + ' of ' + slots + ' expert slots across ' + R.length + ' layers. Split cells were chosen by both.') +
+    ' Row labels give the layer and its operator: A attention, c short convolution.';
+}
+
+function renderHead() {
+  const e = E(), id = e.identity;
+  $('ident').textContent = id.model_id + ' · ' + id.backend + ' · weights ' + id.weight_hash.slice(0, 12) + ' · text ' + id.text_sha256.slice(0, 12) + ' · ' + e.tokens.length + ' tokens · ' + e.depths.length + ' depths · ' + e.routing.length + ' expert layers';
+  $('depth').max = e.depths.length - 1; $('depth').value = state.depth; $('depthName').textContent = e.depths[state.depth];
+  [...$('exams').children].forEach((b, i) => b.setAttribute('aria-pressed', i === state.exam));
+  [...$('ymode').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.y === state.y));
+}
+function reveal() {
+  const strip = $('strip'), n = strip.children[state.sel]; if (!n) return;
+  const top = n.offsetTop - strip.offsetTop, bottom = top + n.offsetHeight;
+  if (top < strip.scrollTop) strip.scrollTop = top - 8;
+  else if (bottom > strip.scrollTop + strip.clientHeight) strip.scrollTop = bottom - strip.clientHeight + 8;
+}
+function render() { const at = $('strip').scrollTop; renderHead(); renderStrip(); $('strip').scrollTop = at; reveal(); renderWho(); renderLens(); renderRoute(); }
+function select(p) { state.sel = p; render(); }
+function useExam(i) {
+  state.exam = i; const e = E();
+  state.depth = e.depths.length - 1;
+  if (state.sel == null || state.sel >= e.tokens.length) state.sel = e.tokens.length - 1;
+  if (state.pin != null && state.pin >= e.tokens.length) state.pin = null;
+  render();
+}
+
+EXAMS.forEach((e, i) => { const b = document.createElement('button'); b.textContent = e.name; b.onclick = () => useExam(i); $('exams').appendChild(b); });
+$('metric').onchange = ev => { state.metric = ev.target.value; render(); };
+$('depth').oninput = ev => { state.depth = +ev.target.value; const at = $('strip').scrollTop; renderHead(); renderStrip(); $('strip').scrollTop = at; };
+[...$('ymode').children].forEach(b => b.onclick = () => { state.y = b.dataset.y; render(); });
+$('strip').addEventListener('click', ev => { const t = ev.target.closest('.tok'); if (t) select(+t.dataset.p); });
+$('strip').addEventListener('pointermove', ev => {
+  const t = ev.target.closest('.tok'); if (!t) return tip(null);
+  const e = E(), p = +t.dataset.p, L = lens(e), d = state.depth;
+  tip('<b>' + esc(show(e.tokens[p].piece)) + '</b>  position ' + p + ' · id ' + e.tokens[p].id + '\nnorm at ' + esc(e.depths[d]) + ' ' + e.residual_norm[d][p].toFixed(2) +
+    (L ? '\nP(next opens a label) ' + Math.exp(L.mass_logprob[d][p]).toFixed(4) : ''), ev.clientX, ev.clientY);
+});
+$('strip').addEventListener('pointerleave', () => tip(null));
+$('strip').addEventListener('keydown', ev => {
+  const step = {ArrowRight: 1, ArrowLeft: -1}[ev.key]; if (!step) return;
+  ev.preventDefault(); select(Math.max(0, Math.min(E().tokens.length - 1, state.sel + step)));
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+new MutationObserver(render).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+useExam(0);
+</script>
