@@ -20,7 +20,7 @@
 //!   immediately after the closing brace. The reasoning region the model
 //!   expects is supplied *already closed* by the prompt instead
 //!   (`adjudicator::Reasoning`), which is what keeps the object's first byte
-//!   from being a token the model scores 17 to 22 nats below its own choice.
+//!   from being a token the model scores 17.8 to 21.8 nats below its own choice.
 //! - **Key order is the schema's `required` order** and is load-bearing
 //!   (`docs/field-requests.md` decision 2: reading `severity` with no fields
 //!   in front of it reproduced 17/40 severe rows; after the scaffold fields,

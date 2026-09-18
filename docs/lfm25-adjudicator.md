@@ -125,7 +125,10 @@ the adjudicator. Each generation response includes:
   weight formats, and decoding-policy identifiers.
 - `report`: the validated report object, or `null`.
 - `report_error`: an explicit validation/truncation error, or `null`.
-- `output`: original generated text, including reasoning delimiters.
+- `output`: the generated text, unmodified. Under `reasoning: "closed"`
+  that is the report and nothing else — the reasoning region is in the prompt,
+  and a reasoning delimiter reaching this field would mean something went
+  wrong, which `validate_report` reports rather than strips.
 - `finish_reason`: `stop` or `length`; token counts and queue/prefill/decode
   durations. Prefill timing synchronizes the device before stopping the clock.
 
@@ -175,8 +178,9 @@ Decoding is deterministic greedy with a sign-aware repetition penalty of
 evaluation's continuation. `--adjudicator-repeat-penalty 1.0` disables it.
 The [model card](https://huggingface.co/LiquidAI/LFM2.5-8B-A1B) recommends
 1.05 along with stochastic sampling; our deterministic policy is recorded
-explicitly in each response. The model reasons before answering, so 512 or
-1024 output tokens often truncate the report.
+explicitly in each response. Under `reasoning: "closed"` the model does not reason before answering, so
+the report is the whole completion and a few hundred output tokens is ample;
+under `"open"` it reasons first and 512 or 1024 often truncate the report.
 
 ### Distributions
 
@@ -316,8 +320,10 @@ additional checks. Review is supporting evidence, not a substitute for tests.
 - Broader adjudication cases and explanation grading. The reset case can
   name the correct severity while incorrectly claiming discarded uncommitted
   work is recoverable. Schema validation cannot catch that.
-- Shorter reasoning and grammar-constrained final JSON; latency is currently
-  dominated by autoregressive reasoning, not prefix prefill.
+- ~~Shorter reasoning and grammar-constrained final JSON~~ — done. The JSON
+  is grammar-constrained, and `reasoning: "closed"` removes the reasoning pass
+  outright for schema-bearing prompts. Latency is now the report's own tokens.
+  Still open for `"open"`, which is not built alongside a schema.
 - An append-efficient KV allocator and less GQA materialization; grouped
   quantized MoE prefill is implemented.
 - Wider fixed-token reference comparisons, including the native-tool prompt.

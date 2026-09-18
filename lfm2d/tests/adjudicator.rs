@@ -549,17 +549,34 @@ fn the_assistant_turn_opens_with_a_finished_reasoning_region() {
 }
 
 #[test]
-fn every_shipped_prompt_defaults_to_a_closed_reasoning_region() {
+fn every_schema_bearing_prompt_closes_the_reasoning_region() {
     for file in [
         include_str!("../prompts/shell-severity-json-v1.json"),
-        include_str!("../prompts/shell-severity-v1.json"),
         include_str!("../prompts/command-verdict-enum-v1.json"),
         include_str!("../prompts/command-verdict-text-v1.json"),
     ] {
         let p: PromptSpec = serde_json::from_str(file).unwrap();
+        assert!(p.output_schema.is_some());
         assert_eq!(p.reasoning, Reasoning::Closed);
         assert!(p.render_user_turn("x").ends_with("<think>\n\n</think>\n"));
     }
+}
+
+#[test]
+fn the_tool_prompt_keeps_reasoning_open_because_nothing_masks_it() {
+    // The default is `closed`, and the measurement behind it is about the
+    // grammar's first legal byte. The tool prompt has no `output_schema`, so
+    // nothing masks its first token and the measurement says nothing about it.
+    // It states `open` rather than inheriting a default it was never measured
+    // under, which also keeps it rendering what v1 rendered.
+    let p: PromptSpec =
+        serde_json::from_str(include_str!("../prompts/shell-severity-v1.json")).unwrap();
+    assert!(p.output_schema.is_none() && !p.tools.is_empty());
+    assert_eq!(p.reasoning, Reasoning::Open);
+    assert_eq!(
+        p.render_user_turn("ls -l"),
+        "<|im_start|>user\nls -l<|im_end|>\n<|im_start|>assistant\n"
+    );
 }
 
 #[test]
@@ -587,10 +604,10 @@ fn open_reasoning_under_a_schema_is_refused_rather_than_rendered() {
 fn a_prefill_cannot_open_a_reasoning_region_the_spec_already_closed() {
     let mut p: PromptSpec =
         serde_json::from_str(include_str!("../prompts/command-verdict-enum-v1.json")).unwrap();
-    let error = p
-        .render_user_turn_with_prefill("ls", "<think>the facts</think>")
-        .unwrap_err();
-    assert!(error.contains("already closes"), "{error}");
+    for prefill in ["<think>the facts</think>", "<think>", "the facts</think>"] {
+        let error = p.render_user_turn_with_prefill("ls", prefill).unwrap_err();
+        assert!(error.contains("already closes"), "{prefill:?}: {error}");
+    }
     assert_eq!(
         p.render_user_turn_with_prefill("ls", "{\"effect\": ").unwrap(),
         "<|im_start|>user\nls<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n{\"effect\": "

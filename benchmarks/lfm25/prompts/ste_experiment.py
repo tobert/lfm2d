@@ -68,7 +68,11 @@ REAL = ['informative', 'situation-normal', 'data-critical', 'undecidable']
 # A first cut of this file replaced that with one English sentence, and the
 # supposed p0 control collapsed to always-informative (419/733, dc 0/76). Those
 # 754 characters are load-bearing, so every arm now carries its own serialised
-# schema, exactly the way PromptSpec::render_prefix builds it.
+# schema. It is NOT rendered the way PromptSpec::render_prefix renders it, and
+# the constants below are frozen at what the campaign actually ran: these arms
+# state `properties` in the dict's order, which was already `required` order,
+# so they never had the daemon's sorted-key defect (fixed 2026-09-18). The
+# authoritative mirror of render_prefix is tests/reference/dump_json_prefix.py.
 def schema_line(sch):
     return ('\nReturn exactly one JSON object matching this schema: '
             + json.dumps(sch, separators=(',', ':')))

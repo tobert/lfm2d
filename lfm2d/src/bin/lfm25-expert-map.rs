@@ -82,6 +82,11 @@ fn run(args: Args) -> Result<(), String> {
         ("weights", &weights),
         ("tokenizer", &tokenizer_hash),
         ("prefix", &sha256_hex_bytes(prefix.as_bytes())),
+        // The reasoning opening lives in the USER turn, not the prefix, so a
+        // spec that flips `reasoning` renders every probe differently while
+        // `prefix` is byte-identical. Without this the cache would serve a map
+        // built from the other mode.
+        ("template", spec.template_version()),
         ("backend", backend.as_str()),
         ("probes", &probes_hash),
         ("follow", &args.follow.join(",")),
@@ -139,6 +144,7 @@ fn run(args: Args) -> Result<(), String> {
             "tokenizer_hash": tokenizer_hash,
             "prompt": args.prompt.file_name().and_then(|n| n.to_str()),
             "prefix_sha256": sha256_hex_bytes(prefix.as_bytes()),
+            "template_version": spec.template_version(),
             "backend": backend.as_str(),
             "probes_sha256": probes_hash,
         },

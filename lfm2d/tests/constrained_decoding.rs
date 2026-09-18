@@ -428,7 +428,16 @@ fn real_vocabulary_masks_control_tokens_and_still_admits_every_step() {
         "a byte-level BPE vocabulary must cover all 256 bytes: {:?}",
         vocabulary.uncovered_bytes()
     );
-    for control in ["<|startoftext|>", "<|im_start|>", "<|im_end|>"] {
+    // The reasoning delimiters belong in this list: `adjudicator` supplies the
+    // region already closed in the PROMPT, so one appearing in a completion
+    // would mean the mask let it through.
+    for control in [
+        "<|startoftext|>",
+        "<|im_start|>",
+        "<|im_end|>",
+        "<think>",
+        "</think>",
+    ] {
         let id = tokenizer.token_to_id(control).unwrap();
         assert!(
             vocabulary.expansion(id).is_none(),

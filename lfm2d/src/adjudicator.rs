@@ -57,8 +57,8 @@ pub struct PromptSpec {
 /// model writes, and after `<|im_start|>assistant\n` it writes it at p=1.00.
 /// Under an `output_schema` the grammar's first legal byte is the object's, so
 /// the model was masked off its own manifold at step 0 — the forced `{"` scored
-/// logprob -20.5 and every later token was conditioned on a prefix the model
-/// considers impossible.
+/// logprob -17.8 to -21.8, and every later token was conditioned on a prefix
+/// the model considers impossible.
 ///
 /// `Closed` prefills the region already finished, so generation begins where the
 /// report begins. The bytes are `<think>\n\n</think>\n` and they were measured,
@@ -174,19 +174,26 @@ impl PromptSpec {
     }
 
     /// The user turn continued by text the assistant has already written, for
-    /// the examination tools that stand at an answer slot. A prefill that opens
-    /// a reasoning region a `closed` spec has already closed would render
-    /// `<think></think><think>...`, which is not a prompt anyone meant to
-    /// examine, so it is refused rather than quietly rendered.
+    /// the examination tools that stand at an answer slot. A prefill carrying
+    /// reasoning delimiters would render a second region beside the one a
+    /// `closed` spec has already written — `<think>\n\n</think>\n<think>...`
+    /// — which is not a prompt anyone meant to examine, so it is refused
+    /// rather than quietly rendered. Both delimiters are refused: a bare
+    /// `</think>` closes a region that is already closed.
+    ///
+    /// The remedy is exact text, not `reasoning: "open"`, which is refused
+    /// alongside an `output_schema` and so is unavailable for exactly the
+    /// schema-bearing prompts these tools mostly examine.
     pub fn render_user_turn_with_prefill(
         &self,
         input: &str,
         prefill: &str,
     ) -> Result<String, String> {
-        if self.reasoning == Reasoning::Closed && prefill.contains("<think>") {
+        let reasoning_delimiter = prefill.contains("<think>") || prefill.contains("</think>");
+        if self.reasoning == Reasoning::Closed && reasoning_delimiter {
             return Err(
-                "this prompt spec already closes a reasoning region, so a prefill cannot open \
-                 one: use exact text, or a spec with \"reasoning\": \"open\""
+                "this prompt spec already closes a reasoning region, so a prefill cannot carry \
+                 reasoning delimiters: supply the whole prompt as exact text instead"
                     .into(),
             );
         }
@@ -733,7 +740,8 @@ impl Generator for Adjudicator {
             }
         }
         check()?;
-        // Keep reasoning/tool delimiters; remove only the terminating im_end.
+        // Nothing is stripped but the terminating im_end: tool delimiters, and
+        // anything else the model wrote, reach `output` as generated.
         let content = if generated.last() == Some(&self.eos) {
             &generated[..generated.len() - 1]
         } else {
@@ -955,9 +963,12 @@ impl<'de> Deserialize<'de> for ReportObject {
 /// coercions are never accepted.
 ///
 /// This used to strip a leading `<think>...</think>`. That branch was
-/// unreachable — `<think>` is an added token, so `constrain::Vocabulary` masks
-/// it unconditionally, and this function only runs under an `output_schema`,
-/// which is the same condition that compiles the grammar. The reasoning region
+/// unreachable by construction: this function only runs under an
+/// `output_schema`, which is the same expression that compiles the grammar, and
+/// the grammar's first legal byte is the object's `{`. (`<think>` is also an
+/// added token, which `constrain::Vocabulary` masks unconditionally — but that
+/// is the weaker argument, since it would still be admissible inside a string
+/// value.) The reasoning region
 /// the model expects is supplied already closed by the prompt instead
 /// ([`Reasoning`]), so a completion that still carried one would be something
 /// gone wrong, and is now reported rather than quietly stripped.
