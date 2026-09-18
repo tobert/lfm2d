@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use candle_core::{Device, Tensor};
-use lfm2d::adjudicator::validate_report;
+use lfm2d::adjudicator::{Reasoning, validate_report};
 use lfm2d::constrain::{Decoder, Program, Vocabulary};
 use serde_json::{Value, json};
 
@@ -357,6 +357,7 @@ fn a_schema_validate_schema_accepts_but_the_grammar_cannot_is_a_loud_error() {
         lfm2d::adjudicator::PromptSpec {
             system: "judge".into(),
             tools: vec![],
+        reasoning: Reasoning::default(),
             output_schema: Some(schema.clone()),
         }
         .render_prefix()

@@ -1,10 +1,11 @@
-use lfm2d::adjudicator::PromptSpec;
+use lfm2d::adjudicator::{PromptSpec, Reasoning};
 #[test]
 fn prefix_matches_checkpoint_single_turn_template() {
     let p = PromptSpec {
         system: "Judge the stated facts.".into(),
         output_schema: None,
         tools: vec![],
+        reasoning: Reasoning::default(),
     };
     assert_eq!(
         p.render_prefix().unwrap(),
@@ -17,6 +18,7 @@ fn tool_schema_is_part_of_the_frozen_system_prompt() {
         system: "Judge.".into(),
         output_schema: None,
         tools: vec![serde_json::json!({"type":"function","function":{"name":"report_analysis"}})],
+        reasoning: Reasoning::default(),
     };
     let rendered = p.render_prefix().unwrap();
     assert!(rendered.contains("Judge.\nList of tools: [{"));
@@ -30,7 +32,8 @@ fn empty_or_forged_message_boundary_is_rejected() {
             PromptSpec {
                 system: s.into(),
                 output_schema: None,
-                tools: vec![]
+                tools: vec![],
+                reasoning: Reasoning::default(),
             }
             .render_prefix()
             .is_err()
@@ -262,19 +265,18 @@ fn reports_require_complete_json_with_exact_schema() {
     let schema = serde_json::json!({"type":"object","properties":{"severity":{"type":"string","enum":["informative","data-critical"]},"requires_approval":{"type":"boolean"}},"required":["severity","requires_approval"],"additionalProperties":false});
     let good = r#"{"severity":"informative","requires_approval":false}"#;
     assert!(validate_report(good, &schema, "stop").is_ok());
-    assert!(
-        validate_report(
-            &format!("<think>reasoning</think>\n{good}"),
-            &schema,
-            "stop"
-        )
-        .is_ok()
-    );
     for output in [
         r#"{"severity":"unknown","requires_approval":false}"#,
         r#"{"severity":"informative","requires_approval":"false"}"#,
         r#"{"severity":"informative"}"#,
         r#"{"severity":"informative","requires_approval":false,"extra":1}"#,
+        // The whole completion is the report. A reasoning region cannot reach
+        // here: `<think>` is an added token, so `constrain::Vocabulary` masks
+        // it unconditionally, and this function only runs under a schema, which
+        // is the same condition that compiles the grammar. It used to be
+        // stripped, which meant a completion that somehow carried one was
+        // quietly accepted instead of reported.
+        &format!("<think>reasoning</think>\n{good}"),
         "<think>unfinished",
         "[]",
         "```json\n{}\n```",
@@ -478,4 +480,127 @@ fn adjudicator_configuration_requires_complete_compatible_inputs() {
                 .is_err()
         );
     }
+}
+
+#[test]
+fn the_stated_schema_lists_fields_in_the_order_the_grammar_enforces() {
+    // `serde_json::Value` is a `BTreeMap`, so the default rendering sorts every
+    // object's keys while the grammar emits `required` order. The prompt stated
+    // one order and the mask then forced another: measured on LFM2.5 at the
+    // second key slot, the model put 0.98 on `reason` and was forced to `scope`.
+    // Arrays already keep their order, which is why `required` was the only
+    // order that ever reached the grammar.
+    let p = PromptSpec {
+        system: "Judge.".into(),
+        output_schema: Some(serde_json::json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "effect": {"type": "string"},
+                "verdict": {"type": "string", "enum": ["allow", "ask"]},
+                "reason": {"type": "string"},
+            },
+            "required": ["effect", "verdict", "reason"],
+        })),
+        tools: vec![],
+        reasoning: Reasoning::default(),
+    };
+    let rendered = p.render_prefix().unwrap();
+    // The whole schema line, because its TOP-LEVEL order is load-bearing too:
+    // the model copies the stated schema's first key. Measured on ROCm over
+    // three inputs, `effect` at the first key slot: 0.36-0.58 with serde's
+    // sorted order (`additionalProperties` first, and it won one row of three),
+    // 0.62-0.76 with `type` first, 0.86-0.95 with the field list last. So
+    // `properties` is stated last, nearest the slot that copies it.
+    assert!(
+        rendered.contains(concat!(
+            r#"Return exactly one JSON object matching this schema: "#,
+            r#"{"type":"object","additionalProperties":false,"#,
+            r#""required":["effect","verdict","reason"],"#,
+            r#""properties":{"effect":{"type":"string"},"#,
+            r#""verdict":{"enum":["allow","ask"],"type":"string"},"#,
+            r#""reason":{"type":"string"}}}"#
+        )),
+        "{rendered}"
+    );
+}
+
+#[test]
+fn the_assistant_turn_opens_with_a_finished_reasoning_region() {
+    // The checkpoint's template never emits one -- `<think>` is a token the
+    // model writes, and after `<|im_start|>assistant\n` it writes it at p=1.00.
+    // Under the grammar the first legal byte is the object's, so step 0 forced
+    // `{"` at logprob -20.5 and every later token was conditioned on a prefix
+    // the model considers impossible. `closed` prefills the region already
+    // finished. The bytes were measured, not derived: with them the model puts
+    // `{"` first at p 0.42-0.71, where the template's own dialect for a
+    // completed region leaves it at rank 5. See `Reasoning`.
+    let p = PromptSpec {
+        system: "Judge.".into(),
+        output_schema: None,
+        tools: vec![],
+        reasoning: Reasoning::Closed,
+    };
+    assert_eq!(
+        p.render_user_turn("ls -l"),
+        "<|im_start|>user\nls -l<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    );
+    assert_eq!(p.template_version(), "lfm25-single-user-v2-closed");
+}
+
+#[test]
+fn every_shipped_prompt_defaults_to_a_closed_reasoning_region() {
+    for file in [
+        include_str!("../prompts/shell-severity-json-v1.json"),
+        include_str!("../prompts/shell-severity-v1.json"),
+        include_str!("../prompts/command-verdict-enum-v1.json"),
+        include_str!("../prompts/command-verdict-text-v1.json"),
+    ] {
+        let p: PromptSpec = serde_json::from_str(file).unwrap();
+        assert_eq!(p.reasoning, Reasoning::Closed);
+        assert!(p.render_user_turn("x").ends_with("<think>\n\n</think>\n"));
+    }
+}
+
+#[test]
+fn open_reasoning_under_a_schema_is_refused_rather_than_rendered() {
+    // The axis is named so a prompt can carry the decision; the mode is not
+    // built, because the grammar would have to admit a region it cannot bound
+    // and then start the object after `</think>`.
+    let mut p: PromptSpec =
+        serde_json::from_str(include_str!("../prompts/command-verdict-enum-v1.json")).unwrap();
+    p.reasoning = Reasoning::Open;
+    let error = p.render_prefix().unwrap_err();
+    assert!(error.contains("not built"), "{error}");
+    // Without a schema it is free generation with reasoning, which is what the
+    // v1 template did for every prompt.
+    p.output_schema = None;
+    assert!(p.render_prefix().is_ok());
+    assert_eq!(
+        p.render_user_turn("ls -l"),
+        "<|im_start|>user\nls -l<|im_end|>\n<|im_start|>assistant\n"
+    );
+    assert_eq!(p.template_version(), "lfm25-single-user-v2-open");
+}
+
+#[test]
+fn a_prefill_cannot_open_a_reasoning_region_the_spec_already_closed() {
+    let mut p: PromptSpec =
+        serde_json::from_str(include_str!("../prompts/command-verdict-enum-v1.json")).unwrap();
+    let error = p
+        .render_user_turn_with_prefill("ls", "<think>the facts</think>")
+        .unwrap_err();
+    assert!(error.contains("already closes"), "{error}");
+    assert_eq!(
+        p.render_user_turn_with_prefill("ls", "{\"effect\": ").unwrap(),
+        "<|im_start|>user\nls<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n{\"effect\": "
+    );
+    // `open` is how an examination puts its own reasoning in that region.
+    p.output_schema = None;
+    p.reasoning = Reasoning::Open;
+    assert_eq!(
+        p.render_user_turn_with_prefill("ls", "<think>the facts</think>")
+            .unwrap(),
+        "<|im_start|>user\nls<|im_end|>\n<|im_start|>assistant\n<think>the facts</think>"
+    );
 }

@@ -70,6 +70,46 @@ single-system/single-user text format. Literal model control delimiters in
 input are rejected. Tool definitions remain available as a comparison mode;
 the initial report contract uses `output_schema`.
 
+### The reasoning region
+
+A prompt spec's `reasoning` field says whether the assistant's turn opens with
+a *completed* reasoning region. It defaults to `closed`, which prefills
+`<think>\n\n</think>\n`.
+
+The checkpoint's chat template never emits a reasoning region — `<think>` is a
+token the model writes, and after `<|im_start|>assistant\n` it writes it at
+p=1.00. Under an `output_schema` the grammar's first legal byte is the object's,
+so the v1 template masked the model off its own manifold at step 0: the forced
+`{"` scored logprob -17.8 to -21.8 and every later token was conditioned on a
+prefix the model considers impossible.
+
+The prefill's exact bytes were measured on our ROCm stack, five candidates over
+three inputs, reading `{"`'s standing at that slot:
+
+| after `<|im_start|>assistant\n` | `{"` |
+|---|---|
+| nothing (the v1 template) | logprob -17.8 to -21.8, rank 6 or worse |
+| `<think></think>` | rank 5 |
+| `<think></think>\n` | rank 2-3 |
+| `<think>\n</think>\n` | rank 2 |
+| `<think>\n\n</think>\n` | **rank 1, p 0.42-0.71** |
+
+The template's own dialect for a completed region — `"<think>" + thinking +
+"</think>"`, no surrounding newlines — is the one in the table that does worst
+of the four, so the bytes are measured rather than derived. A second round
+varied one newline at a time and every neighbour was worse.
+
+`reasoning: "open"` leaves the turn as the template opens it and the model
+reasons. Combined with an `output_schema` it is refused at load: the grammar
+would have to admit a free-text region it cannot bound and then start the
+object after `</think>`, which is not built. The one measurement we have says
+this model's reasoning argues severity *down*, so it is a decision rather than
+a default.
+
+`template_version` carries the mode (`lfm25-single-user-v2-closed`), and the
+prefix `snapshot_id` is computed from it, so a consumer sees the template
+change rather than inferring it.
+
 ```bash
 curl --fail-with-body 'http://127.0.0.1:18152/v1/adjudicate' \
   -H 'Content-Type: application/json' \
@@ -104,12 +144,18 @@ The supported schema is deliberately small: one closed object with all fields
 required, string/boolean field types, and optional enums. Strings must be
 nonempty. Unsupported schema constraints, duplicate fields, unknown fields,
 coercions, Markdown fences, trailing prose, and truncated output are rejected.
-`validate_report` still tolerates a completed `<think>...</think>` section
-before the object, but the grammar does not emit one: under `output_schema` the
-whole completion is the document, keys come out in the schema's `required`
-order, separators are spaced the way the model writes them (`": "` and
-`", "`; compact ones corrupted 15 of 16 reports), and `\uXXXX` escapes are not admitted (every
-character they can spell is reachable literally as UTF-8). A schema
+Under `output_schema` the
+whole completion is the document — a reasoning region before the object is
+rejected, not stripped, because the region the model expects is supplied
+already closed by the prompt (see above) and `<think>` is masked
+unconditionally, so one appearing in a completion means something went wrong.
+Keys come out in the schema's `required`
+order — and the schema **as stated in the system prompt** lists them in that
+same order, because `serde_json`'s sorted rendering used to state one order and
+then mask the model into another — separators are spaced the way the model
+writes them (`": "` and `", "`; compact ones corrupted 15 of 16 reports), and
+`\uXXXX` escapes are not admitted (every character they can spell is reachable
+literally as UTF-8). A schema
 `validate_schema` accepts but the grammar cannot honour — today, an `enum` with
 a blank string value, which no valid report could contain — is a loud error,
 never a silent fall-through to free generation. The grammar is compiled against

@@ -15,7 +15,7 @@
 //! probes file is the caller's and stays where the caller keeps it.
 
 use clap::Parser;
-use lfm2d::adjudicator::{Checkpoint, PromptSpec, render_user_turn, validate_text};
+use lfm2d::adjudicator::{Checkpoint, PromptSpec, validate_text};
 use lfm2d::expert_map::{ExpertMap, Probe, SCHEMA, expert_map};
 use lfm2d::hash::{sha256_hex_bytes, sha256_hex_file};
 use std::path::{Path, PathBuf};
@@ -114,7 +114,10 @@ fn run(args: Args) -> Result<(), String> {
         let at = |e: String| format!("{} line {}: {e}", args.probes.display(), n + 1);
         let row: ProbeLine = serde_json::from_str(line).map_err(|e| at(e.to_string()))?;
         validate_text(&row.input).map_err(at)?;
-        let text = format!("{prefix}{}{}", render_user_turn(&row.input), row.assistant_prefill);
+        let turn = spec
+            .render_user_turn_with_prefill(&row.input, &row.assistant_prefill)
+            .map_err(at)?;
+        let text = format!("{prefix}{turn}");
         probes.push(Probe { name: row.name, tokens: encode(&text).map_err(at)?, group: row.group });
     }
 

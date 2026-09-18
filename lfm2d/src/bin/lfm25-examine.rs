@@ -17,7 +17,7 @@
 //! same rule the harnesses in `benchmarks/lfm25/prompts/` follow.
 
 use clap::Parser;
-use lfm2d::adjudicator::{Checkpoint, PromptSpec, render_user_turn, validate_text};
+use lfm2d::adjudicator::{Checkpoint, PromptSpec, validate_text};
 use lfm2d::examine::{ExamineSpec, examine};
 use lfm2d::hash::sha256_hex_bytes;
 use std::collections::BTreeMap;
@@ -110,7 +110,11 @@ fn render(spec: &PromptSpec, input: &str, prefill: &str) -> Result<String, Strin
     // The daemon refuses this input, so its rendering of it does not exist to
     // be examined. Exact text goes through --text-file.
     validate_text(input)?;
-    Ok(format!("{}{}{prefill}", spec.render_prefix()?, render_user_turn(input)))
+    Ok(format!(
+        "{}{}",
+        spec.render_prefix()?,
+        spec.render_user_turn_with_prefill(input, prefill)?
+    ))
 }
 
 fn run(args: Args) -> Result<(), String> {

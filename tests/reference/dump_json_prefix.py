@@ -36,6 +36,9 @@ REPO = Path(__file__).resolve().parents[2]
 PROMPT = 'lfm2d/prompts/shell-severity-json-v1.json'
 FIXTURE = 'lfm2d/tests/fixtures/lfm25-json-prefix.txt'
 BOS = '<|startoftext|>'
+# Mirror of adjudicator::SCHEMA_KEYS.
+SCHEMA_KEYS = ['type', 'additionalProperties', 'title', 'description',
+               'required', 'properties']
 
 
 def system_message(spec):
@@ -50,15 +53,44 @@ def system_message(spec):
     if schema is not None:
         if spec.get('tools'):
             sys.exit('choose output_schema or tools, not both')
-        # serde_json::Value is backed by a BTreeMap unless the `preserve_order`
-        # feature is on, so Rust emits OBJECT keys sorted, recursively, whatever
-        # order the file uses. ARRAYS keep their order -- which is why
-        # `required` is what carries field order into the grammar and
-        # `properties` order in the file is inert. sort_keys mirrors that.
         system += ('\nReturn exactly one JSON object matching this schema: '
-                   + json.dumps(schema, separators=(',', ':'), ensure_ascii=False,
-                                sort_keys=True))
+                   + render_schema(schema))
     return system
+
+
+def render_schema(schema):
+    """Mirror of adjudicator::render_schema (adjudicator.rs).
+
+    serde_json::Value is backed by a BTreeMap unless the `preserve_order`
+    feature is on, so Rust emits OBJECT keys sorted, recursively, whatever order
+    the file uses. ARRAYS keep their order -- which is why `required` is what
+    carries field order into the grammar and `properties` order in the file is
+    inert. sort_keys mirrors that.
+
+    Neither the top level nor `properties` keeps that sorted order, and that is
+    the reason this function exists. The grammar emits fields in `required`
+    order, so the sorted rendering stated one order in the system prompt and
+    then masked the model into another. And the model copies the stated
+    schema's FIRST key into the report's first key slot, so the field list is
+    stated last, nearest the slot that copies it. Everything below `properties`
+    is still sorted, which is what `dump` mirrors.
+    """
+    dump = lambda v: json.dumps(v, separators=(',', ':'), ensure_ascii=False,
+                                sort_keys=True)
+    parts = []
+    for key in SCHEMA_KEYS:
+        if key not in schema:
+            continue
+        if key == 'properties':
+            props = schema['properties']
+            body = ','.join(dump(name) + ':' + dump(props[name])
+                            for name in schema['required'])
+            parts.append(dump(key) + ':{' + body + '}')
+        else:
+            parts.append(dump(key) + ':' + dump(schema[key]))
+    if len(parts) != len(schema):
+        sys.exit('unsupported output_schema keyword in %s' % sorted(schema))
+    return '{' + ','.join(parts) + '}'
 
 
 def template_from_props(url):

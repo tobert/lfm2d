@@ -36,7 +36,6 @@ pub(crate) const CHUNK: usize = 128;
 const EOS: u32 = 124900;
 const MAX_NEW: usize = 2048;
 const MAX_INPUT_BYTES: usize = 65536;
-const TEMPLATE_VERSION: &str = "lfm25-single-user-v1";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -46,6 +45,62 @@ pub struct PromptSpec {
     pub tools: Vec<serde_json::Value>,
     #[serde(default)]
     pub output_schema: Option<serde_json::Value>,
+    /// Whether the assistant's turn opens with a finished reasoning region.
+    /// Policy, so it lives with the prompt rather than in the renderer.
+    #[serde(default)]
+    pub reasoning: Reasoning,
+}
+
+/// Whether the assistant's turn opens with a *completed* reasoning region.
+///
+/// The checkpoint's chat template never emits one: `<think>` is a token the
+/// model writes, and after `<|im_start|>assistant\n` it writes it at p=1.00.
+/// Under an `output_schema` the grammar's first legal byte is the object's, so
+/// the model was masked off its own manifold at step 0 — the forced `{"` scored
+/// logprob -20.5 and every later token was conditioned on a prefix the model
+/// considers impossible.
+///
+/// `Closed` prefills the region already finished, so generation begins where the
+/// report begins. The bytes are `<think>\n\n</think>\n` and they were measured,
+/// not derived: the template's own dialect for a completed region
+/// (`"<think>" + thinking + "</think>"`, no surrounding newlines) leaves the
+/// model wanting a newline at p=0.97, and the grammar forces `{"` from rank 5.
+/// Five candidates over three inputs on ROCm, `{"`'s standing at the slot:
+///
+/// | after `<|im_start|>assistant\n` | `{"` |
+/// |---|---|
+/// | nothing (v1)          | logprob -17.8 to -21.8, rank 6 or worse |
+/// | `<think></think>`     | rank 5 |
+/// | `<think></think>\n`   | rank 2-3 |
+/// | `<think>\n</think>\n` | rank 2 |
+/// | `<think>\n\n</think>\n` | **rank 1, p 0.42-0.71** |
+///
+/// A second round varied one newline at a time (one more inside, one more
+/// after, none after) and every neighbour was worse, so this is a local
+/// optimum rather than the best of an arbitrary five.
+/// `~/exomemory/lfm2d/lfm25-think-prefill-2026-09-18/`.
+///
+/// `Open` leaves the turn as the template opens it and the model reasons. That
+/// is today's free-generation behaviour and is honest *without* a schema.
+/// Combined with one it is refused: the grammar would have to admit a free-text
+/// region it cannot bound and then start the object after `</think>`, which is
+/// not built. See `crate::constrain`'s first ruling, and the measurement that
+/// LFM2.5's reasoning argues severity *down*.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Reasoning {
+    #[default]
+    Closed,
+    Open,
+}
+impl Reasoning {
+    /// What the renderer writes after `<|im_start|>assistant\n`.
+    fn opening(self) -> &'static str {
+        match self {
+            Reasoning::Closed => "<think>\n\n</think>\n",
+            Reasoning::Open => "",
+        }
+    }
 }
 /// Prompt content carries no model control tokens; the renderer supplies them.
 pub fn validate_text(s: &str) -> Result<(), String> {
@@ -62,13 +117,20 @@ impl PromptSpec {
     /// schemas are part of the frozen system message, as in the GGUF template.
     pub fn render_prefix(&self) -> Result<String, String> {
         validate_text(&self.system)?;
+        if self.reasoning == Reasoning::Open && self.output_schema.is_some() {
+            return Err(
+                "reasoning \"open\" under an output_schema is not built: the grammar would have \
+                 to admit an unbounded reasoning region and start the object after </think>"
+                    .into(),
+            );
+        }
         let mut system = self.system.clone();
         if let Some(schema) = &self.output_schema {
             if !self.tools.is_empty() {
                 return Err("choose output_schema or tools, not both".into());
             }
             validate_schema(schema)?;
-            let schema = serde_json::to_string(schema).map_err(|e| e.to_string())?;
+            let schema = render_schema(schema)?;
             validate_text(&schema)?;
             system.push_str("\nReturn exactly one JSON object matching this schema: ");
             system.push_str(&schema);
@@ -91,14 +153,48 @@ impl PromptSpec {
             "<|startoftext|><|im_start|>system\n{system}<|im_end|>\n"
         ))
     }
+
+    /// The single user turn and the opening of the assistant's, appended to
+    /// [`PromptSpec::render_prefix`]. One definition, so anything examining a
+    /// prompt renders exactly what the daemon runs.
+    pub fn render_user_turn(&self, input: &str) -> String {
+        let opening = self.reasoning.opening();
+        format!("<|im_start|>user\n{input}<|im_end|>\n<|im_start|>assistant\n{opening}")
+    }
+
+    /// The rendered template is different bytes per [`Reasoning`] mode, so the
+    /// mode is part of the version a consumer reads from `/v1/adjudicator`,
+    /// and part of the prefix snapshot's identity. v1 was `closed`'s bytes
+    /// without the reasoning region.
+    pub fn template_version(&self) -> &'static str {
+        match self.reasoning {
+            Reasoning::Closed => "lfm25-single-user-v2-closed",
+            Reasoning::Open => "lfm25-single-user-v2-open",
+        }
+    }
+
+    /// The user turn continued by text the assistant has already written, for
+    /// the examination tools that stand at an answer slot. A prefill that opens
+    /// a reasoning region a `closed` spec has already closed would render
+    /// `<think></think><think>...`, which is not a prompt anyone meant to
+    /// examine, so it is refused rather than quietly rendered.
+    pub fn render_user_turn_with_prefill(
+        &self,
+        input: &str,
+        prefill: &str,
+    ) -> Result<String, String> {
+        if self.reasoning == Reasoning::Closed && prefill.contains("<think>") {
+            return Err(
+                "this prompt spec already closes a reasoning region, so a prefill cannot open \
+                 one: use exact text, or a spec with \"reasoning\": \"open\""
+                    .into(),
+            );
+        }
+        Ok(format!("{}{prefill}", self.render_user_turn(input)))
+    }
 }
 
-/// The single user turn and the opening of the assistant's, appended to
-/// [`PromptSpec::render_prefix`]. One definition, so anything examining a
-/// prompt renders exactly what the daemon runs.
-pub fn render_user_turn(input: &str) -> String {
-    format!("<|im_start|>user\n{input}<|im_end|>\n<|im_start|>assistant\n")
-}
+
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -410,8 +506,10 @@ pub struct Adjudicator {
     prefix_text: String,
     eos: u32,
     info: PrefixInfo,
-    output_schema: Option<serde_json::Value>,
-    /// `output_schema` compiled against this tokenizer, once, at load.
+    /// The spec as loaded: it renders every user turn, so the reasoning mode
+    /// and the schema cannot drift apart from what the prefix was built from.
+    prompt: PromptSpec,
+    /// `prompt.output_schema` compiled against this tokenizer, once, at load.
     grammar: Option<std::sync::Arc<crate::constrain::Grammar>>,
     repeat_penalty: f32,
 }
@@ -484,8 +582,9 @@ impl Adjudicator {
         )
         .map_err(|e| e.to_string())?;
         execution.device.synchronize().map_err(|e| e.to_string())?;
+        let template_version = prompt.template_version();
         let identity = serde_json::json!([
-            TEMPLATE_VERSION,
+            template_version,
             weight_hash,
             tokenizer_hash,
             prefix_ids,
@@ -498,7 +597,7 @@ impl Adjudicator {
             model_id,
             weight_hash,
             tokenizer_hash,
-            template_version: TEMPLATE_VERSION.into(),
+            template_version: template_version.into(),
             snapshot_id,
             prefix_tokens: prefix_ids.len(),
             input_cache_capacity: 1,
@@ -522,7 +621,7 @@ impl Adjudicator {
             prefix_text,
             eos: EOS,
             info,
-            output_schema: prompt.output_schema,
+            prompt,
             grammar,
             repeat_penalty: cli.adjudicator_repeat_penalty,
         })
@@ -550,7 +649,7 @@ impl Generator for Adjudicator {
         if let Some(d) = &request.distributions {
             d.validate_vocab(self.model.vocab_size())
                 .map_err(Failure::BadRequest)?;
-            if d.constrained && self.output_schema.is_none() {
+            if d.constrained && self.prompt.output_schema.is_none() {
                 return Err(Failure::BadRequest(
                     "distributions.constrained needs an output schema; this adjudicator has none"
                         .into(),
@@ -558,7 +657,7 @@ impl Generator for Adjudicator {
             }
         }
         check()?;
-        let suffix = render_user_turn(&request.input);
+        let suffix = self.prompt.render_user_turn(&request.input);
         let full = self
             .tokenizer
             .encode(format!("{}{suffix}", self.prefix_text), false)
@@ -644,7 +743,7 @@ impl Generator for Adjudicator {
             .tokenizer
             .decode(content, false)
             .map_err(|e| Failure::Internal(e.to_string()))?;
-        let (report, report_error) = match &self.output_schema {
+        let (report, report_error) = match &self.prompt.output_schema {
             None => (None, None),
             Some(schema) => match validate_report(&output, schema, finish_reason) {
                 Ok(report) => (Some(report), None),
@@ -670,6 +769,96 @@ impl Generator for Adjudicator {
 
 /// Supported output schema: a closed object of required string/boolean fields.
 /// Refuse unsupported constraints rather than pretending to enforce JSON Schema.
+/// The schema's top-level keys, in the order the system prompt states them.
+///
+/// The model copies the stated schema's FIRST key into the report's first key
+/// slot. Measured on ROCm over three inputs, `effect`'s probability there:
+/// 0.36-0.58 under `serde_json`'s sorted order, where `additionalProperties`
+/// comes first and won one row of three; 0.62-0.76 with `type` first; 0.86-0.95
+/// with `properties` last. So the field list is stated last, nearest the slot
+/// that copies it, and `properties` is also the only key whose own order
+/// matters. `~/exomemory/lfm2d/lfm25-think-prefill-2026-09-18/toplevel-*`.
+const SCHEMA_KEYS: [&str; 6] = [
+    "type",
+    "additionalProperties",
+    "title",
+    "description",
+    "required",
+    "properties",
+];
+
+/// Serialize the output schema in [`SCHEMA_KEYS`] order, `properties` in
+/// `required` order.
+///
+/// `serde_json::Value` is backed by a `BTreeMap`, so the default rendering
+/// sorts every object's keys, and arrays keep theirs — which is why `required`
+/// was the only order that ever reached `crate::constrain`. The grammar emits
+/// fields in `required` order, so the sorted rendering stated one order in the
+/// system prompt and then masked the model into another: measured on LFM2.5 at
+/// the second key slot, the model put 0.98 on `reason` and was forced to
+/// `scope`.
+///
+/// Call it after `validate_schema`, which is what guarantees `required` and
+/// `properties` name the same set and that no key falls outside
+/// [`SCHEMA_KEYS`]. A schema that slipped past it is refused rather than
+/// rendered with a key silently dropped.
+fn render_schema(schema: &serde_json::Value) -> Result<String, String> {
+    let object = schema
+        .as_object()
+        .ok_or("output_schema must be an object")?;
+    let order = object
+        .get("required")
+        .and_then(|r| r.as_array())
+        .ok_or("missing required field list")?
+        .iter()
+        .map(|name| name.as_str().ok_or("required field names must be strings"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut out = String::from("{");
+    let mut written = 0;
+    for key in SCHEMA_KEYS {
+        let Some(value) = object.get(key) else {
+            continue;
+        };
+        if written > 0 {
+            out.push(',');
+        }
+        written += 1;
+        out.push_str(&serde_json::to_string(key).map_err(|e| e.to_string())?);
+        out.push(':');
+        if key == "properties" {
+            out.push_str(&render_properties(value, &order)?);
+        } else {
+            out.push_str(&serde_json::to_string(value).map_err(|e| e.to_string())?);
+        }
+    }
+    if written != object.len() {
+        return Err("unsupported output_schema keyword".into());
+    }
+    out.push('}');
+    Ok(out)
+}
+fn render_properties(properties: &serde_json::Value, order: &[&str]) -> Result<String, String> {
+    let properties = properties
+        .as_object()
+        .ok_or("missing schema properties")?;
+    if properties.len() != order.len() {
+        return Err("every property must be required exactly once".into());
+    }
+    let mut out = String::from("{");
+    for (i, name) in order.iter().enumerate() {
+        let spec = properties
+            .get(*name)
+            .ok_or("required names a property that does not exist")?;
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&serde_json::to_string(name).map_err(|e| e.to_string())?);
+        out.push(':');
+        out.push_str(&serde_json::to_string(spec).map_err(|e| e.to_string())?);
+    }
+    out.push('}');
+    Ok(out)
+}
 fn validate_schema(schema: &serde_json::Value) -> Result<(), String> {
     let object = schema
         .as_object()
@@ -761,8 +950,17 @@ impl<'de> Deserialize<'de> for ReportObject {
         de.deserialize_map(Visitor)
     }
 }
-/// Validate a completed report. Reasoning may precede the JSON; fences, trailing
-/// prose, duplicate fields, truncated output, and coercions are never accepted.
+/// Validate a completed report. The whole completion is the document: reasoning
+/// regions, fences, trailing prose, duplicate fields, truncated output, and
+/// coercions are never accepted.
+///
+/// This used to strip a leading `<think>...</think>`. That branch was
+/// unreachable — `<think>` is an added token, so `constrain::Vocabulary` masks
+/// it unconditionally, and this function only runs under an `output_schema`,
+/// which is the same condition that compiles the grammar. The reasoning region
+/// the model expects is supplied already closed by the prompt instead
+/// ([`Reasoning`]), so a completion that still carried one would be something
+/// gone wrong, and is now reported rather than quietly stripped.
 pub fn validate_report(
     output: &str,
     schema: &serde_json::Value,
@@ -772,16 +970,8 @@ pub fn validate_report(
     if finish != "stop" {
         return Err("generation was truncated; no report returned".into());
     }
-    let body = if let Some(thinking) = output.strip_prefix("<think>") {
-        thinking
-            .split_once("</think>")
-            .ok_or("unterminated reasoning")?
-            .1
-    } else {
-        output
-    };
     let ReportObject(report) =
-        serde_json::from_str(body.trim()).map_err(|e| format!("invalid report JSON: {e}"))?;
+        serde_json::from_str(output.trim()).map_err(|e| format!("invalid report JSON: {e}"))?;
     let properties = schema["properties"]
         .as_object()
         .ok_or("invalid report schema")?;

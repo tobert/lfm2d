@@ -13,15 +13,20 @@
 //! # Scope, stated as rulings rather than left implicit
 //!
 //! - **The whole completion is the JSON document.** No `<think>` preamble, no
-//!   fences, no trailing prose. `validate_report` tolerates a completed
-//!   `<think>...</think>` section; a grammar that admits a free-text region
-//!   admits a region we cannot bound, and the one measurement we have says
-//!   LFM2.5's reasoning argues severity *down*. So: object first byte, EOS
-//!   immediately after the closing brace.
+//!   fences, no trailing prose; `validate_report` rejects all three. A grammar
+//!   that admits a free-text region admits one we cannot bound, and the one
+//!   measurement we have says LFM2.5's reasoning argues severity *down*.
+//!   So: object first byte, EOS
+//!   immediately after the closing brace. The reasoning region the model
+//!   expects is supplied *already closed* by the prompt instead
+//!   (`adjudicator::Reasoning`), which is what keeps the object's first byte
+//!   from being a token the model scores 17 to 22 nats below its own choice.
 //! - **Key order is the schema's `required` order** and is load-bearing
 //!   (`docs/field-requests.md` decision 2: reading `severity` with no fields
 //!   in front of it reproduced 17/40 severe rows; after the scaffold fields,
-//!   40/40). `properties` map order is ignored.
+//!   40/40). `properties` map order is ignored, and the system prompt states
+//!   the schema in that same `required` order — `adjudicator::render_schema`,
+//!   because stating one order and masking into another cost a forced step.
 //! - **Spaced separators, fixed.** `{"a": "x", "b": true}` — one space after
 //!   `:` and after `,`, nowhere else, matching the model's own canonical JSON
 //!   style. Measured against LFM2.5-8B under the earlier compact ruling
