@@ -534,6 +534,12 @@ impl Generator for Adjudicator {
         if let Some(d) = &request.distributions {
             d.validate_vocab(self.model.vocab_size())
                 .map_err(Failure::BadRequest)?;
+            if d.constrained && self.output_schema.is_none() {
+                return Err(Failure::BadRequest(
+                    "distributions.constrained needs an output schema; this adjudicator has none"
+                        .into(),
+                ));
+            }
         }
         check()?;
         let suffix = render_user_turn(&request.input);
@@ -566,10 +572,9 @@ impl Generator for Adjudicator {
         // against a compiled JSON grammar before every greedy selection, so an
         // invalid report is unreachable rather than merely detected afterwards
         // by `validate_report`. Without a schema it is `GreedySampler` itself.
-        // See `crate::constrain` for the grammar's scope and rulings. It never
-        // mutates `logits`: the mask is combined into a separate tensor, so
-        // `logits` at the `sample` call below is still the raw model
-        // distribution for anything that wants to read mass out of it.
+        // See `crate::constrain` for the grammar's scope and rulings. The mask
+        // lives inside the decoder and never touches `logits`; the loop below
+        // goes through `Decoder::step`, which records from the raw logits.
         let mut sampler = crate::constrain::Decoder::new(
             self.output_schema.as_ref(),
             &self.tokenizer,
@@ -589,22 +594,17 @@ impl Generator for Adjudicator {
         let mut finish_reason = "length";
         for i in 0..request.max_tokens {
             check()?;
-            let token = sampler.sample(&logits)?;
+            // One call selects AND records, so the record cannot be moved
+            // to the wrong side of the grammar mask: see `Decoder::step`.
+            let (token, step) = sampler.step(&logits, request.distributions.as_ref(), |id| {
+                self.tokenizer.id_to_token(id)
+            })?;
             if self.tokenizer.id_to_token(token).is_none() {
                 return Err(Failure::Internal(format!(
                     "model selected unused vocabulary row {token}"
                 )));
             }
-            if let Some(spec) = &request.distributions {
-                let raw: Vec<f32> = logits.flatten_all()?.to_vec1()?;
-                let step = crate::types::step_distribution(
-                    &raw,
-                    token,
-                    spec.top_k,
-                    &spec.token_sets,
-                    |id| self.tokenizer.id_to_token(id),
-                )
-                .map_err(Failure::Internal)?;
+            if let Some(step) = step {
                 distributions
                     .as_mut()
                     .expect("allocated above whenever distributions is requested")

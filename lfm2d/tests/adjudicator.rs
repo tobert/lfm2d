@@ -116,6 +116,7 @@ impl Generator for Fake {
                     },
                 ],
                 set_mass,
+                constrained: None,
             }]
         });
         Ok(AdjudicateResponse {

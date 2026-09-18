@@ -351,6 +351,11 @@ pub struct DistributionRequest {
     /// refuses rather than papering over).
     #[serde(default)]
     pub token_sets: BTreeMap<String, Vec<u32>>,
+    /// Also report each step's [`ConstrainedStep`]: what the output grammar
+    /// left the sampler to choose from. Off by default. Asking for it on a
+    /// daemon with no output schema is a rejected request, not an empty field.
+    #[serde(default)]
+    pub constrained: bool,
 }
 
 fn default_distribution_top_k() -> usize {
@@ -433,6 +438,27 @@ pub struct SetMass {
     pub prob: f32,
 }
 
+/// What the output grammar left the sampler to choose from at one step,
+/// beside the raw distribution it overruled. Every number here is still RAW
+/// (full-vocabulary denominator, before the mask and before the repetition
+/// penalty): the conditional logprob of a legal token given the grammar is
+/// `logprob - legal_mass.logprob`, and a consumer that wants it computes it
+/// from those two, so it can never be read without the raw mass beside it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConstrainedStep {
+    /// How many vocabulary rows the grammar admitted at this step.
+    pub legal_tokens: usize,
+    /// RAW mass the model put on the legal set. Low means the grammar
+    /// overruled the model here, whatever token came out.
+    pub legal_mass: SetMass,
+    /// The raw argmax was not grammar-legal: the model's first choice was
+    /// refused. Independent of the repetition penalty.
+    pub forced: bool,
+    /// Top-k among LEGAL tokens only, by raw logprob, same tie rule as
+    /// [`StepDistribution::top_logprobs`].
+    pub top_logprobs: Vec<TokenLogprob>,
+}
+
 /// One generated token's full distribution context: the token actually
 /// sampled, the top-k alternatives it beat, and the raw mass any requested
 /// named token sets held at that position. `AdjudicateResponse::distributions`
@@ -446,6 +472,10 @@ pub struct StepDistribution {
     pub logprob: f32,
     pub top_logprobs: Vec<TokenLogprob>,
     pub set_mass: BTreeMap<String, SetMass>,
+    /// Present only when the request set `constrained` and a grammar is
+    /// active. Absent from the wire otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constrained: Option<ConstrainedStep>,
 }
 
 fn logsumexp(values: impl Iterator<Item = f32>) -> f32 {
@@ -464,11 +494,16 @@ fn logsumexp(values: impl Iterator<Item = f32>) -> f32 {
 /// reported top-1 always agrees with what greedy sampling would pick.
 /// `O(n)` selection plus `O(k log k)` to order the winners, not a full sort.
 fn top_k_indices(log_probs: &[f32], k: usize) -> Vec<usize> {
-    let k = k.min(log_probs.len());
+    top_k_among(log_probs, (0..log_probs.len()).collect(), k)
+}
+
+/// [`top_k_indices`] restricted to `candidates` (indices into `log_probs`).
+fn top_k_among(log_probs: &[f32], candidates: Vec<usize>, k: usize) -> Vec<usize> {
+    let mut idx = candidates;
+    let k = k.min(idx.len());
     if k == 0 {
         return Vec::new();
     }
-    let mut idx: Vec<usize> = (0..log_probs.len()).collect();
     let cmp = |log_probs: &[f32], &a: &usize, &b: &usize| {
         log_probs[b]
             .partial_cmp(&log_probs[a])
@@ -499,6 +534,21 @@ pub fn step_distribution(
     token_sets: &BTreeMap<String, Vec<u32>>,
     token_text: impl Fn(u32) -> Option<String>,
 ) -> Result<StepDistribution, String> {
+    step_distribution_under(logits, sampled_token, top_k, token_sets, None, token_text)
+}
+
+/// [`step_distribution`], plus the [`ConstrainedStep`] when `permitted` (one
+/// flag per vocabulary row: did the grammar admit it at this step) is given.
+/// `logits` are the RAW model logits either way — the mask never reaches this
+/// function as numbers, only as the set it admitted.
+pub fn step_distribution_under(
+    logits: &[f32],
+    sampled_token: u32,
+    top_k: usize,
+    token_sets: &BTreeMap<String, Vec<u32>>,
+    permitted: Option<&[bool]>,
+    token_text: impl Fn(u32) -> Option<String>,
+) -> Result<StepDistribution, String> {
     if logits.is_empty() {
         return Err("step_distribution: empty logits".into());
     }
@@ -509,10 +559,12 @@ pub fn step_distribution(
             logits.len()
         ));
     }
-    let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    if !max_logit.is_finite() {
+    // Every row, not the folded maximum: `f32::max` skips NaN, so a fold lets
+    // one through and the ranking comparator below panics on it.
+    if logits.iter().any(|l| !l.is_finite()) {
         return Err("step_distribution: non-finite logits".into());
     }
+    let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let log_z = max_logit + logits.iter().map(|&l| (l - max_logit).exp()).sum::<f32>().ln();
     let log_probs: Vec<f32> = logits.iter().map(|&l| l - log_z).collect();
 
@@ -551,12 +603,48 @@ pub fn step_distribution(
         set_mass.insert(name.clone(), SetMass { logprob, prob: logprob.exp() });
     }
 
+    let constrained = match permitted {
+        None => None,
+        Some(permitted) => {
+            if permitted.len() != log_probs.len() {
+                return Err(format!(
+                    "step_distribution: grammar covers {} rows, logits {}",
+                    permitted.len(),
+                    log_probs.len()
+                ));
+            }
+            if !permitted[sampled] {
+                return Err(format!(
+                    "step_distribution: sampled token {sampled_token} is not grammar-legal; \
+                     the mask and the record disagree"
+                ));
+            }
+            let legal: Vec<usize> = (0..permitted.len()).filter(|&i| permitted[i]).collect();
+            let legal_logprob = logsumexp(legal.iter().map(|&i| log_probs[i]));
+            let forced = !permitted[top_k_indices(&log_probs, 1)[0]];
+            Some(ConstrainedStep {
+                legal_tokens: legal.len(),
+                legal_mass: SetMass { logprob: legal_logprob, prob: legal_logprob.exp() },
+                forced,
+                top_logprobs: top_k_among(&log_probs, legal, top_k)
+                    .into_iter()
+                    .map(|i| TokenLogprob {
+                        token: i as u32,
+                        text: token_text(i as u32),
+                        logprob: log_probs[i],
+                    })
+                    .collect(),
+            })
+        }
+    };
+
     Ok(StepDistribution {
         token: sampled_token,
         text,
         logprob: log_probs[sampled],
         top_logprobs,
         set_mass,
+        constrained,
     })
 }
 
@@ -651,25 +739,72 @@ mod distribution_tests {
     }
 
     #[test]
+    fn constrained_view_reports_raw_numbers_over_the_legal_rows_only() {
+        // rows: 0 illegal and dominant, 1 and 2 legal, 3 illegal
+        let logits = [5.0f32, 1.0, 2.0, 0.0];
+        let permitted = [false, true, true, false];
+        let step =
+            step_distribution_under(&logits, 2, 3, &BTreeMap::new(), Some(&permitted), text)
+                .unwrap();
+        let view = step.constrained.unwrap();
+        assert_eq!(view.legal_tokens, 2);
+        assert!(view.forced, "row 0 is the raw argmax and is not legal");
+        let ids: Vec<u32> = view.top_logprobs.iter().map(|t| t.token).collect();
+        assert_eq!(ids, vec![2, 1], "legal rows only, best first, k larger than the set");
+        // raw, not renormalized over the legal rows: they sum to the legal mass
+        let sum: f32 = view.top_logprobs.iter().map(|t| t.logprob.exp()).sum();
+        assert!((sum - view.legal_mass.prob).abs() < 1e-6);
+        assert!(view.legal_mass.prob < 0.1, "got {}", view.legal_mass.prob);
+        assert_eq!(view.top_logprobs[0].logprob, step.logprob);
+    }
+
+    #[test]
+    fn a_nan_logit_is_an_error_not_a_panic() {
+        // `f32::max` skips NaN, so a fold-then-is_finite guard waves it through
+        // and the ranking comparator panics instead.
+        let sets = BTreeMap::new();
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let logits = [bad, 1.0, 2.0, 0.0];
+            let plain = step_distribution(&logits, 1, 2, &sets, text);
+            assert!(plain.unwrap_err().contains("non-finite"), "{bad}");
+            let under = step_distribution_under(
+                &logits, 1, 0, &sets, Some(&[true, true, true, true]), text,
+            );
+            assert!(under.unwrap_err().contains("non-finite"), "{bad}");
+        }
+    }
+
+    #[test]
+    fn constrained_view_refuses_a_record_that_disagrees_with_the_mask() {
+        let logits = [5.0f32, 1.0, 2.0, 0.0];
+        let sets = BTreeMap::new();
+        let sampled_illegal =
+            step_distribution_under(&logits, 0, 1, &sets, Some(&[false, true, true, false]), text);
+        assert!(sampled_illegal.unwrap_err().contains("not grammar-legal"));
+        let wrong_width = step_distribution_under(&logits, 1, 1, &sets, Some(&[true, true]), text);
+        assert!(wrong_width.unwrap_err().contains("rows"));
+    }
+
+    #[test]
     fn distribution_request_validate_rejects_bad_shapes() {
-        let mut too_big = DistributionRequest { top_k: MAX_DISTRIBUTION_TOP_K + 1, token_sets: BTreeMap::new() };
+        let mut too_big = DistributionRequest { top_k: MAX_DISTRIBUTION_TOP_K + 1, token_sets: BTreeMap::new(), constrained: false };
         assert!(too_big.validate().is_err());
         too_big.top_k = MAX_DISTRIBUTION_TOP_K;
         assert!(too_big.validate().is_ok());
 
         let mut empty_set = BTreeMap::new();
         empty_set.insert("x".to_string(), Vec::<u32>::new());
-        let req = DistributionRequest { top_k: 5, token_sets: empty_set };
+        let req = DistributionRequest { top_k: 5, token_sets: empty_set, constrained: false };
         assert!(req.validate().is_err());
 
         let mut dup_ids = BTreeMap::new();
         dup_ids.insert("x".to_string(), vec![1u32, 1]);
-        let req = DistributionRequest { top_k: 5, token_sets: dup_ids };
+        let req = DistributionRequest { top_k: 5, token_sets: dup_ids, constrained: false };
         assert!(req.validate().is_err());
 
         let mut ok = BTreeMap::new();
         ok.insert("x".to_string(), vec![1u32, 2]);
-        let req = DistributionRequest { top_k: 5, token_sets: ok };
+        let req = DistributionRequest { top_k: 5, token_sets: ok, constrained: false };
         assert!(req.validate().is_ok());
         assert!(req.validate_vocab(2).is_err(), "id 2 is outside a vocab of size 2");
         assert!(req.validate_vocab(3).is_ok(), "id 2 is the last valid row in a vocab of size 3");

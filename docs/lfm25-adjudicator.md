@@ -44,9 +44,9 @@ replacing the sibling Cargo overrides with the published dependency.
 
 Clone the `main` branch of
 [tobert/lfm2d](https://github.com/tobert/lfm2d).
-Cargo pins the published Candle fork at `738184605809ca52e09f1dc228401d2ea470aab0`
-on [lfm25-moe-snapshots](https://github.com/tobert/candle/tree/lfm25-moe-snapshots).
-All seven optimization passes are included. No sibling checkout or local Cargo
+Cargo pins the published Candle fork at `fb1ae62a378bb8bd9b9f95cb448dca083e500b30`
+on [lfm25-trace](https://github.com/tobert/candle/tree/lfm25-trace): the seven
+optimization passes plus the read-only observer and per-call steering seams. No sibling checkout or local Cargo
 patches are required. The ROCm build requires the
 ROCm development toolchain and a supported AMD GPU. Model paths below are
 examples; download the GGUF and matching tokenizer to your own paths.
@@ -107,7 +107,8 @@ coercions, Markdown fences, trailing prose, and truncated output are rejected.
 `validate_report` still tolerates a completed `<think>...</think>` section
 before the object, but the grammar does not emit one: under `output_schema` the
 whole completion is the document, keys come out in the schema's `required`
-order, separators are compact, and `\uXXXX` escapes are not admitted (every
+order, separators are spaced the way the model writes them (`": "` and
+`", "`; compact ones corrupted 15 of 16 reports), and `\uXXXX` escapes are not admitted (every
 character they can spell is reachable literally as UTF-8). A schema
 `validate_schema` accepts but the grammar cannot honour — today, an `enum` with
 a blank string value, which no valid report could contain — is a loud error,
@@ -127,6 +128,44 @@ The [model card](https://huggingface.co/LiquidAI/LFM2.5-8B-A1B) recommends
 1.05 along with stochastic sampling; our deterministic policy is recorded
 explicitly in each response. The model reasons before answering, so 512 or
 1024 output tokens often truncate the report.
+
+### Distributions
+
+A request may add `distributions`; one that does not gets the response above,
+byte for byte. Unknown keys, an empty or repeating token set, an id outside the
+vocabulary and a `top_k` over 20 are 400s, never clamped.
+
+```json
+{"input": "...", "distributions": {"top_k": 5,
+  "token_sets": {"verdict": [101, 202, 303]}, "constrained": true}}
+```
+
+The response gains `distributions`: one entry per generated token, in order.
+Each carries the selected `token`, its `text` and `logprob`, the `top_logprobs`,
+and `set_mass` — per named set, the `logprob` and `prob` of the mass the model
+put on those ids.
+
+**Every number is raw**: the model's own log-softmax over the full vocabulary,
+read before the output grammar's mask and before the repetition penalty. A set's
+mass is never renormalised over the set. Low mass means the model was never
+steered toward that vocabulary — *unasked*, not *wrong* — and it is the only
+thing that tells those apart (`docs/field-requests.md`, decision 5). Read
+logprobs, not `prob`: values saturate, and the ordering survives only in the log.
+
+`constrained: true` adds a `constrained` object to each step, describing what
+the grammar left the sampler to choose from. It needs an output schema; asking
+without one is a 400. `legal_tokens` is how many rows the grammar admitted,
+`legal_mass` the raw mass the model put on them, `top_logprobs` the best legal
+rows by raw logprob, and `forced` is true when the model's raw first choice was
+not legal. A low `legal_mass` is the grammar overruling the model — worth
+counting, since a forced token is conditioned on by everything after it. Leave
+the closing end-of-text step out of such a count: once the document is complete
+the legal set is that one token, so `forced` there only says the model would
+have kept writing. There
+is deliberately no renormalised number on the wire: the conditional logprob of a
+legal token is `logprob - legal_mass.logprob`, computed by whoever wants it, with
+the raw mass necessarily in hand. Token ids come from the checkpoint's
+tokenizer; nothing here names a label.
 
 ## Snapshot semantics
 

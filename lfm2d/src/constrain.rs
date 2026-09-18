@@ -732,6 +732,19 @@ impl Masker {
         Ok(())
     }
 
+    /// One flag per vocabulary row: does the current cursor admit it. The
+    /// host-side twin of [`Self::mask`], for recording what the grammar allowed.
+    pub fn permitted(&mut self) -> Result<Vec<bool>, String> {
+        let cursor = self.cursor;
+        let plan = self.plan(cursor)?;
+        let listed_are_legal = plan.exception == 0.;
+        let mut permitted = vec![!listed_are_legal; self.vocabulary.len()];
+        for &id in &plan.exceptions {
+            permitted[id as usize] = listed_are_legal;
+        }
+        Ok(permitted)
+    }
+
     /// How many tokens the current cursor admits — diagnostics and tests.
     pub fn admissible(&mut self) -> Result<usize, String> {
         let cursor = self.cursor;
@@ -828,6 +841,45 @@ impl Decoder {
                 Ok(token)
             }
         }
+    }
+
+    /// Select one token and, when asked, record the distribution it was
+    /// selected from. The decode loop calls this and nothing else, so the
+    /// record is read from the RAW `logits` by construction: the mask exists
+    /// only inside [`Self::sample`], and reaches the record only as the set of
+    /// rows it admitted, captured before the cursor advances.
+    pub fn step(
+        &mut self,
+        logits: &Tensor,
+        spec: Option<&crate::types::DistributionRequest>,
+        token_text: impl Fn(u32) -> Option<String>,
+    ) -> candle_core::Result<(u32, Option<crate::types::StepDistribution>)> {
+        let permitted = match (spec, &mut *self) {
+            (Some(spec), Self::Json { masker, .. }) if spec.constrained => {
+                Some(masker.permitted().map_err(candle_core::Error::msg)?)
+            }
+            (Some(spec), Self::Free(_)) if spec.constrained => {
+                return Err(candle_core::Error::msg(
+                    "distributions.constrained needs an output grammar; this decoder has none",
+                ));
+            }
+            _ => None,
+        };
+        let token = self.sample(logits)?;
+        let Some(spec) = spec else {
+            return Ok((token, None));
+        };
+        let raw: Vec<f32> = logits.flatten_all()?.to_vec1()?;
+        let step = crate::types::step_distribution_under(
+            &raw,
+            token,
+            spec.top_k,
+            &spec.token_sets,
+            permitted.as_deref(),
+            token_text,
+        )
+        .map_err(candle_core::Error::msg)?;
+        Ok((token, Some(step)))
     }
 
     pub fn masker(&self) -> Option<&Masker> {
@@ -1234,6 +1286,40 @@ mod tests {
             );
             assert!(value.is_finite(), "mask must stay finite for GreedySampler");
         }
+    }
+
+    #[test]
+    fn permitted_is_the_mask_in_both_plan_encodings_and_at_the_end() {
+        // The record's legal set and the sampler's mask must be one predicate.
+        // Walk a whole document so both encodings occur: few legal rows (a key,
+        // an enum) and most rows legal (inside a free string), then `Done`.
+        let (vocabulary, pieces) = toy();
+        let eos = pieces.len() as u32;
+        let mut masker = Masker::new(Program::compile(&schema()).unwrap(), vocabulary.clone());
+        let document = [
+            "{\"", "severity", "\": \"", "informative", "\", \"", "writes", "\": ", "true",
+            ", \"", "reason", "\": \"", "x", "\"}",
+        ];
+        let (mut sparse, mut dense) = (0, 0);
+        let mut check = |masker: &mut Masker| {
+            let values: Vec<f32> = masker.mask(&Device::Cpu).unwrap().to_vec1().unwrap();
+            let permitted = masker.permitted().unwrap();
+            let legal = permitted.iter().filter(|p| **p).count();
+            assert_eq!(legal, masker.admissible().unwrap());
+            for (id, value) in values.iter().enumerate() {
+                assert_eq!(*value == 0., permitted[id], "row {id} at {:?}", masker.cursor());
+            }
+            if legal * 2 > permitted.len() { dense += 1 } else { sparse += 1 }
+            permitted
+        };
+        for piece in document {
+            check(&mut masker);
+            let id = pieces.iter().position(|p| *p == piece).unwrap() as u32;
+            masker.accept(id).unwrap();
+        }
+        let at_end = check(&mut masker);
+        assert!(at_end[eos as usize] && at_end.iter().filter(|p| **p).count() == 1);
+        assert!(sparse > 0 && dense > 0, "both encodings must occur: {sparse} sparse, {dense} dense");
     }
 
     #[test]

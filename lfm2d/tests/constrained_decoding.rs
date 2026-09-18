@@ -716,3 +716,138 @@ fn real_model_reports_are_valid_including_under_an_echo_attack() {
         assert!(enums.contains(&severity), "{severity:?} outside the enum");
     }
 }
+
+// ---------------------------------------------------------------------------
+// The distribution is read BEFORE the grammar mask
+// ---------------------------------------------------------------------------
+//
+// `Decoder::step` owns both the mask and the distribution read, so the decode
+// loop cannot reorder them. `the_distribution_is_read_before_the_grammar_mask`
+// is the one test that fails if someone moves the read after the mask (the
+// others here cover the unforced branch and the wire shape): under the grammar an illegal token's post-mask
+// probability is exactly zero, so a named set holding only that token would
+// report ~0 mass, and "low mass means unasked" would silently stop working.
+
+use lfm2d::types::DistributionRequest;
+
+fn distribution_request(json: Value) -> DistributionRequest {
+    serde_json::from_value(json).unwrap()
+}
+
+/// Logits where `wanted` holds almost all the raw mass and `fallback` is the
+/// best of the rest.
+fn peaked(width: usize, wanted: usize, fallback: usize) -> Tensor {
+    let mut logits = vec![0f32; width];
+    logits[wanted] = 12.;
+    logits[fallback] = 4.;
+    Tensor::new(logits.as_slice(), &Device::Cpu).unwrap()
+}
+
+#[test]
+fn the_distribution_is_read_before_the_grammar_mask() {
+    let (vocabulary, bytes, _eos) = toy_vocabulary();
+    let id = |piece: &str| bytes.iter().position(|b| b == piece.as_bytes()).unwrap();
+    let (illegal, open) = (id("rm"), id("{\""));
+    let mut decoder =
+        Decoder::with_vocabulary(&severity_schema(), vocabulary.clone(), &Device::Cpu, &[], 1.0)
+            .unwrap();
+    let spec = distribution_request(json!({
+        "top_k": 1,
+        "constrained": true,
+        "token_sets": {"illegal": [illegal], "open": [open]}
+    }));
+    let text = |t: u32| Some(format!("<{t}>"));
+
+    let logits = peaked(vocabulary.len(), illegal, open);
+    let (token, step) = decoder.step(&logits, Some(&spec), text).unwrap();
+    let step = step.expect("a distribution was requested");
+
+    // The grammar won the selection...
+    assert_eq!(token as usize, open, "the grammar must overrule `rm` at step 0");
+    // ...and the record still says what the MODEL wanted.
+    let illegal_mass = step.set_mass["illegal"].prob;
+    assert!(
+        illegal_mass > 0.9,
+        "raw mass on the illegal token must survive the mask, got {illegal_mass}"
+    );
+    assert_eq!(step.top_logprobs[0].token as usize, illegal, "raw top-1 is the model's choice");
+    assert!(step.logprob < (0.1f32).ln(), "the sampled token was a raw long shot");
+
+    let constrained = step.constrained.expect("a grammar is active and the view was requested");
+    assert!(constrained.forced, "raw argmax was illegal: this step was forced");
+    assert!(
+        constrained.legal_mass.prob < 0.1,
+        "the legal set held little raw mass, got {}",
+        constrained.legal_mass.prob
+    );
+    assert!(constrained.legal_tokens >= 1 && constrained.legal_tokens < vocabulary.len());
+    // The constrained view ranks legal tokens only, and reports RAW logprobs:
+    // no renormalized number exists anywhere on the wire.
+    assert_eq!(constrained.top_logprobs[0].token, token);
+    assert_eq!(constrained.top_logprobs[0].logprob, step.logprob);
+    // A consumer derives the conditional from the two raw numbers it was given.
+    let conditional = step.logprob - constrained.legal_mass.logprob;
+    assert!(conditional <= 0. && conditional > (0.5f32).ln(), "got {conditional}");
+}
+
+#[test]
+fn a_step_the_model_wanted_anyway_is_not_forced() {
+    let (vocabulary, bytes, _eos) = toy_vocabulary();
+    let id = |piece: &str| bytes.iter().position(|b| b == piece.as_bytes()).unwrap();
+    let (illegal, open) = (id("rm"), id("{\""));
+    let mut decoder =
+        Decoder::with_vocabulary(&severity_schema(), vocabulary.clone(), &Device::Cpu, &[], 1.0)
+            .unwrap();
+    let spec = distribution_request(json!({"top_k": 1, "constrained": true}));
+    let logits = peaked(vocabulary.len(), open, illegal);
+    let (token, step) = decoder.step(&logits, Some(&spec), |t| Some(format!("<{t}>"))).unwrap();
+    let constrained = step.unwrap().constrained.unwrap();
+    assert_eq!(token as usize, open);
+    assert!(!constrained.forced);
+    assert!(constrained.legal_mass.prob > 0.9);
+}
+
+#[test]
+fn the_constrained_view_is_opt_in_and_absent_from_the_wire_otherwise() {
+    let (vocabulary, bytes, _eos) = toy_vocabulary();
+    let open = bytes.iter().position(|b| b == b"{\"").unwrap();
+    let mut decoder =
+        Decoder::with_vocabulary(&severity_schema(), vocabulary.clone(), &Device::Cpu, &[], 1.0)
+            .unwrap();
+    let spec = distribution_request(json!({"top_k": 1}));
+    let logits = peaked(vocabulary.len(), open, 0);
+    let (_, step) = decoder.step(&logits, Some(&spec), |t| Some(format!("<{t}>"))).unwrap();
+    let wire = serde_json::to_value(step.unwrap()).unwrap();
+    assert!(
+        !wire.as_object().unwrap().contains_key("constrained"),
+        "a request that never asked for the constrained view must not grow a key: {wire}"
+    );
+    // And with no distribution request at all, a step is just a selection.
+    let (_, none) = decoder.step(&logits, None, |t| Some(format!("<{t}>"))).unwrap_or_else(|e| {
+        // the second token after `{"` is a key; `{"` again is illegal — that
+        // is fine, this arm only checks the no-request shape when it succeeds
+        panic!("unexpected: {e}")
+    });
+    assert!(none.is_none());
+}
+
+#[test]
+fn the_constrained_view_without_a_grammar_is_a_loud_error() {
+    let tokenizer_free = Decoder::new(
+        None,
+        &tokenizers::Tokenizer::new(tokenizers::models::bpe::BPE::default()),
+        &Device::Cpu,
+        8,
+        7,
+        &[],
+        1.0,
+    )
+    .unwrap();
+    let mut decoder = tokenizer_free;
+    let spec = distribution_request(json!({"constrained": true}));
+    let logits = Tensor::new(&[0f32, 1., 2., 3., 0., 0., 0., 0.], &Device::Cpu).unwrap();
+    let error = decoder
+        .step(&logits, Some(&spec), |t| Some(format!("<{t}>")))
+        .expect_err("no grammar, no constrained view");
+    assert!(error.to_string().contains("constrained"), "{error}");
+}
