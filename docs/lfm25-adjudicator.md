@@ -92,14 +92,26 @@ the adjudicator. Each generation response includes:
 HTTP 200 means generation completed, **not that a valid report exists**.
 Consumers must require `report != null` and `report_error == null`. Validation
 checks structure, not truth: free-text explanations still require evaluation.
-No verdict is substituted for an invalid report. Generation is not constrained
-by a JSON grammar, and there is no retry or repair loop.
+No verdict is substituted for an invalid report. There is no retry or repair
+loop, and none is needed for *format*: with an `output_schema`, generation is
+constrained by a JSON grammar compiled from that schema (`lfm2d/src/constrain.rs`),
+so a malformed or off-schema report is unreachable rather than rejected after
+the fact. `report_error` is then only ever truncation — the grammar will not
+invent a field value to close the object, so a completion that exhausts
+`max_tokens` mid-document still returns `finish_reason: "length"` and no report.
 
 The supported schema is deliberately small: one closed object with all fields
 required, string/boolean field types, and optional enums. Strings must be
 nonempty. Unsupported schema constraints, duplicate fields, unknown fields,
 coercions, Markdown fences, trailing prose, and truncated output are rejected.
-An optional completed `<think>...</think>` section may precede the object.
+`validate_report` still tolerates a completed `<think>...</think>` section
+before the object, but the grammar does not emit one: under `output_schema` the
+whole completion is the document, keys come out in the schema's `required`
+order, separators are compact, and `\uXXXX` escapes are not admitted (every
+character they can spell is reachable literally as UTF-8). A schema
+`validate_schema` accepts but the grammar cannot honour — today, an `enum` with
+a blank string value, which no valid report could contain — is a loud error,
+never a silent fall-through to free generation.
 
 Requests accept `input`, `max_tokens` (default/max 2048), `timeout_ms`
 (default 30000, max 120000), and `use_cache` (default true). `use_cache:false`

@@ -86,6 +86,7 @@
 
 pub mod adjudicator;
 pub mod config;
+pub mod constrain;
 pub mod device;
 pub mod engine_real;
 pub mod engine_stub;
