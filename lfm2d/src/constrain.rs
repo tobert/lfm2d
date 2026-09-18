@@ -22,9 +22,19 @@
 //!   (`docs/field-requests.md` decision 2: reading `severity` with no fields
 //!   in front of it reproduced 17/40 severe rows; after the scaffold fields,
 //!   40/40). `properties` map order is ignored.
-//! - **Compact separators.** `{"a":"x","b":true}` — no insignificant
-//!   whitespace anywhere, because every byte we admit is a byte the model can
-//!   spend instead of answering.
+//! - **Spaced separators, fixed.** `{"a": "x", "b": true}` — one space after
+//!   `:` and after `,`, nowhere else, matching the model's own canonical JSON
+//!   style. Measured against LFM2.5-8B under the earlier compact ruling
+//!   (`{"a":"x","b":true}`): after `"effect":` the model put probability 1.00
+//!   on the token ` "` (space, quote), which compact grammar forbade. The
+//!   best-scoring *legal* token was `":` — an opening quote followed by a
+//!   colon — so its quote opened the string and its colon became the
+//!   string's first CONTENT byte. Every free-text field came out as the
+//!   literal value `": `. Forcing the model off its own tokenization made it
+//!   misread a structural quote as content; spacing the separators to match
+//!   its canonical style fixed it outright. The whitespace stays fixed
+//!   rather than optional for the same reason as before: every byte we admit
+//!   is a byte the model can spend instead of answering.
 //! - **No `\uXXXX` escapes.** Every character they can express is reachable
 //!   literally as UTF-8, and admitting them admits lone surrogate escapes,
 //!   which `serde_json` rejects — i.e. a path from a "valid" grammar walk to
@@ -337,7 +347,7 @@ impl Program {
                 .ok_or_else(|| format!("required field {name} has no property schema"))?;
             let encoded = serde_json::to_string(name).map_err(|e| e.to_string())?;
             segments.push(Segment::Literal(
-                format!("{}{encoded}:", if index == 0 { '{' } else { ',' }).into_bytes(),
+                format!("{}{encoded}: ", if index == 0 { "{" } else { ", " }).into_bytes(),
             ));
             segments.push(value_segment(name, spec)?);
             order.push(name.to_string());
@@ -876,11 +886,11 @@ mod tests {
         assert_eq!(program.order(), ["severity", "writes", "reason"]);
         assert!(accepts(
             &program,
-            r#"{"severity":"informative","writes":false,"reason":"read-only"}"#
+            r#"{"severity": "informative", "writes": false, "reason": "read-only"}"#
         ));
         assert!(!accepts(
             &program,
-            r#"{"reason":"read-only","severity":"informative","writes":false}"#
+            r#"{"reason": "read-only", "severity": "informative", "writes": false}"#
         ));
     }
 
@@ -890,7 +900,7 @@ mod tests {
         for value in ["informative", "data-critical"] {
             assert!(
                 program
-                    .walk(program.start(), format!(r#"{{"severity":"{value}""#).as_bytes())
+                    .walk(program.start(), format!(r#"{{"severity": "{value}""#).as_bytes())
                     .is_some(),
                 "{value} should be admissible"
             );
@@ -898,7 +908,7 @@ mod tests {
         for value in ["catastrophic", "informativ", "INFORMATIVE", ""] {
             assert!(
                 program
-                    .walk(program.start(), format!(r#"{{"severity":"{value}""#).as_bytes())
+                    .walk(program.start(), format!(r#"{{"severity": "{value}""#).as_bytes())
                     .is_none(),
                 "{value} must not be admissible"
             );
@@ -908,7 +918,7 @@ mod tests {
     #[test]
     fn boolean_field_admits_only_true_and_false() {
         let program = Program::compile(&schema()).unwrap();
-        let head = r#"{"severity":"informative","writes":"#;
+        let head = r#"{"severity": "informative", "writes": "#;
         assert!(program.walk(program.start(), format!("{head}true").as_bytes()).is_some());
         assert!(program.walk(program.start(), format!("{head}false").as_bytes()).is_some());
         for bad in ["True", "1", "\"true\"", "null", "yes"] {
@@ -924,7 +934,7 @@ mod tests {
     #[test]
     fn free_string_cannot_close_while_blank() {
         let program = Program::compile(&schema()).unwrap();
-        let head = r#"{"severity":"informative","writes":true,"reason":""#;
+        let head = r#"{"severity": "informative", "writes": true, "reason": ""#;
         let open = program.walk(program.start(), head.as_bytes()).unwrap();
         // Empty, ASCII-blank, and a Unicode blank (U+00A0) all fail `trim()`.
         assert!(program.step(open, b'"').is_none());
@@ -943,7 +953,7 @@ mod tests {
     #[test]
     fn whitespace_produced_by_an_escape_does_not_count_as_content() {
         let program = Program::compile(&schema()).unwrap();
-        let head = r#"{"severity":"informative","writes":true,"reason":""#;
+        let head = r#"{"severity": "informative", "writes": true, "reason": ""#;
         let open = program.walk(program.start(), head.as_bytes()).unwrap();
         let newline = program.walk(open, br"\n\t").unwrap();
         assert!(program.step(newline, b'"').is_none());
@@ -955,7 +965,7 @@ mod tests {
     #[test]
     fn string_rejects_raw_controls_bad_utf8_and_u_escapes() {
         let program = Program::compile(&schema()).unwrap();
-        let head = r#"{"severity":"informative","writes":true,"reason":"x"#;
+        let head = r#"{"severity": "informative", "writes": true, "reason": "x"#;
         let open = program.walk(program.start(), head.as_bytes()).unwrap();
         assert!(program.step(open, 0x0A).is_none(), "raw newline");
         assert!(program.step(open, 0x00).is_none(), "raw NUL");
@@ -976,7 +986,7 @@ mod tests {
         // continuation range cannot land on a legal scalar strands the decoder
         // in a state with no legal next byte at all.
         let program = Program::compile(&schema()).unwrap();
-        let head = r#"{"severity":"informative","writes":true,"reason":"x"#;
+        let head = r#"{"severity": "informative", "writes": true, "reason": "x"#;
         let open = program.walk(program.start(), head.as_bytes()).unwrap();
         // Every admissible partial sequence must still have a legal next byte.
         let mut frontier = vec![open];
@@ -1008,7 +1018,7 @@ mod tests {
     #[test]
     fn end_of_text_is_reachable_only_after_the_closing_brace() {
         let program = Program::compile(&schema()).unwrap();
-        let doc = r#"{"severity":"data-critical","writes":true,"reason":"rm -rf"}"#;
+        let doc = r#"{"severity": "data-critical", "writes": true, "reason": "rm -rf"}"#;
         let end = program.walk(program.start(), doc.as_bytes()).unwrap();
         assert!(program.is_done(end));
         assert!(program.step(end, b' ').is_none(), "nothing follows the report");
@@ -1069,8 +1079,13 @@ mod tests {
         let pieces = vec![
             "{", "}", "\"", ":", ",", "severity", "writes", "reason",
             "informative", "data-critical", "true", "false",
-            // boundary-straddling pieces
-            "{\"", "\":", "\",\"", "\"}", ":\"", "\":\"", ",\"",
+            // boundary-straddling pieces, spaced: one space after `:` and
+            // after `,`, never before `}`. `"\":"` and `": \""` both start
+            // from the position right before a key's closing quote; `": "`
+            // is the boolean-value shape (no opening value quote to fold
+            // in); `" \""` is the model's own token for opening a string
+            // value, and the one the compact-separator bug rejected.
+            "{\"", "\":", "\", \"", "\"}", "\": \"", "\": ", ": \"", " \"", ", \"",
             // content and traps
             "rm", " -rf", "x", " ", "null", "informativ",
         ];
@@ -1084,6 +1099,38 @@ mod tests {
             Arc::new(Vocabulary::from_pairs(pairs, pieces.len() + 1, eos).unwrap()),
             pieces,
         )
+    }
+
+    #[test]
+    fn a_colon_cannot_smuggle_in_as_the_strings_opening_byte() {
+        // Regression for the bug that ended the compact-separator ruling: at
+        // the cursor right after a key's closing quote and colon, the
+        // model's own top token was ` "` (space, quote). Under compact
+        // separators that position expected a quote immediately, so `":`
+        // (quote, colon) was legal there too — its quote opened the string
+        // and its colon became the string's first CONTENT byte, so every
+        // free-text field came out as the literal value `": `. With the
+        // fixed space in place, only the space can follow the colon; `":`
+        // must be rejected outright, not merely disfavoured.
+        let program = Program::compile(&schema()).unwrap();
+        let (vocabulary, pieces) = toy();
+        let masker = Masker::new(Program::compile(&schema()).unwrap(), vocabulary);
+        // Walk to just past `"reason":` — the key and its colon are emitted,
+        // the separating space is not.
+        let prefix = r#"{"severity": "informative", "writes": true, "reason":"#;
+        let cursor = program.walk(program.start(), prefix.as_bytes()).unwrap();
+        let space_quote = pieces.iter().position(|p| *p == " \"").unwrap() as u32;
+        let colon_quote = pieces.iter().position(|p| *p == "\":").unwrap() as u32;
+        let allowed = masker.allowed(cursor);
+        assert!(
+            allowed.contains(&space_quote),
+            "the model's own token ` \"` must be legal here"
+        );
+        assert!(
+            !allowed.contains(&colon_quote),
+            "`\":` must not be legal here; its colon would land as the \
+             string's first content byte"
+        );
     }
 
     #[test]
@@ -1116,10 +1163,10 @@ mod tests {
         let mut masker = Masker::new(Program::compile(&schema()).unwrap(), vocabulary);
         let id = |p: &str| pieces.iter().position(|q| *q == p).unwrap() as u32;
         // One tokenization of a complete report, chosen so that several pieces
-        // straddle a grammar segment boundary (`{"`, `":"`, `","`, `"}`).
+        // straddle a grammar segment boundary (`{"`, `": "`, `", "`, `"}`).
         let plan = [
-            "{\"", "severity", "\":\"", "data-critical", "\",\"", "writes", "\":",
-            "true", ",\"", "reason", "\":\"", "rm", " -rf", "\"}",
+            "{\"", "severity", "\": \"", "data-critical", "\", \"", "writes", "\": ",
+            "true", ", \"", "reason", "\": \"", "rm", " -rf", "\"}",
         ];
         for piece in plan {
             let admissible = masker.allowed(masker.cursor());
@@ -1187,6 +1234,64 @@ mod tests {
             );
             assert!(value.is_finite(), "mask must stay finite for GreedySampler");
         }
+    }
+
+    #[test]
+    fn sampling_under_a_mask_leaves_the_caller_s_logits_untouched() {
+        // MERGE CONTRACT, and the reason this test exists.
+        //
+        // `adjudicator.rs` reads the full distribution out of `logits` straight
+        // after `Decoder::sample(&logits)`, to report per-token logprobs and the
+        // raw mass held by a named token set. That mass is only meaningful
+        // against the FULL-vocabulary denominator: decision 5 of
+        // docs/field-requests.md treats near-zero in-set mass as "the model was
+        // never asked this", which is what distinguishes a real answer from four
+        // renormalised near-zero tails.
+        //
+        // If sampling ever masks in place, that reader silently sees the
+        // post-mask distribution instead. Mass-in-set then reads ~1.0 by
+        // construction and the signal dies with no error anywhere. Each branch
+        // passed its own tests; only the merge can express this defect, so only
+        // an integrated test can catch it.
+        let (vocabulary, pieces) = toy();
+        let width = pieces.len() + 1;
+        let mut masker = Masker::new(Program::compile(&schema()).unwrap(), vocabulary);
+        let allowed = masker.allowed(masker.cursor());
+        let blocked = (0..width as u32)
+            .find(|id| !allowed.contains(id))
+            .expect("the toy vocabulary must contain a token the grammar rejects here");
+
+        // Give the blocked token the winning logit, so a mask that mutated in
+        // place would be unmistakable in the values afterwards.
+        let mut raw = vec![0.5f32; width];
+        raw[blocked as usize] = 99.0;
+        let logits = Tensor::new(raw.as_slice(), &Device::Cpu).unwrap();
+        let before: Vec<f32> = logits.to_vec1().unwrap();
+
+        let mask = masker.mask(&Device::Cpu).unwrap();
+        let chosen = {
+            let masked = logits.broadcast_add(&mask).unwrap();
+            let values: Vec<f32> = masked.to_vec1().unwrap();
+            let mut best = 0usize;
+            for (i, v) in values.iter().enumerate() {
+                if v > &values[best] {
+                    best = i;
+                }
+            }
+            best as u32
+        };
+        assert_ne!(chosen, blocked, "the mask must have excluded the blocked token");
+
+        let after: Vec<f32> = logits.to_vec1().unwrap();
+        assert_eq!(
+            before, after,
+            "masking mutated the caller's logits; the distribution reader in \
+             adjudicator.rs would report post-mask mass"
+        );
+        assert_eq!(
+            after[blocked as usize], 99.0,
+            "the blocked token must keep its raw score for the distribution reader"
+        );
     }
 
     #[test]

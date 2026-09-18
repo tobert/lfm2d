@@ -71,7 +71,11 @@ fn mixed_schema() -> Value {
 /// structural boundary, plus traps (`null`, a truncated enum spelling).
 fn toy_vocabulary() -> (Arc<Vocabulary>, Vec<Vec<u8>>, u32) {
     let pieces: Vec<&str> = vec![
-        "{\"", "\":", "\",\"", "\"}", ":\"", "\":\"", ",\"",
+        // boundary-straddling pieces, spaced: one space after `:` and after
+        // `,`, never before `}`. `" \""` is the model's own token for
+        // opening a string value — the one the compact-separator bug
+        // rejected — and `"\":"` is the trap that bug accepted instead.
+        "{\"", "\":", "\", \"", "\"}", "\": \"", "\": ", ": \"", " \"", ", \"",
         "severity", "effect", "scope", "reversibility", "reason", "writes", "dry_run",
         "informative", "situation-normal", "data-critical", "undecidable", "informativ",
         "true", "false", "null", "nul",
@@ -604,6 +608,7 @@ fn constrained_versus_free_decode_cost_on_real_weights() {
                         max_tokens: 512,
                         use_cache: true,
                         timeout_ms: 120_000,
+                        distributions: None,
                     },
                     &|| Ok(()),
                 )
@@ -685,6 +690,7 @@ fn real_model_reports_are_valid_including_under_an_echo_attack() {
             max_tokens: 512,
             use_cache: true,
             timeout_ms: 120_000,
+                        distributions: None,
         };
         let response = adjudicator.generate(&request, &|| Ok(())).expect("generate");
         eprintln!(
