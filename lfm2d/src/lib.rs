@@ -88,6 +88,8 @@ pub mod adjudicator;
 pub mod config;
 pub mod constrain;
 pub mod device;
+pub mod examine;
+pub mod expert_map;
 pub mod engine_real;
 pub mod engine_stub;
 pub mod hash;

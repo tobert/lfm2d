@@ -30,7 +30,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-const CHUNK: usize = 128;
+pub(crate) const CHUNK: usize = 128;
 const MAX_NEW: usize = 2048;
 const MAX_INPUT_BYTES: usize = 65536;
 const TEMPLATE_VERSION: &str = "lfm25-single-user-v1";
@@ -44,7 +44,8 @@ pub struct PromptSpec {
     #[serde(default)]
     pub output_schema: Option<serde_json::Value>,
 }
-fn validate_text(s: &str) -> Result<(), String> {
+/// Prompt content carries no model control tokens; the renderer supplies them.
+pub fn validate_text(s: &str) -> Result<(), String> {
     if s.trim().is_empty() {
         return Err("input must not be empty".into());
     }
@@ -87,6 +88,13 @@ impl PromptSpec {
             "<|startoftext|><|im_start|>system\n{system}<|im_end|>\n"
         ))
     }
+}
+
+/// The single user turn and the opening of the assistant's, appended to
+/// [`PromptSpec::render_prefix`]. One definition, so anything examining a
+/// prompt renders exactly what the daemon runs.
+pub fn render_user_turn(input: &str) -> String {
+    format!("<|im_start|>user\n{input}<|im_end|>\n<|im_start|>assistant\n")
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -296,34 +304,26 @@ impl PromptCache {
     }
 }
 
-pub struct Adjudicator {
-    model: Model,
-    tokenizer: tokenizers::Tokenizer,
-    cache: PromptCache,
-    prefix_text: String,
-    eos: u32,
-    info: PrefixInfo,
-    output_schema: Option<serde_json::Value>,
-    repeat_penalty: f32,
+/// A validated LFM2.5 GGUF with its tokenizer: the chat template is the one
+/// this renderer was checked against, the tokenizer agrees with the GGUF
+/// vocabulary row for row, and both files are hashed. The daemon and the
+/// examiner load through here so neither can run an unvalidated pairing.
+pub struct Checkpoint {
+    pub model: Model,
+    pub tokenizer: tokenizers::Tokenizer,
+    pub model_id: String,
+    pub weight_hash: String,
+    pub tokenizer_hash: String,
+    pub weight_dtypes: Vec<String>,
+    pub execution: crate::device::ExecutionDevice,
 }
-impl Adjudicator {
-    pub fn load(cli: &Cli) -> Result<Self, String> {
-        let path = cli
-            .adjudicator_model
-            .as_ref()
-            .ok_or("missing adjudicator model")?;
-        let tokenizer_path = cli
-            .adjudicator_tokenizer
-            .as_ref()
-            .ok_or("missing adjudicator tokenizer")?;
-        let prompt_path = cli
-            .adjudicator_prompt
-            .as_ref()
-            .ok_or("missing adjudicator prompt")?;
-        let prompt: PromptSpec =
-            serde_json::from_slice(&std::fs::read(prompt_path).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-        let prefix_text = prompt.render_prefix()?;
+impl Checkpoint {
+    pub fn load(
+        path: &std::path::Path,
+        tokenizer_path: &std::path::Path,
+        device: crate::device::DeviceArg,
+        device_index: usize,
+    ) -> Result<Self, String> {
         let mut tokenizer =
             tokenizers::Tokenizer::from_file(tokenizer_path).map_err(|e| e.to_string())?;
         tokenizer.with_padding(None);
@@ -377,12 +377,66 @@ impl Adjudicator {
         }
         let weight_hash = sha256_hex_file(path).map_err(|e| e.to_string())?;
         let tokenizer_hash = sha256_hex_file(tokenizer_path).map_err(|e| e.to_string())?;
-        let execution = crate::device::ExecutionDevice::select(cli.device, cli.device_index)?;
+        let execution = crate::device::ExecutionDevice::select(device, device_index)?;
         for reason in &execution.selection_reasons {
             eprintln!("lfm2d adjudicator device: {reason}");
         }
         let model =
             Model::from_gguf(ct, &mut file, &execution.device).map_err(|e| e.to_string())?;
+        let model_id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or("invalid GGUF filename")?
+            .to_string();
+        Ok(Self {
+            model,
+            tokenizer,
+            model_id,
+            weight_hash,
+            tokenizer_hash,
+            weight_dtypes,
+            execution,
+        })
+    }
+}
+
+pub struct Adjudicator {
+    model: Model,
+    tokenizer: tokenizers::Tokenizer,
+    cache: PromptCache,
+    prefix_text: String,
+    eos: u32,
+    info: PrefixInfo,
+    output_schema: Option<serde_json::Value>,
+    repeat_penalty: f32,
+}
+impl Adjudicator {
+    pub fn load(cli: &Cli) -> Result<Self, String> {
+        let path = cli
+            .adjudicator_model
+            .as_ref()
+            .ok_or("missing adjudicator model")?;
+        let tokenizer_path = cli
+            .adjudicator_tokenizer
+            .as_ref()
+            .ok_or("missing adjudicator tokenizer")?;
+        let prompt_path = cli
+            .adjudicator_prompt
+            .as_ref()
+            .ok_or("missing adjudicator prompt")?;
+        let prompt: PromptSpec =
+            serde_json::from_slice(&std::fs::read(prompt_path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        let prefix_text = prompt.render_prefix()?;
+        let Checkpoint {
+            model,
+            tokenizer,
+            model_id,
+            weight_hash,
+            tokenizer_hash,
+            weight_dtypes,
+            execution,
+        } = Checkpoint::load(path, tokenizer_path, cli.device, cli.device_index)?;
         if cli.adjudicator_context > model.context_length() {
             return Err("adjudicator context exceeds model context".into());
         }
@@ -425,11 +479,6 @@ impl Adjudicator {
         ]);
         let snapshot_id =
             sha256_hex_bytes(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
-        let model_id = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or("invalid GGUF filename")?
-            .to_string();
         let info = PrefixInfo {
             model_id,
             weight_hash,
@@ -487,10 +536,7 @@ impl Generator for Adjudicator {
                 .map_err(Failure::BadRequest)?;
         }
         check()?;
-        let suffix = format!(
-            "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-            request.input
-        );
+        let suffix = render_user_turn(&request.input);
         let full = self
             .tokenizer
             .encode(format!("{}{suffix}", self.prefix_text), false)
