@@ -495,62 +495,57 @@ fn real_vocabulary_masks_control_tokens_and_still_admits_every_step() {
     );
 }
 
-/// The scorer for the number quoted in the constrained-decoding notes: where
-/// the per-token cost goes, split into the part paid once per distinct grammar
-/// cursor (the vocabulary scan) and the part paid every single step (mask
-/// buffer, host-to-device copy, the additive combine).
+/// The scorer for the grammar's cost, split three ways: what `Grammar::compile`
+/// pays once at load, what the FIRST report pays to build a mask plan per
+/// distinct cursor (the vocabulary scan), and what every later report pays per
+/// step with the plans shared (mask buffer, host-to-device copy, the combine).
 #[test]
 #[ignore = "measurement, not an assertion; needs the LFM2.5-8B-A1B tokenizer"]
 fn constraint_overhead_is_cold_plan_build_plus_a_fixed_per_step_cost() {
+    use lfm2d::constrain::{Grammar, Masker};
     let tokenizer = real_tokenizer();
     let device = Device::Cpu;
-    let started = std::time::Instant::now();
-    let vocabulary = Arc::new(Vocabulary::from_tokenizer(&tokenizer, VOCAB, EOS).unwrap());
-    let build = started.elapsed();
-
     let schema = severity_schema();
-    let program = Program::compile(&schema).unwrap();
-    // Walk a realistic report and collect every cursor it visits.
+
+    // Paid ONCE, at load: vocabulary byte expansions, the compiled program and
+    // the proof that the document can start.
+    let started = std::time::Instant::now();
+    let grammar = Grammar::compile(&schema, &tokenizer, VOCAB, EOS).unwrap();
+    let load = started.elapsed();
+
+    // A realistic report, in the spaced separators the grammar emits, fed as
+    // the tokens the real tokenizer would produce for it.
     let document = concat!(
-        r#"{"severity":"data-critical","effect":"deletes files","scope":"the whole tree","#,
-        r#""reversibility":"irreversible","reason":"a forced recursive delete, no prompt"}"#
+        r#"{"severity": "data-critical", "effect": "deletes files", "scope": "the whole tree", "#,
+        r#""reversibility": "irreversible", "reason": "a forced recursive delete, no prompt"}"#
     );
-    let mut cursors = vec![program.start()];
-    let mut cursor = program.start();
-    for byte in document.bytes() {
-        cursor = program.step(cursor, byte).unwrap();
-        cursors.push(cursor);
-    }
-    let mut distinct: Vec<_> = cursors.clone();
-    distinct.sort_by_key(|c| format!("{c:?}"));
-    distinct.dedup_by_key(|c| format!("{c:?}"));
-
-    let mut masker = lfm2d::constrain::Masker::new(Program::compile(&schema).unwrap(), vocabulary);
-    let cold = std::time::Instant::now();
-    for cursor in &distinct {
-        let _ = masker.allowed(*cursor);
-    }
-    let cold = cold.elapsed();
-
-    // Warm: every plan cached, so this is buffer fill + Tensor::new only.
+    let ids = tokenizer.encode(document, false).unwrap().get_ids().to_vec();
     let logits = Tensor::new(vec![0.0f32; VOCAB].as_slice(), &device).unwrap();
-    for cursor in &distinct {
-        let _ = masker.allowed(*cursor);
-    }
-    let warm = std::time::Instant::now();
-    for _ in 0..200 {
-        let mask = masker.mask(&device).unwrap();
-        let _ = logits.broadcast_add(&mask).unwrap().contiguous().unwrap();
-    }
-    let warm = warm.elapsed() / 200;
+    let generation = |grammar: &Arc<Grammar>| {
+        let mut masker = Masker::over(grammar.clone());
+        let started = std::time::Instant::now();
+        for &id in &ids {
+            let mask = masker.mask(&device).unwrap();
+            let _ = logits.broadcast_add(&mask).unwrap().contiguous().unwrap();
+            masker.accept(id).unwrap();
+        }
+        assert!(masker.is_done(), "the tokenizer's own spelling must be a legal report");
+        started.elapsed()
+    };
+    let first = generation(&grammar);
+    let plans = grammar.cached_plans();
+    let second = generation(&grammar);
+    assert_eq!(grammar.cached_plans(), plans, "a second report builds no new plan");
 
     eprintln!(
-        "vocabulary build {build:?} (once per request under the single-hunk wiring)\n\
-         {} distinct cursors in a {}-byte report; cold plan build {cold:?} total, {:?} each\n\
-         warm per-step (mask buffer + Tensor::new + broadcast_add over {VOCAB} rows): {warm:?}",
-        distinct.len(),
-        document.len(),
-        cold / distinct.len() as u32,
+        "grammar compile (once, at load): {load:?}\n\
+         {} tokens, {plans} distinct cursors\n\
+         first generation (cold plans): {first:?} total, {:?}/tok\n\
+         later generations (shared plans): {second:?} total, {:?}/tok\n\
+         the warm per-token cost is mask buffer + Tensor::new + broadcast_add over {VOCAB} rows",
+        ids.len(),
+        first / ids.len() as u32,
+        second / ids.len() as u32,
     );
 }
 
@@ -833,17 +828,7 @@ fn the_constrained_view_is_opt_in_and_absent_from_the_wire_otherwise() {
 
 #[test]
 fn the_constrained_view_without_a_grammar_is_a_loud_error() {
-    let tokenizer_free = Decoder::new(
-        None,
-        &tokenizers::Tokenizer::new(tokenizers::models::bpe::BPE::default()),
-        &Device::Cpu,
-        8,
-        7,
-        &[],
-        1.0,
-    )
-    .unwrap();
-    let mut decoder = tokenizer_free;
+    let mut decoder = Decoder::new(None, &Device::Cpu, 8, &[], 1.0).unwrap();
     let spec = distribution_request(json!({"constrained": true}));
     let logits = Tensor::new(&[0f32, 1., 2., 3., 0., 0., 0., 0.], &Device::Cpu).unwrap();
     let error = decoder

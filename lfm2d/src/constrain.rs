@@ -45,6 +45,19 @@
 //!   `validate_report`. Inventing filler so the object closes would be
 //!   fabricating a field value; a loud short read is the better failure.
 //!
+//! # Where the cost is paid
+//!
+//! [`Grammar`] is built once, at load, and shared by every generation: the
+//! compiled [`Program`], the [`Vocabulary`]'s byte expansions, and a mask plan
+//! per cursor, memoised the first time any report visits it. A plan depends
+//! only on the cursor, so it is never wrong for a later report. [`Masker`] is
+//! what one generation owns — a cursor and a scratch buffer. Measured on the
+//! real 125,024-row vocabulary (CPU device, the severity schema, a 48-token
+//! report; `constraint_overhead_is_cold_plan_build_plus_a_fixed_per_step_cost`):
+//! compile 97 ms, the first report 3.2 ms/token while it builds 36 plans, every
+//! later report 0.19 ms/token. Before the grammar was shared every request paid
+//! the compile and the cold plans again: roughly 240 ms per report.
+//!
 //! # What "cannot be constrained" means
 //!
 //! `adjudicator::validate_schema` accepts a slightly larger language than this
@@ -53,11 +66,13 @@
 //! whose `enum` contains a blank string is therefore accepted by
 //! `validate_schema` and satisfiable by *no* document. [`Program::compile`]
 //! refuses it loudly rather than falling through to free generation.
+//! Because the daemon compiles its grammar in `Adjudicator::load`, that refusal
+//! stops the daemon from starting; it never reaches a request.
 
 use candle_core::{Device, Tensor};
 use candle_nn::sampling::GreedySampler;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Additive penalty for a disallowed token. Deliberately finite: both
 /// `GreedySampler` paths (host and the ROCm kernel) reject non-finite logits
@@ -599,38 +614,64 @@ struct Plan {
     allowed: usize,
 }
 
-/// Grammar + vocabulary + memoised masks. One per generation; the cost of the
-/// masks themselves is dominated by the cold cursors, so a schema's scaffold
-/// states pay for themselves within a single report.
-pub struct Masker {
+/// A compiled schema, the vocabulary it masks, and every mask built so far.
+/// Built ONCE, at load: a schema this vocabulary cannot honour stops the daemon
+/// there instead of failing the first request, and no request pays to compile
+/// it again. Shared by every generation; a mask depends only on the cursor, so
+/// the scaffold states one report paid for are free for every report after it.
+pub struct Grammar {
     program: Program,
     vocabulary: Arc<Vocabulary>,
-    cursor: Cursor,
-    plans: HashMap<Cursor, Arc<Plan>>,
-    buffer: Vec<f32>,
+    plans: Mutex<HashMap<Cursor, Arc<Plan>>>,
 }
 
-impl Masker {
-    pub fn new(program: Program, vocabulary: Arc<Vocabulary>) -> Self {
-        let cursor = program.start();
-        let width = vocabulary.len();
-        Self {
-            program,
-            vocabulary,
-            cursor,
-            plans: HashMap::new(),
-            buffer: vec![BLOCK; width],
+impl Grammar {
+    /// Compile `schema` against a real tokenizer. Refuses a vocabulary with no
+    /// single-byte token for some byte value: without full coverage a legal
+    /// continuation is not guaranteed to exist at every step.
+    pub fn compile(
+        schema: &serde_json::Value,
+        tokenizer: &tokenizers::Tokenizer,
+        vocab: usize,
+        eos: u32,
+    ) -> Result<Arc<Self>, String> {
+        let program = Program::compile(schema)?;
+        let vocabulary = Arc::new(Vocabulary::from_tokenizer(tokenizer, vocab, eos)?);
+        let missing = vocabulary.uncovered_bytes();
+        if !missing.is_empty() {
+            return Err(format!(
+                "tokenizer has no single-byte token for {} byte value(s) (first: {:?}); \
+                 constrained decoding cannot guarantee a legal continuation exists at \
+                 every step with this vocabulary",
+                missing.len(),
+                &missing[..missing.len().min(8)]
+            ));
         }
+        Self::from_parts(program, vocabulary)
     }
 
-    pub fn cursor(&self) -> Cursor {
-        self.cursor
+    /// A grammar over an explicit vocabulary. Proves a legal first token
+    /// exists before anything spends a forward pass on a grammar that cannot
+    /// start.
+    pub fn from_parts(program: Program, vocabulary: Arc<Vocabulary>) -> Result<Arc<Self>, String> {
+        let grammar = Self::unproven(program, vocabulary);
+        grammar.plan(grammar.program.start())?;
+        Ok(grammar)
     }
+
+    fn unproven(program: Program, vocabulary: Arc<Vocabulary>) -> Arc<Self> {
+        Arc::new(Self { program, vocabulary, plans: Mutex::new(HashMap::new()) })
+    }
+
     pub fn program(&self) -> &Program {
         &self.program
     }
-    pub fn is_done(&self) -> bool {
-        self.program.is_done(self.cursor)
+    pub fn vocabulary(&self) -> &Arc<Vocabulary> {
+        &self.vocabulary
+    }
+    /// How many cursors have a built mask — diagnostics and tests.
+    pub fn cached_plans(&self) -> usize {
+        self.plans.lock().expect("plan cache poisoned").len()
     }
 
     /// Token ids the grammar admits at `cursor`, end-of-text included.
@@ -656,8 +697,8 @@ impl Masker {
         allowed
     }
 
-    fn plan(&mut self, cursor: Cursor) -> Result<Arc<Plan>, String> {
-        if let Some(plan) = self.plans.get(&cursor) {
+    fn plan(&self, cursor: Cursor) -> Result<Arc<Plan>, String> {
+        if let Some(plan) = self.plans.lock().expect("plan cache poisoned").get(&cursor) {
             return Ok(plan.clone());
         }
         let allowed = self.allowed(cursor);
@@ -689,15 +730,53 @@ impl Masker {
                 exceptions: allowed,
             })
         };
-        self.plans.insert(cursor, plan.clone());
+        self.plans.lock().expect("plan cache poisoned").insert(cursor, plan.clone());
         Ok(plan)
+    }
+}
+
+/// One generation's position in a [`Grammar`].
+pub struct Masker {
+    grammar: Arc<Grammar>,
+    cursor: Cursor,
+    buffer: Vec<f32>,
+}
+
+impl Masker {
+    /// A generation over a shared, already-proven grammar.
+    pub fn over(grammar: Arc<Grammar>) -> Self {
+        let cursor = grammar.program.start();
+        let buffer = vec![BLOCK; grammar.vocabulary.len()];
+        Self { grammar, cursor, buffer }
+    }
+
+    /// A generation over a private grammar, unproven: the first
+    /// [`Self::mask`] or [`Self::admissible`] reports a grammar that cannot
+    /// start.
+    pub fn new(program: Program, vocabulary: Arc<Vocabulary>) -> Self {
+        Self::over(Grammar::unproven(program, vocabulary))
+    }
+
+    pub fn cursor(&self) -> Cursor {
+        self.cursor
+    }
+    pub fn program(&self) -> &Program {
+        &self.grammar.program
+    }
+    pub fn is_done(&self) -> bool {
+        self.grammar.program.is_done(self.cursor)
+    }
+
+    /// Token ids the grammar admits at `cursor`, end-of-text included.
+    pub fn allowed(&self, cursor: Cursor) -> Vec<u32> {
+        self.grammar.allowed(cursor)
     }
 
     /// Additive logit mask for the current cursor: `0.` for admissible tokens,
     /// [`BLOCK`] for the rest.
     pub fn mask(&mut self, device: &Device) -> candle_core::Result<Tensor> {
         let cursor = self.cursor;
-        let plan = self.plan(cursor).map_err(candle_core::Error::msg)?;
+        let plan = self.grammar.plan(cursor).map_err(candle_core::Error::msg)?;
         self.buffer.fill(plan.fill);
         for &id in &plan.exceptions {
             self.buffer[id as usize] = plan.exception;
@@ -708,8 +787,8 @@ impl Masker {
     /// Advance over a selected token. An inadmissible token is an error, not a
     /// recoverable state: it means the mask and the automaton disagree.
     pub fn accept(&mut self, token: u32) -> Result<(), String> {
-        if token == self.vocabulary.eos {
-            return if self.program.is_done(self.cursor) {
+        if token == self.grammar.vocabulary.eos {
+            return if self.grammar.program.is_done(self.cursor) {
                 Ok(())
             } else {
                 Err(format!(
@@ -719,11 +798,12 @@ impl Masker {
             };
         }
         let bytes = self
+            .grammar
             .vocabulary
             .expansion(token)
             .ok_or_else(|| format!("constrained decoding selected unusable token {token}"))?
             .to_vec();
-        self.cursor = self.program.walk(self.cursor, &bytes).ok_or_else(|| {
+        self.cursor = self.grammar.program.walk(self.cursor, &bytes).ok_or_else(|| {
             format!(
                 "constrained decoding selected token {token} that cannot continue the report at {:?}",
                 self.cursor
@@ -736,9 +816,9 @@ impl Masker {
     /// host-side twin of [`Self::mask`], for recording what the grammar allowed.
     pub fn permitted(&mut self) -> Result<Vec<bool>, String> {
         let cursor = self.cursor;
-        let plan = self.plan(cursor)?;
+        let plan = self.grammar.plan(cursor)?;
         let listed_are_legal = plan.exception == 0.;
-        let mut permitted = vec![!listed_are_legal; self.vocabulary.len()];
+        let mut permitted = vec![!listed_are_legal; self.grammar.vocabulary.len()];
         for &id in &plan.exceptions {
             permitted[id as usize] = listed_are_legal;
         }
@@ -748,7 +828,7 @@ impl Masker {
     /// How many tokens the current cursor admits — diagnostics and tests.
     pub fn admissible(&mut self) -> Result<usize, String> {
         let cursor = self.cursor;
-        Ok(self.plan(cursor)?.allowed)
+        Ok(self.grammar.plan(cursor)?.allowed)
     }
 }
 
@@ -772,37 +852,23 @@ impl Decoder {
     /// free-generation behaviour; `Some` compiles a grammar and fails loudly if
     /// it cannot.
     pub fn new(
-        schema: Option<&serde_json::Value>,
-        tokenizer: &tokenizers::Tokenizer,
+        grammar: Option<&Arc<Grammar>>,
         device: &Device,
         vocab: usize,
-        eos: u32,
         history: &[u32],
         penalty: f32,
     ) -> candle_core::Result<Self> {
         let sampler = GreedySampler::new(device, vocab, history, penalty)?;
-        let Some(schema) = schema else {
+        let Some(grammar) = grammar else {
             return Ok(Self::Free(sampler));
         };
-        let program = Program::compile(schema).map_err(candle_core::Error::msg)?;
-        let vocabulary = Arc::new(
-            Vocabulary::from_tokenizer(tokenizer, vocab, eos).map_err(candle_core::Error::msg)?,
-        );
-        let missing = vocabulary.uncovered_bytes();
-        if !missing.is_empty() {
+        if grammar.vocabulary.len() != vocab {
             return Err(candle_core::Error::msg(format!(
-                "tokenizer has no single-byte token for {} byte value(s) (first: {:?}); \
-                 constrained decoding cannot guarantee a legal continuation exists at \
-                 every step with this vocabulary",
-                missing.len(),
-                &missing[..missing.len().min(8)]
+                "grammar covers {} vocabulary rows, the model has {vocab}",
+                grammar.vocabulary.len()
             )));
         }
-        let mut masker = Box::new(Masker::new(program, vocabulary));
-        // Prove a legal first token exists before the model spends a forward
-        // pass on a grammar that cannot start.
-        masker.admissible().map_err(candle_core::Error::msg)?;
-        Ok(Self::Json { sampler, masker })
+        Ok(Self::Json { sampler, masker: Box::new(Masker::over(grammar.clone())) })
     }
 
     /// Build a decoder over an explicit vocabulary. Used by tests and by
@@ -814,11 +880,10 @@ impl Decoder {
         history: &[u32],
         penalty: f32,
     ) -> candle_core::Result<Self> {
-        let sampler = GreedySampler::new(device, vocabulary.len(), history, penalty)?;
         let program = Program::compile(schema).map_err(candle_core::Error::msg)?;
-        let mut masker = Box::new(Masker::new(program, vocabulary));
-        masker.admissible().map_err(candle_core::Error::msg)?;
-        Ok(Self::Json { sampler, masker })
+        let width = vocabulary.len();
+        let grammar = Grammar::from_parts(program, vocabulary).map_err(candle_core::Error::msg)?;
+        Self::new(Some(&grammar), device, width, history, penalty)
     }
 
     /// Select one token. Same signature and same contract as
@@ -1268,6 +1333,52 @@ mod tests {
     }
 
     #[test]
+    fn a_grammar_that_cannot_start_is_refused_when_it_is_built() {
+        // The daemon builds its grammar once, at load. A schema this
+        // vocabulary cannot even open must stop the daemon there, not turn
+        // into a 500 on the first request.
+        let vocabulary = Arc::new(
+            Vocabulary::from_pairs([(0u32, b"a".to_vec()), (1, b"b".to_vec())], 3, 2).unwrap(),
+        );
+        let error = Grammar::from_parts(Program::compile(&schema()).unwrap(), vocabulary)
+            .err()
+            .expect("no token begins with `{`");
+        assert!(error.contains("no legal token"), "{error}");
+    }
+
+    #[test]
+    fn plans_built_by_one_generation_are_reused_by_the_next() {
+        let (vocabulary, pieces) = toy();
+        let grammar =
+            Grammar::from_parts(Program::compile(&schema()).unwrap(), vocabulary).unwrap();
+        let document = [
+            "{\"", "severity", "\": \"", "informative", "\", \"", "writes", "\": ", "true",
+            ", \"", "reason", "\": \"", "x", "\"}",
+        ];
+        let walk = |grammar: &Arc<Grammar>| -> Vec<Vec<f32>> {
+            let mut masker = Masker::over(grammar.clone());
+            let mut masks = Vec::new();
+            for piece in document {
+                masks.push(masker.mask(&Device::Cpu).unwrap().to_vec1().unwrap());
+                let id = pieces.iter().position(|p| *p == piece).unwrap() as u32;
+                masker.accept(id).unwrap();
+            }
+            masks
+        };
+        let first = walk(&grammar);
+        let built = grammar.cached_plans();
+        assert!(built >= document.len() / 2, "the first walk must have built plans: {built}");
+        let second = walk(&grammar);
+        assert_eq!(grammar.cached_plans(), built, "the second generation built nothing new");
+        assert_eq!(first, second, "a cached plan is the same mask");
+        // Two generations in flight share the cache and not the cursor.
+        let (mut a, b) = (Masker::over(grammar.clone()), Masker::over(grammar.clone()));
+        a.accept(pieces.iter().position(|p| *p == "{\"").unwrap() as u32).unwrap();
+        assert_ne!(a.cursor(), b.cursor());
+        assert_eq!(b.cursor(), grammar.program().start());
+    }
+
+    #[test]
     fn mask_tensor_blocks_everything_the_grammar_rejects() {
         let (vocabulary, pieces) = toy();
         let width = pieces.len() + 1;
@@ -1383,16 +1494,7 @@ mod tests {
     #[test]
     fn decoder_without_a_schema_is_an_unmodified_greedy_sampler() {
         let logits = Tensor::new(&[0.1f32, 0.9, 0.3], &Device::Cpu).unwrap();
-        let mut decoder = Decoder::new(
-            None,
-            &tokenizers::Tokenizer::new(tokenizers::models::bpe::BPE::default()),
-            &Device::Cpu,
-            3,
-            2,
-            &[],
-            1.0,
-        )
-        .unwrap();
+        let mut decoder = Decoder::new(None, &Device::Cpu, 3, &[], 1.0).unwrap();
         assert!(decoder.masker().is_none());
         assert_eq!(decoder.sample(&logits).unwrap(), 1);
     }

@@ -31,6 +31,9 @@ use std::{
 use tokio::sync::oneshot;
 
 pub(crate) const CHUNK: usize = 128;
+/// `<|im_end|>`, which ends a turn. `Checkpoint::load` refuses a tokenizer that
+/// puts it anywhere else.
+const EOS: u32 = 124900;
 const MAX_NEW: usize = 2048;
 const MAX_INPUT_BYTES: usize = 65536;
 const TEMPLATE_VERSION: &str = "lfm25-single-user-v1";
@@ -369,7 +372,7 @@ impl Checkpoint {
         for (text, id) in [
             ("<|startoftext|>", 124894),
             ("<|im_start|>", 124899),
-            ("<|im_end|>", 124900),
+            ("<|im_end|>", EOS),
         ] {
             if tokenizer.token_to_id(text) != Some(id) {
                 return Err(format!("unsupported LFM2.5 control token {text}"));
@@ -408,6 +411,8 @@ pub struct Adjudicator {
     eos: u32,
     info: PrefixInfo,
     output_schema: Option<serde_json::Value>,
+    /// `output_schema` compiled against this tokenizer, once, at load.
+    grammar: Option<std::sync::Arc<crate::constrain::Grammar>>,
     repeat_penalty: f32,
 }
 impl Adjudicator {
@@ -440,6 +445,16 @@ impl Adjudicator {
         if cli.adjudicator_context > model.context_length() {
             return Err("adjudicator context exceeds model context".into());
         }
+        // Compile the output grammar before the prefix prefill: a schema this
+        // tokenizer cannot honour refuses to start, and never reaches a request.
+        let grammar = prompt
+            .output_schema
+            .as_ref()
+            .map(|schema| {
+                crate::constrain::Grammar::compile(schema, &tokenizer, model.vocab_size(), EOS)
+                    .map_err(|e| format!("output_schema cannot be constrained: {e}"))
+            })
+            .transpose()?;
         let prefix_ids = tokenizer
             .encode(prefix_text.as_str(), false)
             .map_err(|e| e.to_string())?
@@ -505,9 +520,10 @@ impl Adjudicator {
                 ready: None,
             },
             prefix_text,
-            eos: 124900,
+            eos: EOS,
             info,
             output_schema: prompt.output_schema,
+            grammar,
             repeat_penalty: cli.adjudicator_repeat_penalty,
         })
     }
@@ -569,18 +585,16 @@ impl Generator for Adjudicator {
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
         let decode = Instant::now();
         // Constrained decoding. With an `output_schema` this masks the logits
-        // against a compiled JSON grammar before every greedy selection, so an
+        // against the JSON grammar compiled at load before every greedy selection, so an
         // invalid report is unreachable rather than merely detected afterwards
         // by `validate_report`. Without a schema it is `GreedySampler` itself.
         // See `crate::constrain` for the grammar's scope and rulings. The mask
         // lives inside the decoder and never touches `logits`; the loop below
         // goes through `Decoder::step`, which records from the raw logits.
         let mut sampler = crate::constrain::Decoder::new(
-            self.output_schema.as_ref(),
-            &self.tokenizer,
+            self.grammar.as_ref(),
             logits.device(),
             self.model.vocab_size(),
-            self.eos,
             &full,
             self.repeat_penalty,
         )?;

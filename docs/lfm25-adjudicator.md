@@ -112,7 +112,10 @@ order, separators are spaced the way the model writes them (`": "` and
 character they can spell is reachable literally as UTF-8). A schema
 `validate_schema` accepts but the grammar cannot honour — today, an `enum` with
 a blank string value, which no valid report could contain — is a loud error,
-never a silent fall-through to free generation.
+never a silent fall-through to free generation. The grammar is compiled against
+the tokenizer once, at load, so such a schema stops the daemon from starting
+and never reaches a request; its mask plans are shared by every report after
+the first that needs them.
 
 Requests accept `input`, `max_tokens` (default/max 2048), `timeout_ms`
 (default 30000, max 120000), and `use_cache` (default true). `use_cache:false`
