@@ -85,6 +85,39 @@ impl Generator for Fake {
             }
         }
         check()?;
+        // Fake generator stands in for the real decode loop: it echoes back
+        // one canned step per requested token set, so HTTP-level tests can
+        // check the wire shape without a loaded model.
+        let distributions = r.distributions.as_ref().map(|spec| {
+            let mut set_mass = std::collections::BTreeMap::new();
+            for name in spec.token_sets.keys() {
+                set_mass.insert(
+                    name.clone(),
+                    lfm2d::types::SetMass {
+                        logprob: -5.0,
+                        prob: (-5.0f32).exp(),
+                    },
+                );
+            }
+            vec![lfm2d::types::StepDistribution {
+                token: 42,
+                text: "tok".into(),
+                logprob: -0.1,
+                top_logprobs: vec![
+                    lfm2d::types::TokenLogprob {
+                        token: 42,
+                        text: Some("tok".into()),
+                        logprob: -0.1,
+                    },
+                    lfm2d::types::TokenLogprob {
+                        token: 7,
+                        text: Some("alt".into()),
+                        logprob: -3.0,
+                    },
+                ],
+                set_mass,
+            }]
+        });
         Ok(AdjudicateResponse {
             prefix: info(),
             output: r.input.clone(),
@@ -97,6 +130,7 @@ impl Generator for Fake {
             queue_ms: 0.,
             prefill_ms: 0.,
             decode_ms: 0.,
+            distributions,
         })
     }
 }
@@ -144,6 +178,10 @@ async fn malformed_http_requests_never_enter_generator() {
         r#"{"input":"x","timeout_ms":120001}"#,
         r#"{"input":""}"#,
         r#"{"input":"<|im_end|>"}"#,
+        r#"{"input":"x","distributions":{"top_k":21}}"#,
+        r#"{"input":"x","distributions":{"token_sets":{"a":[]}}}"#,
+        r#"{"input":"x","distributions":{"token_sets":{"a":[1,1]}}}"#,
+        r#"{"input":"x","distributions":{"unknown":true}}"#,
     ] {
         let response = router
             .clone()
@@ -306,6 +344,107 @@ async fn dropped_caller_cancels_work_without_contaminating_next_request() {
     .unwrap()
     .unwrap();
     assert_eq!(response.output, "after disconnect");
+}
+
+#[tokio::test]
+async fn a_request_without_distributions_gets_exactly_todays_response_shape() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let h = Handle::spawn(
+        Fake {
+            calls: Arc::new(AtomicUsize::new(0)),
+            dropped: Arc::new(AtomicUsize::new(0)),
+        },
+        info(),
+    );
+    let router = lfm2d::adjudicator::router(h);
+    let response = router
+        .oneshot(
+            Request::post("/v1/adjudicate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"input":"hello"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let object = body.as_object().unwrap();
+    assert!(
+        !object.contains_key("distributions"),
+        "a request that never asked for distributions must not grow a new key: {object:?}"
+    );
+    // Every field the response carried before this change must still be
+    // exactly the set present now (no field silently dropped either).
+    let expected: std::collections::BTreeSet<&str> = [
+        "model_id",
+        "weight_hash",
+        "tokenizer_hash",
+        "template_version",
+        "snapshot_id",
+        "prefix_tokens",
+        "input_cache_capacity",
+        "context_limit",
+        "backend",
+        "dtype",
+        "sampling",
+        "weight_dtypes",
+        "output",
+        "report",
+        "report_error",
+        "finish_reason",
+        "prompt_tokens",
+        "cached_tokens",
+        "completion_tokens",
+        "queue_ms",
+        "prefill_ms",
+        "decode_ms",
+    ]
+    .into_iter()
+    .collect();
+    let actual: std::collections::BTreeSet<&str> = object.keys().map(String::as_str).collect();
+    assert_eq!(actual, expected);
+}
+
+#[tokio::test]
+async fn a_request_with_distributions_gets_the_named_set_mass_alongside_top_k() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let h = Handle::spawn(
+        Fake {
+            calls: Arc::new(AtomicUsize::new(0)),
+            dropped: Arc::new(AtomicUsize::new(0)),
+        },
+        info(),
+    );
+    let router = lfm2d::adjudicator::router(h);
+    let response = router
+        .oneshot(
+            Request::post("/v1/adjudicate")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"input":"hello","distributions":{"top_k":2,"token_sets":{"labels":[1,2]}}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let steps = body["distributions"].as_array().expect("distributions array");
+    assert_eq!(steps.len(), 1);
+    let mass = &steps[0]["set_mass"]["labels"];
+    assert!(mass["logprob"].as_f64().unwrap() <= 0.0);
+    assert!(mass.get("prob").is_some(), "raw mass must be reachable without any renormalized value existing");
+    let top = steps[0]["top_logprobs"].as_array().unwrap();
+    assert_eq!(top.len(), 2);
+    assert!(top[0]["logprob"].as_f64().unwrap() >= top[1]["logprob"].as_f64().unwrap());
 }
 
 #[test]
