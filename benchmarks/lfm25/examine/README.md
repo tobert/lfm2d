@@ -6,7 +6,13 @@ answer slot, expert routing around it, and the pages that show either one.
 everything here prepares their inputs or scores their output.
 
 Outputs go **outside this repo** — they hold per-row verdicts, which are corpus
-rows. These scripts print aggregates and row numbers, never row text.
+rows.
+
+One exception to the aggregates-only rule, and it is load-bearing:
+`verdict_inputs.py` writes the rendered user turn, command text and all, because
+that is what the examiner has to be fed. **Redirect it to a directory outside this
+repo**, as the example below does. Every other script here prints counts and row
+numbers only, and row names are numbers so corpus text never becomes a file name.
 
 | script | what it does |
 |---|---|
@@ -92,10 +98,32 @@ count equals the daemon's `prompt_tokens` plus the prefill's tokens on **40 of 4
 rows**, while the delta replicated at p50 0.40 nats. Same bytes, same token counts,
 different numbers.
 
-What is left is the arithmetic: the daemon decoded the report token by token onto a
-cached prefix, and the examiner prefilled the same tokens in a block. Next probe is
-the daemon's own `use_cache: false` against `true` on the same rows, which asks
-whether a cache hit alone can move a verdict in production.
+### It is the cache schedule, and the daemon does it to itself
+
+The first version of this note blamed "a block prefill versus a token-by-token
+decode". That was wrong, and a kaibo review caught it: the examiner is cold from
+zero while a recorded run is warm, so cache schedule and prefill-versus-decode were
+confounded, and the repo already documented the first one
+(`docs/lfm25-grouped-prefill.md`: "Cold and cached chunk schedules now produce
+different long greedy generations").
+
+Measured 2026-09-19 with `verdict_eval.py --no-cache`, 40 rows, the only difference
+`use_cache`:
+
+- identical generated text on **13 of 40** rows,
+- identical verdict on **39 of 40** — a cache hit alone moved one verdict,
+- per-word |delta| at the verdict slot p50 **0.145** nats, p95 1.71, max 3.15.
+
+That is the same size as the examiner-vs-daemon gap, from the daemon against
+itself. So the examiner is not misreading: it is reading a cold schedule while the
+run answered on a warm one. The resident prefix is 327 tokens and `327 % 128 = 71`,
+so the two schedules' chunk boundaries are 71 tokens apart and even the prefix
+region is built with a different last-chunk shape.
+
+**This is production, not a probe artifact.** A cache hit changes the text the
+adjudicator writes most of the time and can change its verdict. `--chunk` is
+bucketed by the daemon's offset for this reason; with one shared prefix its
+residues are a relabelling of the examiner's, so the flat profile above transfers.
 
 **This bounds every lens number in this directory.** A per-depth AUC or a lean
 curve is read from the examiner, so a 0.16-nat floor sits under all of it. It does

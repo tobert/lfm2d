@@ -61,6 +61,14 @@ def _end_of_string(s, i):
 def _end_of_value(s, i):
     if s[i] == '"':
         return _end_of_string(s, i)
+    if s[i] in '{[':
+        # An output schema is a closed object of string and boolean fields, so
+        # this cannot arise from a grammar-constrained report. It is refused
+        # rather than walked because the bare-literal walk below would stop at
+        # the nested object's own `}` and silently drop every field after it --
+        # a scan that reports fewer fields than the text has is the one failure
+        # this whole family of tools exists to prevent.
+        raise ValueError('a structured value at offset %d is not a schema field' % i)
     j = i
     while j < len(s) and s[j] not in ',}' and s[j] not in WHITESPACE:
         j += 1
@@ -76,8 +84,16 @@ def field_offsets(output):
     A scan, not a search. The model writes about the fields it has just filled,
     so searching for `"verdict": "` can land inside an earlier value; walking the
     text with escapes honoured cannot. Nested objects are not expected -- an
-    output schema is a closed object of string and boolean fields -- and a value
-    that is neither a string nor a bare literal is refused rather than guessed at.
+    output schema is a closed object of string and boolean fields -- and a
+    structured value is refused rather than walked past, because the bare-literal
+    walk would take the nested object's own `}` for the end of the document and
+    report fewer fields than the text holds.
+
+    `\\uXXXX` needs no special case: it is skipped as a two-byte escape like any
+    other, so an escape and a surrogate pair both walk correctly. WHITESPACE is
+    JSON's four bytes, which is also exactly what the grammar emits; any other
+    whitespace byte between tokens would be absorbed as value content rather than
+    refused, and nothing in a constrained report can produce one.
     """
     i = _skip_ws(output, 0)
     if i >= len(output) or output[i] != '{':

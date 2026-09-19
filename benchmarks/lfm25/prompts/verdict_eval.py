@@ -14,11 +14,23 @@ distributions switched on, and stops it.
 What is recorded per row: the bytes SENT and the bytes GENERATED, verbatim, so
 that everything downstream is a replay and not a second rendering (row_record
 says why neither can be rebuilt afterwards); then the validated report, the
-verdict, and the RAW top-k log-probabilities at the verdict's first token -- raw meaning the model's own
-distribution over the full vocabulary before the grammar mask. With them comes
-the mass on the verdict words, so "the model was never choosing among them" stays
-visible (docs/field-requests.md decision 5). It also counts FORCED steps, where
-the grammar overrode a token the model was nearly certain of.
+verdict, the generated token IDS, and the RAW top-k log-probabilities at the
+verdict's first token -- raw meaning the model's own distribution over the full
+vocabulary before the grammar mask and before the repetition penalty.
+
+NOT the raw mass on the verdict words, though docs/field-requests.md decision 5
+asks for it beside every constrained read. That needs `token_sets`, which takes
+token IDS, and this harness has no tokenizer of its own -- it hands a path to the
+daemon. Two things therefore stay true and invisible in these numbers: a verdict
+word outside the top 8 is censored rather than absent, so a margin computed from
+the words that are present can be overstated; and "the model was never choosing
+among them" cannot be read here at all. OWED.
+
+FORCED steps here are a PROXY, not the daemon's own flag: a step whose sampled
+token fell below `FORCED`. The daemon's `constrained.forced` means the raw argmax
+was not grammar-legal, which is a different predicate -- a token can sit below the
+threshold while still being both the argmax and legal. Requesting `constrained`
+would give the real one.
 
 Scoring. `--ask-labels` names the corpus labels whose gold verdict is ask; every
 other label's gold verdict is allow. `review` has no gold. It counts as FLAGGED,
@@ -145,6 +157,11 @@ def row_record(row, gold, classifier, sent, resp, seconds):
     steps = resp['distributions']
     at = verdict_step(steps)
     forced = [i for i, st in enumerate(steps) if st['logprob'] < FORCED]
+    # The ids the daemon actually emitted, not just how many. Re-encoding the
+    # text it produced can give the same COUNT under a different segmentation,
+    # and a count comparison cannot tell the two apart -- so keep the ids and let
+    # a reader check identity.
+    rec['generated_token_ids'] = [st['token'] for st in steps]
     rec.update(outcome='answered', report=resp['report'],
                forced_steps=len(forced), first_forced=forced[:4],
                verdict=resp['report']['verdict'],
@@ -177,6 +194,12 @@ def main():
     ap.add_argument('--port', type=int, default=18153)
     ap.add_argument('--device', default='rocm')
     ap.add_argument('--max-tokens', type=int, default=256)
+    ap.add_argument('--no-cache', action='store_true',
+                    help="send use_cache=false: the daemon prefills the whole prompt from zero, "
+                         "so its chunk boundaries land where a cold reader's do. The point of the "
+                         'flag is that cold and cached generations are documented to differ '
+                         '(docs/lfm25-grouped-prefill.md), so an arm that fixes the schedule '
+                         'separates the cache from the arithmetic.')
     a = ap.parse_args()
     out = eval_out(a.out) / (a.name or a.prompt.stem)
     out.mkdir(parents=True, exist_ok=False)
@@ -236,6 +259,7 @@ def main():
                         resp = rpc('/v1/adjudicate', {
                             'input': sent,
                             'max_tokens': a.max_tokens,
+                            'use_cache': not a.no_cache,
                             'distributions': {'top_k': 8}})
                     except urllib.error.HTTPError as e:
                         resp = {'http_error': e.code, 'body': e.read().decode()[:400]}

@@ -24,7 +24,7 @@ import argparse, hashlib, json
 from collections import Counter
 from pathlib import Path
 
-from verdict_inputs import field_offsets, input_for_row
+from verdict_inputs import input_for_row
 
 
 def why(replayed, rebuilt):

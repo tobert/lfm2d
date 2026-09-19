@@ -21,11 +21,12 @@ ANSWERED = {
     'finish_reason': 'stop', 'completion_tokens': 41,
     'prompt_tokens': 412, 'cached_tokens': 327,
     'prefill_ms': 120.5, 'decode_ms': 880.25,
+    # `token` is on every step of the real wire (types.rs StepDistribution).
     'distributions': [
-        {'text': '{"', 'logprob': -0.2, 'top_logprobs': []},
-        {'text': 'verdict', 'logprob': -0.1, 'top_logprobs': []},
-        {'text': '":Ġ"', 'logprob': -0.1, 'top_logprobs': []},
-        {'text': 'ask', 'logprob': -0.6,
+        {'token': 5001, 'text': '{"', 'logprob': -0.2, 'top_logprobs': []},
+        {'token': 5002, 'text': 'verdict', 'logprob': -0.1, 'top_logprobs': []},
+        {'token': 5003, 'text': '":Ġ"', 'logprob': -0.1, 'top_logprobs': []},
+        {'token': 1767, 'text': 'ask', 'logprob': -0.6,
          'top_logprobs': [{'text': 'ask', 'logprob': -0.6}, {'text': 'allow', 'logprob': -1.2}]},
     ],
 }
@@ -63,6 +64,12 @@ class RecordedBytes(unittest.TestCase):
         self.assertEqual(rec['input'], 'SENT BYTES')
         self.assertNotIn('output', rec)  # there was no generation to record
 
+    def test_the_generated_token_ids_are_recorded_not_just_their_count(self):
+        # A re-encode of the same text can give the same COUNT under a different
+        # segmentation, and a count comparison cannot tell those apart. The ids can.
+        rec = row_record(ROW, 'ask', None, 'SENT', ANSWERED, 1.0)
+        self.assertEqual(rec['generated_token_ids'], [5001, 5002, 5003, 1767])
+
     def test_the_token_counts_are_recorded_so_parity_can_be_checked(self):
         # An examiner that renders the same row and reaches a different total is
         # reading different bytes; without these numbers that cannot be told
@@ -82,7 +89,8 @@ class VerdictSlot(unittest.TestCase):
         self.assertEqual(rec['verdict_top'], [['ask', -0.6], ['allow', -1.2]])
 
     def test_a_row_that_never_reached_the_key_has_no_reading(self):
-        never = dict(ANSWERED, distributions=[{'text': '{"', 'logprob': -0.2, 'top_logprobs': []}])
+        never = dict(ANSWERED, distributions=[{'token': 5001, 'text': '{"', 'logprob': -0.2,
+                                               'top_logprobs': []}])
         self.assertIsNone(row_record(ROW, 'ask', None, 'SENT', never, 1.0)['verdict_top'])
 
 

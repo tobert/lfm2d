@@ -297,6 +297,24 @@ bounded evidence; different devices, quantizations, shapes, and optimizations
 need their own comparisons. The early native-tool prompt produced divergent
 cold/cached continuations; that path remains an unqualified comparison mode.
 
+**2026-09-19, the verdict prompt: cold and cached are NOT the same, and the
+difference reaches the answer.** Same daemon, same input bytes, greedy, ROCm,
+`command-verdict-enum-v1`, 40 val_F rows, the only difference `use_cache`:
+
+- identical generated text on **13 of 40** rows,
+- identical verdict on **39 of 40** — one verdict moved on a cache hit alone,
+- per-word |delta| at the verdict slot p50 **0.145** nats, p95 1.71, max 3.15.
+
+The resident prefix is 327 tokens and `327 % 128 = 71`, so the cached path's
+chunk boundaries sit 71 tokens off the cold path's and even the prefix region is
+built with a different last-chunk shape. This does not contradict the
+fixed-input logit parity above — that was a bounded measurement on a different
+prompt — but it does mean cold/cached equality must be re-measured per prompt and
+per optimization, never inherited. `benchmarks/lfm25/prompts/verdict_eval.py
+--no-cache` is the arm, and `docs/lfm25-grouped-prefill.md` predicted exactly
+this: "Cold and cached chunk schedules now produce different long greedy
+generations."
+
 The [2026-09-13 results](../benchmarks/lfm25/results/2026-09-13.json)
 record 12/12 schema-and-severity passes (four cases, cold/cached/repeated),
 with all corresponding generated text identical. Median synchronized prefill

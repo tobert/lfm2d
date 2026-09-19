@@ -15,16 +15,21 @@ which is the model's own output distribution (examine.rs pins it to a reference)
 
 WHAT A DISAGREEMENT MEANS depends on the margin it happened at, so the flip count
 is printed against the size of the disagreement rather than on its own. The two
-paths are not the same arithmetic: the daemon decoded the report token by token
-onto a cached prefix, and the examiner prefilled the same tokens in a block.
+paths are not the same arithmetic, and the reason is the CACHE SCHEDULE: a run is
+warm, so its chunk boundaries sit at `cached_tokens + 128k`, while the examiner is
+cold from zero. Measured with `verdict_eval.py --no-cache`, the daemon differs from
+ITSELF by the same amount on the same bytes -- p50 0.145 nats, 13 of 40 rows
+generating identical text, one verdict moved. So this tool measures a real property
+of the stack, not a defect in the examiner.
 
 MEASURED, 733 val_F rows at the verdict slot (2026-09-19, ROCm, the 09-17 batch):
 per-word |delta| p50 **0.16 nats**, p95 1.25, max 4.23, and 11 flips (1.5%), every
 one of them at a daemon margin below 0.57. So the flips are not the finding -- the
-0.16 is. It is far too large to call rounding, every lens number read through the
-examiner inherits it, and `--chunk 128` shows it is FLAT across the slot's offset
-into a prefill chunk (p50 0.34-0.48 in every bucket), so it is not the
-layer-0 cached-convolution effect that `verdict_ribbon.py --chunk` tracks.
+0.16 is. Every lens number read through the examiner inherits it, and `--chunk 128`
+is FLAT across the slot's offset into a prefill chunk (p50 0.34-0.48 in every
+bucket), so it is not the layer-0 cached-convolution effect that
+`verdict_ribbon.py --chunk` tracks -- the misalignment is a whole-schedule shift
+(prefix 327, `327 % 128 = 71`), not a boundary artifact.
 
 Aggregates and row numbers only.
 """
@@ -111,43 +116,82 @@ def main():
                 raise SystemExit('row %d: the daemon wrote %r but its own raw top-k ranks %r first; '
                                  'the mask or the penalty moved this choice, so the comparison below '
                                  'is not apples to apples' % (n, row[a.field], d_top))
+            delta = {w: e - d for w, (d, e) in both.items()}
             rec = {'n': n, 'wrote': row[a.field], 'examiner_top': e_top,
                    'n_tokens': len(exam['tokens']),
-                   'delta': {w: round(e - d, 4) for w, (d, e) in both.items()},
+                   # The daemon's own chunk boundaries sit at cached_tokens + 128k,
+                   # not at 128k, so its offset is the examiner's shifted by the
+                   # resident prefix. Recorded per row because the shift is only a
+                   # constant while every row shares one prefix.
+                   'cached_tokens': row.get('cached_tokens'),
+                   'delta': {w: round(v, 4) for w, v in delta.items()},
+                   'spread': None if len(delta) < 2 else round(max(delta.values()) - min(delta.values()), 4),
                    'daemon_margin': None if len(both) < 2 else round(margin([d for d, _ in both.values()]), 4)}
             per_row.append(rec)
             deltas += [abs(e - d) for d, e in both.values()]
             if e_top != row[a.field]:
                 flips.append(rec)
 
-    noise = quantile(deltas, 0.99) or 0.
+    # The yardstick a flip has to clear is the SPREAD of the deltas within its own
+    # row -- what separates two words is what can reorder them -- and it is
+    # estimated on the rows that did NOT flip, so the flips are not helping to
+    # excuse themselves. Using a pooled per-word p99 over all rows does both
+    # wrong: it compares the wrong quantity, and the flipped rows are a large part
+    # of the top percentile they are then measured against.
+    steady = [r['spread'] for r in per_row if r['examiner_top'] == r['wrote'] and r['spread'] is not None]
+    noise = quantile(steady, 0.99) or 0.
+    unmeasurable = [r for r in flips if r['daemon_margin'] is None]
     explained = [r for r in flips if r['daemon_margin'] is not None and r['daemon_margin'] <= noise]
+    wider = [r for r in flips if r['daemon_margin'] is not None and r['daemon_margin'] > noise]
     print('rows compared            %d' % len(per_row))
     print('per-word |delta| nats    p50 %.4f  p95 %.4f  p99 %.4f  max %.4f'
           % tuple(quantile(deltas, q) or 0. for q in (.5, .95, .99, 1.)))
+    print('within-row delta spread  p50 %.4f  p99 %.4f   (on the %d rows that agree)'
+          % (quantile(steady, .5) or 0., noise, len(steady)))
     print('argmax disagreements     %d (%.2f%%)'
           % (len(flips), 100. * len(flips) / max(1, len(per_row))))
-    print('  at a margin below p99  %d  <- the two paths disagree by more than the row does'
+    print('  margin below that p99  %d  <- the paths disagree by more than the row does'
           % len(explained))
-    print('  at a wider margin      %d  <- the paths agree well enough that this is its own defect'
-          % (len(flips) - len(explained)))
+    print('  margin above it        %d  <- not accounted for by the path difference'
+          % len(wider))
+    if unmeasurable:
+        print('  margin unmeasurable    %d  <- fewer than two words matched; says nothing either way'
+              % len(unmeasurable))
     if flips:
         ms = [r['daemon_margin'] for r in flips if r['daemon_margin'] is not None]
-        print('  their daemon margins   p50 %.4f  max %.4f' % (quantile(ms, .5) or 0., max(ms) if ms else 0.))
+        if ms:
+            print('  their daemon margins   p50 %.4f  max %.4f' % (quantile(ms, .5) or 0., max(ms)))
         print('  rows                   %s' % [r['n'] for r in flips])
     if a.chunk:
-        # A boundary effect concentrates at low offsets; a path difference does
-        # not care where the slot fell.
-        buckets, width = {}, max(1, a.chunk // 8)
+        # A boundary effect concentrates at low offsets; a path difference does not
+        # care where the slot fell. Bucketed by the DAEMON's offset where the row
+        # records its prefix, since that is the schedule whose boundaries are in
+        # question; the examiner's own offset differs by cached_tokens mod chunk.
+        # Width 8 because the known conv-head effect is a 1-8 token window, which a
+        # sixteenth of a chunk cannot resolve.
+        offsets = {r['cached_tokens'] for r in per_row}
+        shifted = len(offsets) == 1 and None not in offsets
+        buckets, width = {}, 8
         for r in per_row:
             worst = max((abs(v) for v in r['delta'].values()), default=None)
-            if worst is not None:
-                buckets.setdefault((r['n_tokens'] % a.chunk) // width * width, []).append(worst)
-        print('per-row max |delta| by the slot\'s offset into a %d-token chunk:' % a.chunk)
+            if worst is None:
+                continue
+            base = r['n_tokens'] - (r['cached_tokens'] or 0)
+            buckets.setdefault((base % a.chunk) // width * width, []).append(worst)
+        print("per-row max |delta| by the slot's offset into a %d-token chunk%s:"
+              % (a.chunk, ", the daemon's" if shifted else " (prefix varies or is unrecorded)"))
         for lo in sorted(buckets):
             v = buckets[lo]
             print('  %4d-%4d  n=%3d  p50 %.3f  p90 %.3f  max %.3f'
                   % (lo, lo + width - 1, len(v), quantile(v, .5), quantile(v, .9), max(v)))
+        if shifted:
+            # A single shared prefix makes the daemon's residues a relabelling of
+            # the examiner's, so flatness in one is flatness in the other. It is
+            # worth saying which, because prefix mod chunk != 0 means even the
+            # resident prefix is built with a different last-chunk shape on the
+            # two sides.
+            print('  prefix %d, so prefix %% %d = %d: the two schedules are misaligned by that much'
+                  % (next(iter(offsets)), a.chunk, next(iter(offsets)) % a.chunk))
     if a.out:
         a.out.write_text(json.dumps({'schema': 'lfm25-examiner-vs-daemon-v1', 'field': a.field,
                                      'noise_p99': noise, 'rows': per_row}) + '\n')

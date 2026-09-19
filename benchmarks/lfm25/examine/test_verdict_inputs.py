@@ -127,6 +127,17 @@ class Replay(unittest.TestCase):
         with self.assertRaises(ValueError):
             field_offsets('{"first": "one')
 
+    def test_a_nested_object_is_refused_rather_than_walked_past(self):
+        # The bare-literal walk would stop at the inner `}` and call it the end of
+        # the document, silently dropping `third` and `a_written_last`. A scan that
+        # reports fewer fields than the text holds is the failure to avoid, so the
+        # compact form must raise just as the spaced one does.
+        for out in ('{"first": {"b":1}, "second": "two", "third": "three", "a_written_last": "x"}',
+                    '{"first": {"b": 1}, "second": "two", "third": "three", "a_written_last": "x"}',
+                    '{"first": [1,2], "second": "two", "third": "three", "a_written_last": "x"}'):
+            with self.assertRaises(ValueError, msg=out):
+                field_offsets(out)
+
 
 ROW = {'text': 'chmod -R 777 /srv', 'outcome': 'answered',
        'input': 'FACTS\nCommand:\nchmod -R 777 /srv',
