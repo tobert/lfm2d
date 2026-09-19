@@ -11,8 +11,10 @@ daemon starts, so an arm is a process. The harness spawns lfm2d from --binary,
 waits for /readyz, sends every row through POST /v1/adjudicate with the per-token
 distributions switched on, and stops it.
 
-What is recorded per row: the validated report, the verdict, and the RAW top-k
-log-probabilities at the verdict's first token -- raw meaning the model's own
+What is recorded per row: the bytes SENT and the bytes GENERATED, verbatim, so
+that everything downstream is a replay and not a second rendering (row_record
+says why neither can be rebuilt afterwards); then the validated report, the
+verdict, and the RAW top-k log-probabilities at the verdict's first token -- raw meaning the model's own
 distribution over the full vocabulary before the grammar mask. With them comes
 the mass on the verdict words, so "the model was never choosing among them" stays
 visible (docs/field-requests.md decision 5). It also counts FORCED steps, where
@@ -117,6 +119,48 @@ def verdict_step(steps, keys=('"verdict": "', '"verdict":"')):
     return None
 
 
+def row_record(row, gold, classifier, sent, resp, seconds):
+    """One rows.jsonl record.
+
+    `input` is the bytes sent and `output` the bytes generated, on every outcome
+    that produced them. They are what a replay stands on, and neither can be
+    rebuilt afterwards: build_facts reads the host's manual pages, which move,
+    and `report` is the PARSED text, stored with its keys sorted, so it has lost
+    both the emission order and the model's own escaping. Both of those have
+    forked a replay before (docs: replay-in-emission-order).
+    """
+    rec = {'text': row['text'], 'label': row['label'], 'classifier': classifier,
+           'gold': gold, 'input': sent, 'seconds': seconds}
+    if 'http_error' in resp:
+        rec.update(outcome='error', error=resp)
+        return rec
+    # Kept on an unfinished row too: a budget failure is not a wrong answer, and
+    # the partial text is the only evidence of which one it was.
+    rec['output'] = resp['output']
+    if resp.get('report') is None:
+        rec.update(outcome='unfinished', finish_reason=resp['finish_reason'],
+                   report_error=resp.get('report_error'),
+                   completion_tokens=resp['completion_tokens'])
+        return rec
+    steps = resp['distributions']
+    at = verdict_step(steps)
+    forced = [i for i, st in enumerate(steps) if st['logprob'] < FORCED]
+    rec.update(outcome='answered', report=resp['report'],
+               forced_steps=len(forced), first_forced=forced[:4],
+               verdict=resp['report']['verdict'],
+               completion_tokens=resp['completion_tokens'],
+               # The token counts make a parity check possible: an examiner that
+               # renders the same row must reach the same total, and if it does
+               # not then the two are reading different bytes before any
+               # arithmetic is blamed.
+               prompt_tokens=resp['prompt_tokens'], cached_tokens=resp['cached_tokens'],
+               prefill_ms=resp['prefill_ms'], decode_ms=resp['decode_ms'],
+               verdict_top=None if at is None else
+               [[piece(t['text'] or ''), round(t['logprob'], 4)]
+                for t in steps[at]['top_logprobs']])
+    return rec
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--binary', type=Path, required=True)
@@ -187,34 +231,17 @@ def main():
             with (out / 'rows.jsonl').open('x') as sink:
                 for n, r in enumerate(rows, 1):
                     began = time.time()
+                    sent = render_input(r['text'], facts[r['text']], scores.get(r['text']), order)
                     try:
                         resp = rpc('/v1/adjudicate', {
-                            'input': render_input(r['text'], facts[r['text']], scores.get(r['text']), order),
+                            'input': sent,
                             'max_tokens': a.max_tokens,
                             'distributions': {'top_k': 8}})
                     except urllib.error.HTTPError as e:
                         resp = {'http_error': e.code, 'body': e.read().decode()[:400]}
-                    rec = {'text': r['text'], 'label': r['label'], 'classifier': scores.get(r['text']),
-                           'gold': 'ask' if r['label'] in ask_labels else 'allow',
-                           'seconds': round(time.time() - began, 3)}
-                    if 'http_error' in resp:
-                        rec.update(outcome='error', error=resp)
-                    elif resp.get('report') is None:
-                        rec.update(outcome='unfinished', finish_reason=resp['finish_reason'],
-                                   report_error=resp.get('report_error'),
-                                   completion_tokens=resp['completion_tokens'])
-                    else:
-                        steps = resp['distributions']
-                        at = verdict_step(steps)
-                        forced = [i for i, st in enumerate(steps) if st['logprob'] < FORCED]
-                        rec.update(outcome='answered', report=resp['report'],
-                                   forced_steps=len(forced), first_forced=forced[:4],
-                                   verdict=resp['report']['verdict'],
-                                   completion_tokens=resp['completion_tokens'],
-                                   prefill_ms=resp['prefill_ms'], decode_ms=resp['decode_ms'],
-                                   verdict_top=None if at is None else
-                                   [[piece(t['text'] or ''), round(t['logprob'], 4)]
-                                    for t in steps[at]['top_logprobs']])
+                    rec = row_record(r, 'ask' if r['label'] in ask_labels else 'allow',
+                                     scores.get(r['text']), sent, resp,
+                                     round(time.time() - began, 3))
                     results.append(rec)
                     sink.write(json.dumps(rec) + '\n')
                     sink.flush()

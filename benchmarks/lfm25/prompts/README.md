@@ -6,8 +6,13 @@ directory — every number in that document is reproducible from this directory.
 
 ## Running them
 
-They drive a llama.cpp server holding the same GGUF the daemon uses
+Most of them drive a llama.cpp server holding the same GGUF the daemon uses
 (`LFM2.5-8B-A1B-Q5_K_M`), default `http://127.0.0.1:2031`.
+
+`verdict_eval.py` is the exception and the one to reach for now: it spawns OUR
+daemon from `--binary`, one process per arm, and measures on our stack. The same
+GGUF gives different distributions on ROCm, CPU and llama.cpp, so a llama.cpp
+number is a cross-check and never the result.
 
 ```
 export LFM2D_EVAL_OUT=~/somewhere/outside/this/repo
@@ -42,6 +47,7 @@ picking somewhere for you.
 | `prompt_anatomy.py` | token-level collision maps, and the no-op-clause prior that ranks situation-normal recall correctly across every arm. |
 | `shell_writing.py` | the bash/kaish writing baseline. Plans candidates before running them, refuses verbs outside an allowlist, and executes kaish under `--overlay` so writes are virtual. |
 | `sonnet_build_sample.py` + `sonnet_score.py` | the blind larger-model control. The sample is stratified and its key is written separately from the shards. |
+| `verdict_eval.py` | the allow / ask / review arms on our own daemon, per row: the report, the raw top-k at the verdict's first token with the mass on the verdict words beside it, the forced-step count, and **the bytes sent and generated verbatim** so everything downstream is a replay. `../examine/` reads its runs. |
 
 ## Two rules these encode
 

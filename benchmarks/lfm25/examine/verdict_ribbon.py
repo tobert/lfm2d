@@ -58,6 +58,12 @@ from the examiner's cold prefill of the same bytes. They disagree on the top
 verdict word for a few percent of rows; each record carries `examiner_top` so
 those rows can be marked rather than hidden.
 
+That flip count understates it. `examiner_vs_daemon.py` measures the two readings
+against each other in nats: median 0.16 per word, max 4.23, and every flip sits at
+a margin below the disagreement. So a lean curve here carries a 0.16-nat floor,
+and the flagged rows are the ones where it happened to change a ranking, not the
+only ones it touched.
+
 The output holds row numbers and the model's own closed-choice fields. The corpus
 text never leaves the run directory. Prints aggregates only.
 """
