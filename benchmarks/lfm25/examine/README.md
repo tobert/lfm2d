@@ -120,10 +120,17 @@ run answered on a warm one. The resident prefix is 327 tokens and `327 % 128 = 7
 so the two schedules' chunk boundaries are 71 tokens apart and even the prefix
 region is built with a different last-chunk shape.
 
-**This is production, not a probe artifact.** A cache hit changes the text the
-adjudicator writes most of the time and can change its verdict. `--chunk` is
-bucketed by the daemon's offset for this reason; with one shared prefix its
-residues are a relabelling of the examiner's, so the flat profile above transfers.
+**What it does not mean.** Production is always warm — a new input prefills from
+the resident prefix, an exact repeat replays the stored state and logits, and
+`use_cache: false` is only ever set by a harness. So production verdicts are not
+nondeterministic on this account. What it means is narrower and still serious: **a
+cold reader does not reproduce what the daemon answered**, and this examiner is a
+cold reader. The 0.16 nats is the price of reading the model on a schedule the
+daemon never runs, not evidence that the daemon wobbles.
+
+`--chunk` is bucketed by the daemon's offset for this reason; with one shared
+prefix its residues are a relabelling of the examiner's, so the flat profile above
+transfers.
 
 **This bounds every lens number in this directory.** A per-depth AUC or a lean
 curve is read from the examiner, so a 0.16-nat floor sits under all of it. It does

@@ -310,7 +310,17 @@ chunk boundaries sit 71 tokens off the cold path's and even the prefix region is
 built with a different last-chunk shape. This does not contradict the
 fixed-input logit parity above — that was a bounded measurement on a different
 prompt — but it does mean cold/cached equality must be re-measured per prompt and
-per optimization, never inherited. `benchmarks/lfm25/prompts/verdict_eval.py
+per optimization, never inherited.
+
+**What this does and does not say about production.** Both production paths are
+warm: a new input prefills from the resident prefix (`cached_tokens` = 327), and an
+exact repeat of the previous input replays the stored state and logits unchanged.
+`use_cache: false` is only ever set by a measurement harness. So production
+verdicts are not nondeterministic on this account — every input meets the same
+schedule. What the measurement does say is that **a cold reader does not reproduce
+what production answered**, which makes `use_cache: false` a poor baseline for
+anything meant to describe the daemon, and puts a floor under every cold-path
+probe. `lfm25-examine` is a cold reader. `benchmarks/lfm25/prompts/verdict_eval.py
 --no-cache` is the arm, and `docs/lfm25-grouped-prefill.md` predicted exactly
 this: "Cold and cached chunk schedules now produce different long greedy
 generations."
