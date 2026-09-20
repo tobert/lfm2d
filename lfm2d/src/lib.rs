@@ -85,6 +85,7 @@
 //! label (unbounded cardinality). See `worker.rs`'s module docs.
 
 pub mod adjudicator;
+pub mod chunk_sweep;
 pub mod config;
 pub mod constrain;
 pub mod device;

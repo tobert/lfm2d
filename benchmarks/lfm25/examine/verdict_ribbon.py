@@ -43,10 +43,19 @@ there, not that the residual could not.
 
 CHUNK EFFECT. With --chunk N (the examiner's prefill chunk, `CHUNK` in
 adjudicator.rs) the record also says how many rows leave the common line at the
-first layer, and whether where the slot falls inside a chunk explains them. On
-the first run it explained all of them: 41 rows, slot 1-8 tokens into a chunk,
-up to 0.32 nats at layer 0. That is the examiner's chunked prefill, not the
-model, and it is a standing check on the known cached-convolution problem.
+first layer, and groups them by the length of the FINAL prefill chunk -- the
+block the slot is computed in. The first run found 41 rows up to 0.32 nats off
+at layer 0, every one of them with a final chunk of 1 to 8 tokens and no other
+row. It reported that as `slot 1-8 tokens into a chunk`. The number was right
+and the WORD was wrong: `n_tokens % chunk` is the final chunk's LENGTH, not the
+slot's offset in it, and describing a length as an offset is what sent the
+investigation at the convolution. (The old expression also returned 0 for a
+prompt of exactly one chunk, sorting a full block in with the shortest.)
+`lfm25-chunk-sweep` then reproduced the boundary on the model. It is candle's quantized matmul: at
+`b_size <= 8` (`quantized/rocm.rs:276`) every linear layer takes the MMVQ decode
+kernel, which requantizes activations to q8_1, and above 8 rows it does not. So
+this is a standing check on a kernel-selection threshold, not on the
+convolution.
 
 FIRST-TOKEN PROXY. A word that is several tokens long is followed by its first
 token alone. `ask` is one token, so its reading is exact; `easy` starts with the
@@ -100,6 +109,49 @@ def auc(a, b):
         rank_sum += mid * sum(1 for k in range(i, j) if ranked[k][1] == 0)
         i = j
     return (rank_sum - len(a) * (len(a) + 1) / 2) / (len(a) * len(b))
+
+
+# The largest final chunk that still takes candle's MMVQ path on ROCm
+# (`quantized/rocm.rs:276`), and so the length below which a row's slot is
+# computed by a different kernel than a longer block would use.
+MMVQ_MAX_BATCH = 8
+
+
+def final_chunk_length(n_tokens, chunk):
+    """Tokens in the last prefill block -- the block the slot is computed in.
+
+    `n_tokens` is a count, so the slot is at index `n_tokens - 1`. A prompt of
+    exactly one chunk has a final chunk of `chunk`, not of zero.
+    """
+    return (n_tokens - 1) % chunk + 1
+
+
+def chunk_effect(rows, values, chunk):
+    """How the rows off the modal value at this depth sit against the chunking.
+
+    Returns None when no row leaves the line. Groups both sides by final chunk
+    length rather than reporting a min/max range, which one outlier widens
+    until it covers everything.
+    """
+    modal = Counter(round(v, 3) for v in values).most_common(1)[0][0]
+    split = {True: Counter(), False: Counter()}
+    for row, value in zip(rows, values):
+        off = round(value, 3) != modal
+        split[off][final_chunk_length(row['n_tokens'], chunk)] += 1
+    off_line, on_line = split[True], split[False]
+    if not off_line:
+        return None
+    return {
+        'chunk': chunk,
+        'depth': 1,
+        'on_line': sum(on_line.values()),
+        'off_line': sum(off_line.values()),
+        'off_line_by_length': {str(k): v for k, v in sorted(off_line.items())},
+        'on_line_by_length': {str(k): v for k, v in sorted(on_line.items())},
+        'off_line_max_length': max(off_line),
+        'explained_by_short_final_chunk': max(off_line) <= MMVQ_MAX_BATCH,
+        'max_shift': round(max(abs(v - modal) for v in values), 3),
+    }
 
 
 def main():
@@ -198,18 +250,10 @@ def main():
         ', '.join('%d at %d' % (pt['severe_flagged'], pt['false_alarms']) for pt in out['sweep']['points'])))
 
     if a.chunk:
-        first = margins(lambda r: True, 1)      # depth 1 = after the first layer
-        modal = Counter(round(v, 3) for v in first).most_common(1)[0][0]
-        off = [r for r, v in zip(out['rows'], first) if round(v, 3) != modal]
-        if off:
-            offsets = [r['n_tokens'] % a.chunk for r in off]
-            lo, hi = min(offsets), max(offsets)
-            on_line_in_range = sum(1 for r, v in zip(out['rows'], first)
-                                   if round(v, 3) == modal and lo <= r['n_tokens'] % a.chunk <= hi)
-            out['chunk_effect'] = {'chunk': a.chunk, 'depth': 1, 'on_line': len(first) - len(off), 'off_line': len(off),
-                                   'offsets': [lo, hi], 'on_line_rows_in_those_offsets': on_line_in_range,
-                                   'max_shift': round(max(abs(v - modal) for v in first), 3)}
-            print('chunk effect:', out['chunk_effect'])
+        effect = chunk_effect(out['rows'], margins(lambda r: True, 1), a.chunk)
+        if effect:
+            out['chunk_effect'] = effect
+            print('chunk effect:', effect)
 
     groups = Counter(r['group'] for r in out['rows'])
     print('rows %d | depths %d | words %s' % (len(out['rows']), len(out['depths']), out['words']))

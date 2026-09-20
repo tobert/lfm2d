@@ -88,8 +88,13 @@ Four mechanisms are ruled out, in the order they were cheapest to test:
    the verdict words is what it wrote on 249 of 249 rows, so neither moved a
    verdict. (`examiner_vs_daemon.py` refuses to compare a row where they did.)
 3. **A chunk-boundary effect.** `--chunk 128` puts the delta at p50 0.34–0.48 in
-   *every* bucket of the slot's offset into a prefill chunk. Flat, so this is not
-   the layer-0 cached-convolution problem.
+   *every* bucket of the slot's offset into a prefill chunk. Flat — read at the
+   time as ruling a chunk effect out. It does not: a mechanism that applies to
+   every generated token equally predicts a flat profile, and
+   `docs/lfm25-chunk-kernels.md` found one. The daemon decodes each generated
+   token at `b_size == 1`, which takes candle's MMVQ kernel; this examiner
+   prefills them in 128-token blocks, which does not. Untested, and the test is
+   to replay the generated region token by token.
 4. **Retokenizing the generated text.** Re-encoding each `output` gives the
    daemon's own generated token count on 149 of 150 rows.
 
@@ -138,11 +143,14 @@ not touch the daemon's own verdicts, which are what the daemon actually emitted.
 
 ## Two standing caveats
 
-**Lens readings near a chunk head are suspect.** 41 of 733 rows left the common
-line at layer 0 by up to 0.32 nats, and every one had its slot 1–8 tokens into a
-128-token prefill chunk — the two dense-FFN conv layers, the known cached
-convolution problem. `verdict_ribbon.py --chunk 128` reports the count on every
-run, so a fix shows up as it reaching zero.
+**A reading whose final prefill chunk is 1–8 tokens is computed by another
+kernel.** 41 of 733 rows left the common line at layer 0 by up to 0.32 nats, and
+every one of them had a final chunk that short. Not the convolution, whose
+window is three: at eight rows or fewer every quantized matmul takes candle's
+MMVQ decode path, which requantizes activations to `q8_1`
+(`docs/lfm25-chunk-kernels.md`). `verdict_ribbon.py --chunk 128` groups the
+off-line rows by final chunk length on every run, and says outright when one of
+them is too long for that explanation.
 
 **A first token is not a word.** The lens follows the first token of each word
 encoded alone, so `ask` is exact and `easy` is whatever begins with `e`. The

@@ -357,4 +357,7 @@ additional checks. Review is supporting evidence, not a substitute for tests.
 - Wider fixed-token reference comparisons, including the native-tool prompt.
 - The old dense `lfm2`/`quantized_lfm2` cached multi-token convolution paths
   ignore existing history. This new model fixes its own path; repair and
-  regression-test the older modules separately.
+  regression-test the older modules separately. Not to be reached for as the
+  explanation of a chunk-shaped effect *here* — it was, once, and the answer
+  was the quantized matmul's `b_size <= 8` kernel switch
+  (`docs/lfm25-chunk-kernels.md`).
