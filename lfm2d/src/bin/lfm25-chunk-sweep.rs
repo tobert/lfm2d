@@ -117,7 +117,11 @@ fn run(args: Args) -> Result<(), String> {
         ));
     }
 
-    let swept = sweep(&checkpoint.model, &tokens, &tails)?;
+    // stderr, so stdout stays the report. A reading is minutes on CPU.
+    let started = std::time::Instant::now();
+    let swept = sweep(&checkpoint.model, &tokens, &tails, |n, total| {
+        eprintln!("reading {n}/{total} after {:.0}s", started.elapsed().as_secs_f32());
+    })?;
     let report = serde_json::json!({
         "schema": "lfm25-chunk-sweep-v1",
         "model_id": checkpoint.model_id,

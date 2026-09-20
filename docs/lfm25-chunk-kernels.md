@@ -134,8 +134,16 @@ replay the generated region token by token and see whether the gap closes.
 
 - The second family: which kernel selection moves at those tails, and why some
   large tails are bit-identical.
-- Whether CPU shows the same cliff. `fast_mmvq.rs` is CUDA and the ROCm
-  dispatch above is ROCm, so the CPU path is a different implementation
-  entirely; a CPU sweep is the control that says whether "≤ 8 rows" is a
-  property of this backend or of the design.
+- **Whether CPU shows the same cliff. Not measured, by decision.** The branch
+  above lives in `quantized/rocm.rs` and `fast_mmvq.rs` is CUDA, so the CPU
+  path is a different implementation and the code says ROCm-only — but that is
+  an argument, not a measurement, and nothing here has tested it. Note the
+  fixture cannot stand in: `lfm2d/tests/fixtures/lfm2-moe/tiny.gguf` is all
+  F32, 33 tensors, no quantized weight at all, so every CPU test in this repo
+  runs a dispatch path this finding does not concern. A CPU sweep of the real
+  checkpoint was started and abandoned at 73 minutes: it held ~49 GB and ran on
+  one core of 32 throughout, with `RAYON_NUM_THREADS=8` set and not reaching
+  whatever does the work. Both of those — the single core and the memory — are
+  their own question, and a cheaper control is an ~80-token prompt, since the
+  threshold is a block size and not a prompt length.
 - Whether reading the generated region by decoding closes the 0.16 nats.

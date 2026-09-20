@@ -265,11 +265,25 @@ pub struct Sweep {
 
 /// Read the reference once, then every tail against it. Readings are dropped
 /// as they are compared: a full-vocabulary reading is ~13 MB per depth-stack.
-pub fn sweep(model: &Model, tokens: &[u32], tails: &[usize]) -> Result<Sweep, String> {
+///
+/// `progress` is called before each reading with `(done, total)`. A sweep is
+/// seconds on a GPU and hours on a slow backend, and a run that prints nothing
+/// until it finishes cannot be told from a run that has hung -- one was left
+/// for 73 minutes on that ambiguity.
+pub fn sweep(
+    model: &Model,
+    tokens: &[u32],
+    tails: &[usize],
+    mut progress: impl FnMut(usize, usize),
+) -> Result<Sweep, String> {
+    let total = tails.len() + 1;
+    progress(0, total);
     let reference = read_tail(model, tokens, tokens.len())?;
     let deltas = tails
         .iter()
-        .map(|&tail| {
+        .enumerate()
+        .map(|(n, &tail)| {
+            progress(n + 1, total);
             let reading = read_tail(model, tokens, tail)?;
             compare(&reference, &reading, tail)
         })
@@ -295,7 +309,13 @@ mod tests {
     #[test]
     fn every_tail_length_reads_the_same_last_position() {
         let model = tiny();
-        let swept = sweep(&model, &TOKENS, &[1, 2, 3, 4, 5, 6, 7]).unwrap();
+        let mut seen = Vec::new();
+        let swept = sweep(&model, &TOKENS, &[1, 2, 3, 4, 5, 6, 7], |n, total| {
+            seen.push((n, total))
+        })
+        .unwrap();
+        // Every reading is announced before it runs, the reference included.
+        assert_eq!(seen, (0..=7).map(|n| (n, 8)).collect::<Vec<_>>());
         assert_eq!(swept.deltas.len(), 7);
         assert!(swept.reference_margin.iter().all(|m| *m >= 0.0));
         for d in &swept.deltas {
