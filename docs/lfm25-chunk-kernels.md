@@ -142,8 +142,40 @@ replay the generated region token by token and see whether the gap closes.
   F32, 33 tensors, no quantized weight at all, so every CPU test in this repo
   runs a dispatch path this finding does not concern. A CPU sweep of the real
   checkpoint was started and abandoned at 73 minutes: it held ~49 GB and ran on
-  one core of 32 throughout, with `RAYON_NUM_THREADS=8` set and not reaching
-  whatever does the work. Both of those — the single core and the memory — are
-  their own question, and a cheaper control is an ~80-token prompt, since the
-  threshold is a block size and not a prompt length.
+  one core of 32 throughout, with `RAYON_NUM_THREADS=8` set. A cheaper control
+  is an ~80-token prompt, since the threshold is a block size and not a prompt
+  length — but see the section below first.
 - Whether reading the generated region by decoding closes the 0.16 nats.
+
+## Why a CPU sweep of this checkpoint is so expensive
+
+Measured, because the abandoned run raised it. Both causes are in
+`quantized_lfm2_moe.rs`, both on the CPU arm only, and the file says why:
+"CPU is an explicit reference implementation, not a GPU fallback."
+
+**28.9 GB of weights, at load.** `Experts::new` (`:158`) dequantizes every
+expert to f32 when the device is CPU, keeping the GGUF quantized only on GPU.
+22 MoE layers x 32 experts x 3 matrices of 2048x1792 is 7.75 B parameters,
+28.9 GB in f32. RSS sampled every 0.5 s climbs 0.44 -> ~29.9 GB between t=3.5 s
+and t=14 s, before the first reading starts.
+
+**Then a gather that scales with the token count.** `Experts::Cpu::forward`
+(`:180`) does `w.index_select(&ids.flatten_all()?, 0)`, materialising the
+selected expert weights once per token slot. With gate/up merged the widest of
+those is `tokens x topk x hidden x 2*ffn x 4` bytes:
+
+| tokens | predicted transient | observed peak over baseline |
+|---|---|---|
+| 17 | 1.86 GB | 1.75 GB |
+| 144 | 15.75 GB | 16.10 GB |
+| 375 | 41 GB | not reached; the run was killed first |
+
+Time is linear in tokens too: 19 s per reading at 17 tokens, 159 s at 144 —
+8.4x for 8.5x. So the 375-token sweep that was killed at 73 minutes was about
+7 minutes per reading, **2.2 hours** for all 19, and would have peaked near
+70 GB.
+
+Neither is a bug against what that code says it is. They do mean a CPU
+comparison wants a short prompt and few tails, and that a reference
+implementation which gathers per token slot is the thing to change first if
+CPU ever needs to be more than a reference.
