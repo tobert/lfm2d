@@ -350,8 +350,9 @@ already in `text` verbatim and would be most of the added bytes.
 One trap the facts handle: an fd-dup like `2>&1` encodes its destination
 in the *kind*, and kaish still emits a placeholder target for it. Passed
 through raw, a consumer would see a redirect that reads as "writes a file
-named `null`". The target is nulled when the kind contains `&`, and a
-real file — `echo hi > null` — keeps its target. The discriminator is the
+named `null`". The target is nulled when the kind is an fd-dup (`N>&M`,
+`kaish_plan.is_fd_dup`) — NOT merely when it contains `&`: `&>` writes a
+file and keeps its target — and a real file — `echo hi > null` — keeps its target. The discriminator is the
 kind, never the target's spelling.
 
 `install.sh bootstrap` wires the hook on a machine that has never had one;

@@ -201,6 +201,25 @@ def main():
                guard_decision='allow')
     check('unknown redirect kind fails closed',
           (v.dismissible, v.reason), (False, 'write_redirect:>%'))
+    # An unknown kind with no `>` in it must fail closed too: the default is
+    # "write" and the read kinds are the enumerated exception, not the other
+    # way round (kaibo review 2026-09-21).
+    v = review({'name': 'echo', 'args': ['hi'],
+                'redirects': [{'kind': '%', 'target': 'x'}]},
+               guard_decision='allow')
+    check('unknown kind without > fails closed',
+          (v.dismissible, v.reason), (False, 'write_redirect:%'))
+    for kind in ('<', '<<', '<<-', '<<<'):
+        v = review({'name': 'cat', 'args': [], 'redirects': [{'kind': kind, 'target': 'x'}]},
+                   guard_decision='allow')
+        check(f'read kind {kind} is not a write', (v.dismissible, v.reason),
+              (True, 'read_only_verb:cat'))
+    # "Never raises" is the contract: a redirect that is not a dict is a
+    # shape we cannot read, so it is not dismissible.
+    v = review({'name': 'echo', 'args': ['hi'], 'redirects': ['>']},
+               guard_decision='allow')
+    check('malformed redirect fails closed without raising',
+          (v.dismissible, v.reason), (False, 'write_redirect:?'))
 
     # -- every reason is a non-empty stable slug, both ways. A silent
     # dismissal is the failure mode this whole stage must not have.

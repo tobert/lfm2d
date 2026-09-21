@@ -269,13 +269,17 @@ def _writes_filesystem(redirect):
     same reason). `/dev/null` is deliberately NOT special-cased -- a
     target's spelling is exactly what stage 4 must not reason about.
     """
+    if not isinstance(redirect, dict):
+        return True  # a shape we cannot read is a redirect we cannot clear
     kind = redirect.get('kind') or ''
     if not kind:
         # A redirect we cannot name is a redirect we cannot clear.
         return True
     if is_fd_dup(kind):
         return False  # fd duplication: no filesystem target (`&>` is a write)
-    return '>' in kind
+    # The read kinds are the enumerated exception; anything else, including
+    # a kind no kaish has emitted yet, is a write until someone rules on it.
+    return not (kind == '<' or kind.startswith('<<'))
 
 
 def _flag_head(word):
@@ -379,7 +383,8 @@ def review(facts, *, guard_decision):
 
     for redirect in (facts.get('redirects') or []):
         if _writes_filesystem(redirect):
-            return Review(False, f'write_redirect:{redirect.get("kind") or "?"}')
+            kind = redirect.get('kind') if isinstance(redirect, dict) else None
+            return Review(False, f'write_redirect:{kind or "?"}')
 
     args = list(facts.get('args') or [])
 
