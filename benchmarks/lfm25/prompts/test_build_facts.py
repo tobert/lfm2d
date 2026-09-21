@@ -108,6 +108,11 @@ class Budget(unittest.TestCase):
         self.assertEqual(cov['facts_over_budget'], 0)
         self.assertEqual(cov['facts_trimmed'], 1)
 
+    def test_essentials_alone_over_budget_are_counted(self):
+        cov = Counter()
+        H._fit([('E' * 900, True), ('E' * 900, True)], cov)
+        self.assertEqual(cov['facts_over_budget'], 1)
+
     def test_a_block_that_fits_is_untouched(self):
         cov = Counter()
         lines = [('E' * 100, True), ('f' * 100, False)]
@@ -138,13 +143,53 @@ class Fallback(unittest.TestCase):
         self.assertNotIn('&1', out)
         self.assertIn('/etc/shadow (system', out)
 
+    def test_a_quoted_operator_is_data_not_a_write(self):
+        # shlex drops quotes; the fallback must decide operators BEFORE it
+        # does, or `'>'` becomes a stated write (kaibo second pass).
+        cov = Counter()
+        out = H.build_facts('grep === ">" notes.txt', cov)
+        self.assertEqual(cov['kaish_fallback'], 1)
+        self.assertNotIn('redirect', out)
+        self.assertNotIn('None', out)
+
+    def test_a_quoted_pipe_is_not_a_clause_boundary(self):
+        out = facts("awk -F '|' '{print $1}' $DIR/f")
+        self.assertNotIn('Clause', out)
+        self.assertIn('$DIR/f (unexpanded variable', out)
+
+    def test_the_header_keeps_the_quoting_it_was_given(self):
+        out = facts('echo === "a > b" === && ls')
+        self.assertIn('Clause 1: echo === "a > b" ===', out)
+        self.assertNotIn('redirect', out)
+
     def test_an_attached_redirect_is_read_as_one(self):
-        # Operator glued to its target, as `2>/dev/null` is written. Glued to
-        # the PRECEDING word (`x>>f`) is not read: shlex has dropped the
-        # quoting that says whether that `>` was an operator. Known limit.
-        out = facts('echo === x === >>/tmp/log')
-        self.assertIn('appends', out)
-        self.assertIn('/tmp/log (temporary', out)
+        # Glued to its target, as `2>/dev/null` is written, and glued to the
+        # word before it: an unquoted `>` is an operator wherever it sits.
+        for cmd in ('echo === x === >>/tmp/log', 'echo === x ===>>/tmp/log'):
+            with self.subTest(cmd=cmd):
+                out = facts(cmd)
+                self.assertIn('- redirect >> /tmp/log: appends', out)
+                self.assertIn('/tmp/log (temporary', out)
+
+    def test_fallback_clause_contract(self):
+        self.assertEqual(H._fallback_clauses("echo === 'a b' > out.txt | wc -l"), [
+            ("echo === 'a b' > out.txt", 'echo', ['===', 'a b'],
+             [{'kind': '>', 'target': 'out.txt'}], False),
+            ('wc -l', 'wc', ['-l'], [], False)])
+
+    def test_lex_contract(self):
+        cases = {
+            "grep '>' f": [('w', 'grep'), ('w', '>'), ('w', 'f')],
+            'a 2>&1 | b': [('w', 'a'), ('op', '2>&1'), ('op', '|'), ('w', 'b')],
+            'a 2>/dev/null': [('w', 'a'), ('op', '2>'), ('w', '/dev/null')],
+            'a &> f': [('w', 'a'), ('op', '&>'), ('w', 'f')],
+            'a "x y"z': [('w', 'a'), ('w', 'x yz')],
+            'cat <<EOF': [('w', 'cat'), ('op', '<<'), ('w', 'EOF')],
+            'a\\>b': [('w', 'a>b')],
+        }
+        for raw, want in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual([t[:2] for t in H._lex(raw)], want)
 
 
 class Wrappers(unittest.TestCase):
@@ -157,7 +202,11 @@ class Wrappers(unittest.TestCase):
 
     def test_sudo_user_flag(self):
         out = self.wrapped('sudo -u amy systemctl restart lfm2d', 'systemctl')
-        self.assertNotIn('amy:', out)
+        self.assertNotIn('amy', out)
+
+    def test_a_flag_cluster_ending_in_a_value_flag(self):
+        out = self.wrapped('sudo -iu amy systemctl restart lfm2d', 'systemctl')
+        self.assertNotIn('amy', out)
 
     def test_env_assignments(self):
         self.wrapped('env FOO=1 ls -la', 'ls')
@@ -176,6 +225,71 @@ class Wrappers(unittest.TestCase):
             del H._man_cache['fakeverb']
         self.assertIn('- timeout is run by the wrapper above', out)
         self.assertIn('fakeverb - the innermost verb', out)
+
+
+class Unwrap(unittest.TestCase):
+    """unwrap is pure: (command, its args, index where it starts) or None."""
+
+    def test_contract(self):
+        cases = {
+            ('sudo', ('-u', 'amy', 'ls', '-la')): ('ls', ['-la'], 2),
+            ('sudo', ('-uamy', 'ls')): ('ls', [], 1),
+            ('sudo', ('-iu', 'amy', 'ls')): ('ls', [], 2),
+            ('sudo', ('--', 'ls')): ('ls', [], 1),
+            ('sudo', ('--user=amy', 'ls')): ('ls', [], 1),
+            ('sudo', ('-uroot', 'ls')): ('ls', [], 1),
+            ('timeout', ('--signal', 'KILL', '30', 'cargo')): ('cargo', [], 3),
+            ('sudo', ('-u', '--', 'ls')): ('ls', [], 2),
+            ('env', ('A=1', 'B=2', 'make', 'all')): ('make', ['all'], 2),
+            ('timeout', ('-k', '5', '30', 'cargo', 'test')): ('cargo', ['test'], 3),
+            ('sudo', ('-n',)): None,
+        }
+        for (name, args), want in cases.items():
+            with self.subTest(name=name, args=args):
+                self.assertEqual(H.unwrap(name, list(args)), want)
+
+    def test_the_wrapper_page_documents_only_the_wrappers_own_flags(self):
+        H._man_cache['fakewrap'] = 'NAME\n       fakewrap - wraps\n\nOPTIONS\n       -C     WRAPPER-OWN-C\n'
+        H._man_cache['fakeverb'] = 'NAME\n       fakeverb - inner\n'
+        H.WRAPPERS['fakewrap'] = 0
+        try:
+            out = facts('fakewrap fakeverb -C x')
+        finally:
+            del H._man_cache['fakewrap'], H._man_cache['fakeverb'], H.WRAPPERS['fakewrap']
+        self.assertNotIn('WRAPPER-OWN-C', out)
+
+    def test_nesting_past_the_cap_is_stated(self):
+        cov = Counter()
+        out = H.build_facts('sudo nice nohup timeout 900 env A=1 ls', cov)
+        self.assertIn('not described', out)
+        self.assertEqual(cov['wrappers_too_deep'], 1)
+
+
+class Verbless(unittest.TestCase):
+    def plan(self, **clause):
+        base = {'text': 'x', 'name': None, 'args': [], 'redirects': [], 'stmt_fallback': False}
+        return {'ok': True, 'clauses': [dict(base, **clause)]}
+
+    def facts_for(self, plan):
+        real = H.kaish_plan.plan_clauses
+        H.kaish_plan.plan_clauses = lambda text: plan
+        try:
+            return facts('x')
+        finally:
+            H.kaish_plan.plan_clauses = real
+
+    def test_an_unreadable_statement_is_not_called_a_no_op(self):
+        out = self.facts_for(self.plan(stmt_fallback=True))
+        self.assertNotIn('no command runs', out)
+        self.assertIn('could not read', out)
+
+    def test_an_assignment_is(self):
+        self.assertIn('no command runs', self.facts_for(self.plan()))
+
+    def test_a_redirect_without_a_target_never_prints_none(self):
+        out = self.facts_for(self.plan(name='echo', redirects=[{'kind': '>', 'target': None}]))
+        self.assertNotIn('None', out)
+        self.assertIn('redirect >', out)
 
 
 class Location(unittest.TestCase):

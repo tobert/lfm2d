@@ -198,6 +198,8 @@ def redirect_fact(r):
         return None
     if kind.startswith('<<'):
         return f'- redirect {kind}: a heredoc feeds text to stdin (body not shown)'
+    if not target:
+        return f'- redirect {kind}: its target could not be read'
     if target == '/dev/null':
         # Deliberately NOT stage 4's answer: stage 4 gates, so it refuses to
         # read a target's spelling and calls this a write. The facts inform,
@@ -296,32 +298,51 @@ _TRIM_NOTE = 64      # room kept for the line that says a trim happened
 
 
 def unwrap(name, args):
-    """(command, its args) that wrapper `name` runs, or None."""
+    """(command, its args, index of the command in args) that wrapper `name`
+    runs, or None when nothing follows its own flags. Short-flag clusters are
+    read the way getopt reads them (`sudo -iu amy`, `sudo -uroot`)."""
     values, skip, i = WRAPPER_VALUE_FLAGS.get(name, set()), WRAPPERS[name], 0
     while i < len(args):
         a = args[i]
-        if a.startswith('-') and len(a) > 1 and a != '--':
-            i += 2 if a in values else 1
-        elif a == '--' or (name == 'env' and _ASSIGN.match(a)):
+        if a == '--':
+            i += 1
+            if i < len(args):
+                return args[i], args[i + 1:], i
+            return None
+        if a.startswith('--'):
+            i += 2 if a in values else 1  # `--user=amy` carries its own value
+        elif a.startswith('-') and len(a) > 1:
+            # getopt: the first value-taking letter owns the rest of the word,
+            # or the next word when it is the last letter (`-iu amy`, `-uroot`).
+            takes = next((j for j, ch in enumerate(a[1:], 1) if '-' + ch in values), None)
+            i += 2 if takes == len(a) - 1 else 1
+        elif name == 'env' and _ASSIGN.match(a):
             i += 1
         elif skip:
             skip -= 1
             i += 1
         else:
-            return a, args[i + 1:]
+            return a, args[i + 1:], i
     return None
 
 
-def clause_lines(name, args, redirects, cov):
+WRAPPER_DEPTH = 4
+
+
+def clause_lines(name, args, redirects, cov, unreadable=False):
     """[(line, essential)] for one simple command. Essential lines say what
     runs, what it writes and where; flag documentation gives way first."""
     if not name:
-        # kaish planned the clause but it runs no command: an assignment, or
-        # an argument shape it could not render. Say so; never drop it.
-        return [('- no command runs (an assignment or an unreadable clause)', True)]
+        # kaish planned the clause but it names no command. Two different
+        # things, and only one of them is a no-op (kaibo 2nd pass).
+        if unreadable:
+            return [('- the parser could not read this clause: what it runs is not described', True)]
+        return [('- an assignment; no command runs', True)]
     lines, depth = [], 0
-    while name and depth < 3:
-        page, rest = verb_page(name, args)
+    while True:
+        inner = unwrap(name, args) if name in WRAPPERS else None
+        own = args[:inner[2]] if inner else args  # a wrapper's page documents its own flags only
+        page, rest = verb_page(name, own)
         if page:
             cov['verb_pages'] += 1
             nl = name_line(man(page))
@@ -330,13 +351,16 @@ def clause_lines(name, args, redirects, cov):
         else:
             cov['verb_missing'] += 1
             lines.append((f'- {name}: no manual page found (possibly a shell builtin)', True))
-        inner = unwrap(name, args) if name in WRAPPERS else None
-        if inner:
-            name, args = inner
-            lines.append((f'- {name} is run by the wrapper above:', True))
-            depth += 1
-            continue
-        break
+        if not inner:
+            break
+        if depth + 1 >= WRAPPER_DEPTH:
+            cov['wrappers_too_deep'] += 1
+            lines.append((f'- wrappers nest deeper than {WRAPPER_DEPTH}: '
+                          f'what {name} runs ({inner[0]}) is not described', True))
+            break
+        name, args = inner[0], inner[1]
+        lines.append((f'- {name} is run by the wrapper above:', True))
+        depth += 1
     lines += [(f, True) for f in (redirect_fact(r) for r in redirects) if f]
     loc = location_fact(args, redirects)
     if loc:
@@ -364,56 +388,91 @@ def _fit(lines, cov):
     return [l for l, _ in lines]
 
 
-_REDIR = re.compile(r'^(\d*|&)(>>|>|<)(.*)$')
+# fd-dup first, so `2>&1` is one operator and not `2>` plus a word `&1`.
+_OP = re.compile(r'\d*[<>]&\d+|&>|\d*>>|\d*>|<<-?|<')
 
 
-def _shlex_redirects(toks):
-    """(args, redirects) from shell words, in kaish_plan's redirect shape.
-    Handles `> f`, `>f`, `2>/dev/null`, `&> f`, `2>&1` and heredoc openers."""
-    args, reds, i = [], [], 0
-    while i < len(toks):
-        t = toks[i]
-        if t.startswith('<<'):
-            reds.append({'kind': '<<', 'target': None})
-        elif (m := _REDIR.match(t)):
-            kind, target = m.group(1) + m.group(2), m.group(3)
-            if target.startswith('&'):
-                reds.append({'kind': kind + target, 'target': None})
+def _lex(raw):
+    """Quote-aware shell words for what kaish could not plan.
+
+    Returns [(kind, text, start, end)], kind 'w' (a word, quotes removed) or
+    'op' (`|` or a redirect operator), with its span in `raw`. Operators are
+    decided BEFORE quotes are dropped: shlex drops them first, so `grep '>' f`
+    came back as a write and `awk -F '|'` as two clauses (kaibo 2nd pass).
+    """
+    out, i, n = [], 0, len(raw)
+    while i < n:
+        if raw[i].isspace():
+            i += 1
+            continue
+        if raw[i] == '|':
+            out.append(('op', '|', i, i + 1))
+            i += 1
+            continue
+        m = _OP.match(raw, i)
+        if m:
+            out.append(('op', m.group(0), i, m.end()))
+            i = m.end()
+            continue
+        start, word = i, []
+        while i < n and not raw[i].isspace() and raw[i] not in '|<>':
+            ch = raw[i]
+            if ch in '\'"':
+                j = raw.find(ch, i + 1)
+                j = n if j < 0 else j
+                word.append(raw[i + 1:j])
+                i = j + 1
+            elif ch == '\\' and i + 1 < n:
+                word.append(raw[i + 1])
+                i += 2
             else:
-                if not target and i + 1 < len(toks):
-                    i += 1
-                    target = toks[i]
-                reds.append({'kind': kind, 'target': target or None})
-        else:
-            args.append(t)
-        i += 1
-    return args, reds
+                word.append(ch)
+                i += 1
+        out.append(('w', ''.join(word), start, i))
+    return out
 
 
 def _fallback_clauses(text):
     """What kaish could not plan, split the way the hook's own fallback
-    splits it (clause_split: ; && ||), then on bare `|` words."""
+    splits it (clause_split: ; && ||), then on unquoted `|`. Each clause keeps
+    its text as written, quotes and all, for its header."""
     out = []
     for clause in clause_split.split_clauses(text) or [text]:
-        try:
-            toks = shlex.split(clause)
-        except ValueError:
-            toks = clause.split()
-        seg = []
-        for t in toks + ['|']:
-            if t != '|':
-                seg.append(t)
-            elif seg:
-                args, reds = _shlex_redirects(seg[1:])
-                out.append((' '.join(seg), seg[0], args, reds))
+        toks = _lex(clause)
+        segs, seg = [], []
+        for t in toks + [('op', '|', len(clause), len(clause))]:
+            if t[:2] == ('op', '|'):
+                if seg:
+                    segs.append(seg)
                 seg = []
+            else:
+                seg.append(t)
+        for seg in segs:
+            words = [t for t in seg if t[0] == 'w']
+            if not words:
+                continue
+            args, reds, k = [], [], 0
+            while k < len(seg):
+                kind, val = seg[k][0], seg[k][1]
+                if kind == 'op':
+                    target = None
+                    if not kaish_plan.is_fd_dup(val) and k + 1 < len(seg) and seg[k + 1][0] == 'w':
+                        k += 1
+                        target = seg[k][1]
+                    reds.append({'kind': val, 'target': None if val.startswith('<<') else target})
+                elif seg[k] is not words[0]:
+                    args.append(val)
+                k += 1
+            ctext = clause[seg[0][2]:seg[-1][3]]
+            out.append((ctext, words[0][1], args, reds, False))
     return out
 
 
 def build_facts(text, cov):
     plan = kaish_plan.plan_clauses(text)
     if plan.get('ok'):
-        clauses = [(c['text'], c['name'], c['args'], c['redirects']) for c in plan['clauses']]
+        clauses = [(c['text'], c['name'], c['args'], c['redirects'], bool(c.get('stmt_fallback')))
+                   for c in plan['clauses']]
         cov['kaish_ok'] += 1
     else:
         clauses = _fallback_clauses(text)
@@ -421,10 +480,10 @@ def build_facts(text, cov):
             raise ValueError('build_facts: no clause to describe (empty command?)')
         cov['kaish_fallback'] += 1
     lines = []
-    for i, (ctext, name, args, redirects) in enumerate(clauses, 1):
+    for i, (ctext, name, args, redirects, unreadable) in enumerate(clauses, 1):
         if len(clauses) > 1:
             lines.append((f'Clause {i}: {ctext}', True))
-        lines += clause_lines(name, args, redirects, cov)
+        lines += clause_lines(name, args, redirects, cov, unreadable)
     body = '\n'.join(_fit(lines, cov))
     return 'Facts about this command from its manual pages and parser:\n' + body + '\n'
 
