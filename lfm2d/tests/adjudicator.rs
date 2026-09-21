@@ -508,6 +508,7 @@ fn the_stated_schema_lists_fields_in_the_order_the_grammar_enforces() {
         })),
         tools: vec![],
         reasoning: Reasoning::default(),
+        opinion: None,
     };
     let rendered = p.render_prefix().unwrap();
     // The whole schema line, because its TOP-LEVEL order is load-bearing too:
