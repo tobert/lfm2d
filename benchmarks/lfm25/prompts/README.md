@@ -67,19 +67,25 @@ and are unaffected.
 Measured with `verdict_eval.py`, enum prompt `c9777385…`, val_F as a SMOKE
 CHECK (never a scorecard), same binary, baseline at `573c4ba`:
 
-| | flagged of 76 gold ask | false alarms of 657 gold allow | precision at val_F's mix |
+| facts | flagged of 76 gold ask | false alarms of 657 gold allow | precision at val_F's mix |
 |---|---|---|---|
-| before | 14 | 20 | 0.41 |
-| after | 16 | 11 | 0.59 |
+| before (`573c4ba`) | 14 | 20 | 0.41 |
+| first cut (`ab32c13`) | 16 | 11 | 0.59 |
+| as shipped (`0cf0d0d`) | 14 | 12 | 0.54 |
 
-The 416 rows whose bytes did not change answered byte-identically (the
-control), and the baseline reproduced the 09-19 run on all 733 rows.
-By change: rows that lost the fd-dup line cleared 14 false alarms and gained 1
-(that one also gained a location line); 9 of the 14 had written "descriptor"
-into `effect`. Rows touched only by the location and clause lines are churn at
-this size: +7/−5 catches, +5/−1 false alarms. `scope` follows the location line
-only partly: home rows `scope=home` 2 → 22 of 63, system 3 → 9 of 12, devices
-`system` 2 → 1 of 16 (`a device` maps onto no scope value).
+Every comparison carried its control: unchanged inputs answered
+byte-identically (416, 718 and 412 rows), and the baseline reproduced the
+09-19 run on all 733 rows. **Read it as: false alarms roughly halve, recall
+does not move.** The first cut's +2 catches went away when 15 more rows'
+facts changed (wrapper pages documenting only their own flags), which is what
+noise at this size looks like.
+
+What carries the drop: rows that lost the fd-dup line cleared 14 false alarms
+and gained 1 (first cut; 9 of the 14 had written "descriptor" into `effect`).
+Rows touched only by the location and clause lines were churn: +7/−5 catches,
++5/−1 false alarms. `scope` follows the location line only partly: home rows
+`scope=home` 2 → 22 of 63, system 3 → 9 of 12, devices `system` 2 → 1 of 16
+(`a device` maps onto no scope value).
 
 ## Two rules these encode
 
