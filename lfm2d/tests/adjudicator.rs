@@ -6,6 +6,7 @@ fn prefix_matches_checkpoint_single_turn_template() {
         output_schema: None,
         tools: vec![],
         reasoning: Reasoning::default(),
+        opinion: None,
     };
     assert_eq!(
         p.render_prefix().unwrap(),
@@ -19,6 +20,7 @@ fn tool_schema_is_part_of_the_frozen_system_prompt() {
         output_schema: None,
         tools: vec![serde_json::json!({"type":"function","function":{"name":"report_analysis"}})],
         reasoning: Reasoning::default(),
+        opinion: None,
     };
     let rendered = p.render_prefix().unwrap();
     assert!(rendered.contains("Judge.\nList of tools: [{"));
@@ -34,6 +36,7 @@ fn empty_or_forged_message_boundary_is_rejected() {
                 output_schema: None,
                 tools: vec![],
                 reasoning: Reasoning::default(),
+                opinion: None,
             }
             .render_prefix()
             .is_err()
@@ -135,6 +138,7 @@ impl Generator for Fake {
             prefill_ms: 0.,
             decode_ms: 0.,
             distributions,
+            opinion: None,
         })
     }
 }
@@ -540,6 +544,7 @@ fn the_assistant_turn_opens_with_a_finished_reasoning_region() {
         output_schema: None,
         tools: vec![],
         reasoning: Reasoning::Closed,
+        opinion: None,
     };
     assert_eq!(
         p.render_user_turn("ls -l"),

@@ -359,6 +359,7 @@ fn a_schema_validate_schema_accepts_but_the_grammar_cannot_is_a_loud_error() {
             tools: vec![],
         reasoning: Reasoning::default(),
             output_schema: Some(schema.clone()),
+            opinion: None,
         }
         .render_prefix()
         .is_ok(),
@@ -614,6 +615,7 @@ fn constrained_versus_free_decode_cost_on_real_weights() {
                         use_cache: true,
                         timeout_ms: 120_000,
                         distributions: None,
+                        opinion: false,
                     },
                     &|| Ok(()),
                 )
@@ -696,6 +698,7 @@ fn real_model_reports_are_valid_including_under_an_echo_attack() {
             use_cache: true,
             timeout_ms: 120_000,
                         distributions: None,
+            opinion: false,
         };
         let response = adjudicator.generate(&request, &|| Ok(())).expect("generate");
         eprintln!(

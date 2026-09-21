@@ -49,6 +49,10 @@ pub struct PromptSpec {
     /// Policy, so it lives with the prompt rather than in the renderer.
     #[serde(default)]
     pub reasoning: Reasoning,
+    /// The System-1 question asked at the verdict slot by `opinion` requests.
+    /// Not part of the prefix: it is rendered into each request's suffix.
+    #[serde(default)]
+    pub opinion: Option<crate::opinion::OpinionSpec>,
 }
 
 /// Whether the assistant's turn opens with a *completed* reasoning region.
@@ -220,6 +224,10 @@ pub struct AdjudicateRequest {
     /// decision 5 and [`crate::types::DistributionRequest`].
     #[serde(default)]
     pub distributions: Option<crate::types::DistributionRequest>,
+    /// Read the spec's `opinion` question instead of generating: one prefill,
+    /// every option scored, nothing decoded. See [`crate::opinion`].
+    #[serde(default)]
+    pub opinion: bool,
 }
 fn default_max_tokens() -> usize {
     2048
@@ -244,6 +252,9 @@ impl AdjudicateRequest {
         }
         if let Some(d) = &self.distributions {
             d.validate()?;
+        }
+        if self.opinion && self.distributions.is_some() {
+            return Err("an opinion read decodes nothing, so distributions do not apply".into());
         }
         Ok(())
     }
@@ -287,6 +298,10 @@ pub struct AdjudicateResponse {
     /// existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distributions: Option<Vec<crate::types::StepDistribution>>,
+    /// Present only on an `opinion` request. `output` is then empty and
+    /// `decode_ms` is the time spent scoring the options.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opinion: Option<crate::opinion::OpinionRead>,
 }
 
 #[derive(Debug)]
@@ -537,6 +552,10 @@ impl Adjudicator {
             serde_json::from_slice(&std::fs::read(prompt_path).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
         let prefix_text = prompt.render_prefix()?;
+        if let Some(opinion) = &prompt.opinion {
+            opinion.validate()?;
+            prompt.render_user_turn_with_prefill("probe", &opinion.prefill)?;
+        }
         let Checkpoint {
             model,
             tokenizer,
@@ -652,6 +671,9 @@ impl Generator for Adjudicator {
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<AdjudicateResponse, Failure> {
         request.validate().map_err(Failure::BadRequest)?;
+        if request.opinion {
+            return self.opinion(request, check);
+        }
         if let Some(d) = &request.distributions {
             d.validate_vocab(self.model.vocab_size())
                 .map_err(Failure::BadRequest)?;
@@ -770,6 +792,119 @@ impl Generator for Adjudicator {
             prefill_ms,
             decode_ms: decode.elapsed().as_secs_f64() * 1000.,
             distributions,
+            opinion: None,
+        })
+    }
+}
+
+impl Adjudicator {
+    fn opinion(
+        &mut self,
+        request: &AdjudicateRequest,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<AdjudicateResponse, Failure> {
+        let spec = self.prompt.opinion.clone().ok_or_else(|| {
+            Failure::BadRequest("this adjudicator's prompt spec asks no opinion question".into())
+        })?;
+        check()?;
+        let rendered = format!(
+            "{}{}",
+            self.prefix_text,
+            self.prompt
+                .render_user_turn_with_prefill(&request.input, &spec.prefill)
+                .map_err(Failure::BadRequest)?
+        );
+        let encodings = spec
+            .options
+            .iter()
+            .map(|option| {
+                self.tokenizer
+                    .encode(format!("{rendered}{option}{}", spec.close), false)
+                    .map(|e| e.get_ids().to_vec())
+                    .map_err(|e| Failure::Internal(e.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let shared = crate::opinion::common_prefix_len(&encodings);
+        let continuations: Vec<Vec<u32>> =
+            encodings.iter().map(|e| e[shared..].to_vec()).collect();
+        if continuations.iter().any(Vec::is_empty) {
+            return Err(Failure::Internal(
+                "an option's encoding is a prefix of another's; the close text must separate them"
+                    .into(),
+            ));
+        }
+        let longest = encodings.iter().map(Vec::len).max().unwrap_or(0);
+        if longest > self.info.context_limit {
+            return Err(Failure::BadRequest(
+                "prompt plus options exceeds adjudicator context".into(),
+            ));
+        }
+        let begin = Instant::now();
+        let PreparedEvaluation {
+            state,
+            logits,
+            cached_tokens,
+        } = self
+            .cache
+            .prepare(&self.model, &encodings[0][..shared], request.use_cache, check)?;
+        let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
+        let score = Instant::now();
+        let candle_check = || check().map_err(|_| candle_core::Error::Msg("cancelled".into()));
+        let scores = crate::opinion::score_continuations(
+            &self.model,
+            &state,
+            &logits,
+            &continuations,
+            &candle_check,
+        )
+        .map_err(|e| {
+            // Recover the precise failure: a cancellation surfaced through candle.
+            check().err().unwrap_or(Failure::Internal(e.to_string()))
+        })?;
+        logits.device().synchronize()?;
+        let decode_ms = score.elapsed().as_secs_f64() * 1000.;
+        let mass = crate::opinion::logsumexp(&scores);
+        let first_ids: std::collections::BTreeSet<u32> =
+            continuations.iter().map(|c| c[0]).collect();
+        let first = candle_nn::ops::log_softmax(&logits, candle_core::D::Minus1)?
+            .to_vec2::<f32>()?
+            .remove(0);
+        let first_token_mass = crate::opinion::logsumexp(
+            &first_ids.iter().map(|&t| first[t as usize]).collect::<Vec<_>>(),
+        );
+        let options = spec
+            .options
+            .iter()
+            .zip(&scores)
+            .zip(&continuations)
+            .map(|((option, &logprob), tokens)| crate::opinion::OptionScore {
+                option: option.clone(),
+                logprob,
+                prob: (logprob - mass).exp(),
+                tokens: tokens.clone(),
+            })
+            .collect();
+        Ok(AdjudicateResponse {
+            prefix: self.info.clone(),
+            output: String::new(),
+            report: None,
+            report_error: None,
+            finish_reason: "opinion".into(),
+            prompt_tokens: shared,
+            cached_tokens,
+            completion_tokens: 0,
+            queue_ms: 0.,
+            prefill_ms,
+            decode_ms,
+            distributions: None,
+            opinion: Some(crate::opinion::OpinionRead {
+                options,
+                sequence_mass: mass,
+                first_token_mass,
+                shared_tokens: shared,
+                scored_tokens: continuations.iter().map(Vec::len).sum(),
+                rendered_sha256: sha256_hex_bytes(rendered.as_bytes()),
+            }),
         })
     }
 }
