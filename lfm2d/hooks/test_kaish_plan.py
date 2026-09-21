@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kaish_plan  # noqa: E402
-from kaish_plan import plan_clauses  # noqa: E402
+from kaish_plan import is_fd_dup, plan_clauses  # noqa: E402
 
 
 @contextmanager
@@ -209,6 +209,18 @@ def main():
     c = r['clauses'][0]
     check('facts: real file named null survives',
           c['redirects'], [{'kind': '>', 'target': 'null'}])
+
+    # `&>` has an `&` in its kind and is NOT an fd-dup: it writes stdout
+    # and stderr to a file. "Any `&`" dropped its target from both the
+    # facts and the rendered clause text.
+    r = plan_clauses('make &> build.log')
+    c = r['clauses'][0]
+    check('facts: &> keeps its file target',
+          c['redirects'], [{'kind': '&>', 'target': 'build.log'}])
+    check('render: &> keeps its file target', c['text'], 'make &> build.log')
+    for kind, dup in (('2>&1', True), ('1>&2', True), ('&>', False), ('>', False),
+                      ('2>', False), ('>>', False), ('<', False), ('', False), (None, False)):
+        check(f'is_fd_dup({kind!r})', is_fd_dup(kind), dup)
 
     # Every row carries the keys, including the shapes that have no command
     # to describe -- a consumer must never need a KeyError guard.

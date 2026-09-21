@@ -55,6 +55,8 @@ is a ruling, and test_stage4.py pins every entry.
 """
 from collections import namedtuple
 
+from kaish_plan import is_fd_dup
+
 Review = namedtuple('Review', ('dismissible', 'reason'))
 
 # A rule over the argv words that FOLLOW a verb (or its subcommand).
@@ -271,8 +273,8 @@ def _writes_filesystem(redirect):
     if not kind:
         # A redirect we cannot name is a redirect we cannot clear.
         return True
-    if '&' in kind:
-        return False  # fd duplication: no filesystem target
+    if is_fd_dup(kind):
+        return False  # fd duplication: no filesystem target (`&>` is a write)
     return '>' in kind
 
 

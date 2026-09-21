@@ -26,6 +26,7 @@ log are countable by cause.
 """
 import json
 import os
+import re
 import subprocess
 
 KAISH_BIN = os.environ.get('LFM2D_KAISH_BIN', 'kaish')
@@ -82,6 +83,19 @@ def _heredoc_kind(name: str, redirect_kinds: list) -> str:
     return 'other'
 
 
+# An fd duplication (`2>&1`, `1>&2`) names its destination INSIDE the kind,
+# and kaish emits a placeholder target ("null") for it. `&>` is NOT one: it
+# sends stdout and stderr to a real file, and its `&` merely comes first.
+# "Any `&` in the kind" read `echo x &> /etc/shadow` as writing nothing
+# (2026-09-21). Every consumer asks this one question, so it lives here.
+_FD_DUP = re.compile(r'\d*[<>]&\d+')
+
+
+def is_fd_dup(kind) -> bool:
+    """True only for a redirect that copies one descriptor onto another."""
+    return isinstance(kind, str) and _FD_DUP.fullmatch(kind) is not None
+
+
 def _command_facts(c: dict) -> dict:
     """The structured fields a caller needs to decide something about a
     clause WITHOUT re-parsing the text it was just handed.
@@ -118,7 +132,7 @@ def _command_facts(c: dict) -> dict:
         # would hand a static check a redirect that reads as "writes a file
         # named null". Discriminate on the KIND, never the target's
         # spelling — `echo hi > null` is a real file and keeps its target.
-        if kind and '&' in kind:
+        if is_fd_dup(kind):
             target = None
         redirects.append({'kind': kind, 'target': target})
 
@@ -146,7 +160,7 @@ def _render_command(c: dict):
             # The heredoc operator + delimiter stay (they are shape); the
             # body never appears — it isn't in argv to begin with.
             parts.append(f'{kind}{target or ""}')
-        elif '&' in kind or not target:
+        elif is_fd_dup(kind) or not target:
             # fd-dup forms (2>&1) encode the target in the kind itself;
             # kaish still emits a placeholder target "null" for them. A
             # real file named `null` has a plain kind ('>'), so the

@@ -85,6 +85,13 @@ def main():
     check_dismissed('echo hi 2>&1', 'read_only_verb:echo')
     check_survives('echo hi 2> /tmp/log', 'write_redirect:2>')
 
+    # `&>` sends stdout AND stderr to a FILE. Its `&` comes before the `>`,
+    # so "any `&` in the kind is an fd-dup" read it as harmless and
+    # dismissed a write to /etc/shadow (found 2026-09-21, live in record
+    # mode since stage 4 shipped). The fd-dup is `N>&M` and nothing else.
+    check_survives('echo restored &> /etc/shadow', 'write_redirect:&>')
+    check_dismissed('echo hi 1>&2', 'read_only_verb:echo')
+
     # An append is a write, and so is a write to a target that happens to
     # be spelled like a sink: /dev/null is not special-cased, because
     # deciding on a target's SPELLING is the prose-reading failure. If this
