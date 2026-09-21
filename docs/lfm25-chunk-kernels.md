@@ -134,10 +134,15 @@ replay the generated region token by token and see whether the gap closes.
 
 - The second family: which kernel selection moves at those tails, and why some
   large tails are bit-identical.
-- **Whether CPU shows the same cliff. Not measured, by decision.** The branch
-  above lives in `quantized/rocm.rs` and `fast_mmvq.rs` is CUDA, so the CPU
-  path is a different implementation and the code says ROCm-only — but that is
-  an argument, not a measurement, and nothing here has tested it. Note the
+- **Whether CPU shows the same cliff. One small reading, no sweep.** The branch
+  above lives in `quantized/rocm.rs` and `fast_mmvq.rs` is CUDA, so the code
+  says ROCm-only. The memory-debugging run left one CPU sweep behind (found
+  afterwards): a 16-token prompt, tails 1 and 2. Depths 1 and 2 came back
+  bit-exact — no layer-0 difference — and both tails first differ at depth 3,
+  the first attention layer, by ~5e-6, which a changed expert choice grows to
+  0.23 and 1.05 nats at the last depth. So the cliff at 8 did not appear on CPU,
+  and the second family did: it is not a ROCm artifact. One prompt and two
+  tails is a reading, not a rate. Note the
   fixture cannot stand in: `lfm2d/tests/fixtures/lfm2-moe/tiny.gguf` is all
   F32, 33 tensors, no quantized weight at all, so every CPU test in this repo
   runs a dispatch path this finding does not concern. A CPU sweep of the real
