@@ -36,6 +36,12 @@ use crate::error::{Error, Result};
 use crate::labels::order_labels;
 use crate::trunk::Lfm2Trunk;
 
+/// Per-token predicted label ids, each token's byte span into the input,
+/// and the softmax probability of its predicted class — the shape
+/// [`Lfm2TokenClassifier::token_labels`] returns and its three public
+/// per-axis accessors slice apart.
+type TokenLabels = (Vec<usize>, Vec<(usize, usize)>, Vec<f32>);
+
 /// A detected entity, with byte offsets into the input string.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
@@ -247,7 +253,7 @@ impl Lfm2TokenClassifier {
 
     /// Per-token predicted label ids, alongside each token's byte span and
     /// the softmax probability of the predicted class.
-    fn token_labels(&self, text: &str) -> Result<(Vec<usize>, Vec<(usize, usize)>, Vec<f32>)> {
+    fn token_labels(&self, text: &str) -> Result<TokenLabels> {
         let encoding = self
             .tokenizer
             .encode(text, true)

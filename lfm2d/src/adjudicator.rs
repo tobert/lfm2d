@@ -369,16 +369,15 @@ impl PromptCache {
                 "rendered input changes cached token prefix or has no suffix".into(),
             ));
         }
-        if use_cache {
-            if let Some(ready) = &self.ready {
-                if ready.token_ids == full {
-                    return Ok(PreparedEvaluation {
-                        state: ready.state.clone(),
-                        logits: ready.logits.clone(),
-                        cached_tokens: full.len(),
-                    });
-                }
-            }
+        if use_cache
+            && let Some(ready) = &self.ready
+            && ready.token_ids == full
+        {
+            return Ok(PreparedEvaluation {
+                state: ready.state.clone(),
+                logits: ready.logits.clone(),
+                cached_tokens: full.len(),
+            });
         }
         let (mut state, start) = if use_cache {
             (self.prefix.clone(), self.prefix_ids.len())

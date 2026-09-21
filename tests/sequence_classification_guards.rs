@@ -131,7 +131,7 @@ fn tiny_tokenizer() -> Tokenizer {
         .build()
         .expect("build tiny WordLevel model");
     let mut tokenizer = Tokenizer::new(model);
-    tokenizer.with_pre_tokenizer(Some(Whitespace::default()));
+    tokenizer.with_pre_tokenizer(Some(Whitespace));
     tokenizer
 }
 

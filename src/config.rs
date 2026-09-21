@@ -242,7 +242,10 @@ impl Lfm2EncoderConfig {
                 self.num_hidden_layers
             ));
         }
-        if self.num_attention_heads % self.num_key_value_heads != 0 {
+        if !self
+            .num_attention_heads
+            .is_multiple_of(self.num_key_value_heads)
+        {
             return Err(format!(
                 "num_attention_heads {} not divisible by num_key_value_heads {}",
                 self.num_attention_heads, self.num_key_value_heads

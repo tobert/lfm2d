@@ -128,7 +128,7 @@ fn main() -> Result<()> {
             &prefixed
         };
         let enc = tokenizer
-            .encode(&*s, true)
+            .encode(s, true)
             .map_err(|e| anyhow::anyhow!("{}:{}: encode: {e}", args.jsonl.display(), lineno + 1))?;
         let ids = enc.get_ids();
         if ids.is_empty() {

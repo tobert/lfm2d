@@ -145,11 +145,11 @@ fn score() -> (f64, f64, f64, f64) {
         h5 += usize::from(best < 5);
 
         for neg in &q.hard_negatives {
-            if let Some(doc) = fx.index.get(neg) {
-                if let Some(nr) = order.iter().position(|i| i == doc) {
-                    neg_seen += 1;
-                    neg_wins += usize::from(nr < best);
-                }
+            if let Some(doc) = fx.index.get(neg)
+                && let Some(nr) = order.iter().position(|i| i == doc)
+            {
+                neg_seen += 1;
+                neg_wins += usize::from(nr < best);
             }
         }
     }
