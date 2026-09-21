@@ -3,11 +3,27 @@
 
 Every kaish column must plan and every bash column must FAIL to plan;
 exit 1 naming any row that flips. Amy ruled (2026-08-23) that kaish's
-language does not change for any shape in the table -- the fix is to
-quote the word -- so a bash side that starts planning is a kaish
-regression, never a win. (An earlier revision carried a Group A "win
-condition" branch for a lexer fold that was refused; see
-`canary-must-not-fire-on-success` for why the branch existed at all.)
+QUOTE-TO-JOIN RULE does not fold exceptions in for any shape in the
+table -- "nothing adjacent is joined, quote to join" stays one rule
+with no per-class carve-outs, so the fix for that grammar is to quote
+the word. (An earlier revision carried a Group A "win condition" branch
+for a lexer fold that was refused; see `canary-must-not-fire-on-success`
+for why the branch existed at all.)
+
+That ruling is about the JOIN rule, not a promise that kaish's bare-word
+grammar is frozen. Separately, kaish keeps widening what it accepts
+unquoted -- 0.17.2 plans `v=0.16.0` and `ping 10.0.0.1` bare, where
+0.16.0 required quotes. Amy, 2026-09-16: "kaish got more support for
+forms of bare string recently." That is an observation, not a ruling;
+treating absorbed rows as growth rather than regression is ours. A row whose bash side starts planning for
+that reason is ABSORBED: it stops being a divergence and gets deleted
+from the table, by hand, after a human confirms the cause (2026-09-21
+re-derivation: `x=~/.cache/foo`, `v=0.16.0`, `ping 10.0.0.1`,
+`.venv-train/bin/python x.py`, `git show HEAD:training/v9/x.py`). A row
+whose bash side starts planning for any OTHER reason is still the
+08-23 regression case. This script cannot tell the two apart by itself
+-- it exits 1 either way, because the canary's job is to force that
+call, not make it; only a human deletes an absorbed row from the table.
 
 Either way the table is a claim about a specific kaish, and the claim
 expires loudly (`commit-the-scorer`).
@@ -50,8 +66,9 @@ def main():
         b_cmds, b_err = plan(bash)
         k_cmds, k_err = plan(kai)
         if b_cmds is not None:
-            stale.append(f'bash side now PLANS (group {group}; kaish regression, '
-                         f'or the ruling changed): {bash!r}')
+            stale.append(f'bash side now PLANS (group {group}; either a genuine '
+                         f'kaish regression, or kaish absorbed this bare-word '
+                         f'shape -- diagnose before deleting the row): {bash!r}')
         if k_cmds is None:
             stale.append(f'kaish side FAILS: {kai!r}: {k_err}')
         print(f'{group}  {bash}')
