@@ -54,13 +54,17 @@ def error_key(e):
         return 'adjacent words (quote-to-join)'
     if 'variable name contains' in msg:
         return 'invalid variable-name chars'
+    # kaish's message quotes the offending token, and a token longer than one
+    # character is a piece of the row (`+feature/new-ui` is a branch name).
+    # Buckets are printed, so only punctuation survives into one.
     m = re.match(r"found '([^']*)'", msg)
     if m:
-        return f"found {m.group(1)!r}"
+        tok = m.group(1)
+        return f"found {tok!r}" if len(tok) == 1 and not tok.isalnum() else 'found a word'
     m = re.match(r"([a-zA-Z ]+error)", msg)
     if m:
         return m.group(1).strip()
-    return msg[:40]
+    return 'other error'
 
 
 def main():

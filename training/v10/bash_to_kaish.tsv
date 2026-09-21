@@ -24,7 +24,7 @@
 # got more support for forms of bare string recently"), confirmed again
 # 2026-09-21: `x=~/.cache/foo`, `v=0.16.0`, `ping 10.0.0.1`,
 # `.venv-train/bin/python x.py`, `git show HEAD:training/v9/x.py`. That
-# is growth Amy has signed off on, not the 08-23 regression case -- see
+# is growth, not the 08-23 regression case -- see
 # bash_to_kaish.py's docstring for how the two are told apart. 21 rows
 # still diverge below.
 B	echo === step 3 ===	echo "=== step 3 ==="	unquoted run of =

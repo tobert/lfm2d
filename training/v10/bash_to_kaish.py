@@ -13,9 +13,9 @@ for why the branch existed at all.)
 That ruling is about the JOIN rule, not a promise that kaish's bare-word
 grammar is frozen. Separately, kaish keeps widening what it accepts
 unquoted -- 0.17.2 plans `v=0.16.0` and `ping 10.0.0.1` bare, where
-0.16.0 required quotes -- and Amy has acknowledged that as real,
-sanctioned growth ("kaish got more support for forms of bare string
-recently"), not a regression. A row whose bash side starts planning for
+0.16.0 required quotes. Amy, 2026-09-16: "kaish got more support for
+forms of bare string recently." That is an observation, not a ruling;
+treating absorbed rows as growth rather than regression is ours. A row whose bash side starts planning for
 that reason is ABSORBED: it stops being a divergence and gets deleted
 from the table, by hand, after a human confirms the cause (2026-09-21
 re-derivation: `x=~/.cache/foo`, `v=0.16.0`, `ping 10.0.0.1`,
