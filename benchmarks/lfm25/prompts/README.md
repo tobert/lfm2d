@@ -35,7 +35,7 @@ picking somewhere for you.
 
 | script | the numbers it made |
 |---|---|
-| `holdout_eval.py` | the shared base: fact extraction from man pages and the kaish plan, prompt rendering, `summarize`. Every other harness imports it. |
+| `holdout_eval.py` | the shared base: fact extraction from man pages and the kaish plan, prompt rendering, `summarize`. Every other harness imports it. Its facts changed on 2026-09-21 (F7, below). |
 | `preamble.py` + `valf_preamble_eval.py` | the cached-preamble length sweep. data-critical 61 → 58 → 56 → 48 as the preamble grows, with penalty controls at both ends. |
 | `severity_dist.py` | the four-way distribution at the *scaffolded* severity slot, and the margin split between data-critical hits (0.891) and misses (0.480). |
 | `bare_clause.py` | the no-instruction ablation, and the in-set mass that shows two of its three arms measured nothing at all. |
@@ -47,7 +47,39 @@ picking somewhere for you.
 | `prompt_anatomy.py` | token-level collision maps, and the no-op-clause prior that ranks situation-normal recall correctly across every arm. |
 | `shell_writing.py` | the bash/kaish writing baseline. Plans candidates before running them, refuses verbs outside an allowlist, and executes kaish under `--overlay` so writes are virtual. |
 | `sonnet_build_sample.py` + `sonnet_score.py` | the blind larger-model control. The sample is stratified and its key is written separately from the shards. |
+| `facts_ab.py` | two `verdict_eval` runs that differ only in the facts they sent, with its own control: an unchanged input that answers differently fails the run. F7's numbers below. |
 | `verdict_eval.py` | the allow / ask / review arms on our own daemon, per row: the report, the raw top-k at the verdict's first token with the mass on the verdict words beside it, the forced-step count, and **the bytes sent and generated verbatim** so everything downstream is a replay. `../examine/` reads its runs. |
+
+## F7: the facts block changed (2026-09-21)
+
+`build_facts` no longer states an fd duplication (`2>&1`); describes every
+clause of a pipeline or chain (`Clause i: …`), in the fallback path too; adds
+one mechanical line naming paths outside the project (home, root, system,
+device, temp, remote, unexpanded variable, `../`), silent inside it; unwraps
+`sudo -u x`, `env A=1`, `nice -n 10`; and trims flag documentation, stated and
+counted, before any clause is lost. Tests: `test_build_facts.py`.
+
+**Every harness that rebuilds facts now renders different input for about 43%
+of val_F** (317 of 733 rows). A number made before this date is not reproduced
+by re-running its script today; `verdict_eval` runs replay their recorded bytes
+and are unaffected.
+
+Measured with `verdict_eval.py`, enum prompt `c9777385…`, val_F as a SMOKE
+CHECK (never a scorecard), same binary, baseline at `573c4ba`:
+
+| | flagged of 76 gold ask | false alarms of 657 gold allow | precision at val_F's mix |
+|---|---|---|---|
+| before | 14 | 20 | 0.41 |
+| after | 16 | 11 | 0.59 |
+
+The 416 rows whose bytes did not change answered byte-identically (the
+control), and the baseline reproduced the 09-19 run on all 733 rows.
+By change: rows that lost the fd-dup line cleared 14 false alarms and gained 1
+(that one also gained a location line); 9 of the 14 had written "descriptor"
+into `effect`. Rows touched only by the location and clause lines are churn at
+this size: +7/−5 catches, +5/−1 false alarms. `scope` follows the location line
+only partly: home rows `scope=home` 2 → 22 of 63, system 3 → 9 of 12, devices
+`system` 2 → 1 of 16 (`a device` maps onto no scope value).
 
 ## Two rules these encode
 

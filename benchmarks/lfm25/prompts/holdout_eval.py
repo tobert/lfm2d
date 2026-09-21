@@ -12,7 +12,7 @@ the verb and each flag. Nothing reads the label before scoring.
 Prints aggregates only (repo convention); raw rows go to --out, outside the repo.
 """
 import os
-import argparse, os, json, os, re, shlex, subprocess, sys, time, urllib.request
+import argparse, os, json, os, posixpath, re, shlex, subprocess, sys, time, urllib.request
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -39,6 +39,7 @@ def eval_out(explicit=None):
 
 
 sys.path.insert(0, str(REPO / 'lfm2d/hooks'))
+import clause_split  # noqa: E402
 import kaish_plan  # noqa: E402
 
 
@@ -115,6 +116,18 @@ def option_doc(text, flag):
 
 MULTI = {'git', 'cargo', 'npm', 'gh', 'docker', 'kubectl', 'systemctl', 'pip', 'apt', 'uv', 'jj', 'podman'}
 WRAPPERS = {'timeout': 1, 'nohup': 0, 'sudo': 0, 'env': 0, 'nice': 0, 'xargs': 0}
+# A wrapper's own flags that consume the next word. Without these,
+# `sudo -u amy systemctl ...` reads `amy` as the command it runs -- the bug
+# stage4.GLOBAL_VALUE_FLAGS already fixed for git (kaibo review 2026-09-21).
+WRAPPER_VALUE_FLAGS = {
+    'sudo': {'-u', '-g', '-C', '-D', '-h', '-p', '-U', '-r', '-t', '-T',
+             '--user', '--group', '--chdir', '--host', '--prompt', '--other-user'},
+    'timeout': {'-s', '-k', '--signal', '--kill-after'},
+    'nice': {'-n', '--adjustment'},
+    'env': {'-u', '-C', '-S', '--unset', '--chdir', '--split-string'},
+    'xargs': {'-n', '-I', '-P', '-L', '-d', '-s', '-a', '-E',
+              '--max-args', '--max-procs', '--max-lines', '--delimiter', '--arg-file'},
+}
 GIT_GLOBAL_WITH_VALUE = {'-C', '-c', '--git-dir', '--work-tree'}
 
 def verb_page(name, args):
@@ -174,12 +187,21 @@ def flag_facts(page, args, cov):
     return out
 
 def redirect_fact(r):
+    """One line for a redirect, or None when it moves no data anywhere.
+
+    An fd duplication (`2>&1`) is plumbing inside the process. Stating it
+    made the model write `effect` = "Duplicates a file descriptor..." and
+    flag 13 benign rows of 30 on 09-17, so it gets no line at all.
+    """
     kind, target = r.get('kind') or '', r.get('target')
+    if kaish_plan.is_fd_dup(kind):
+        return None
     if kind.startswith('<<'):
         return f'- redirect {kind}: a heredoc feeds text to stdin (body not shown)'
-    if '&' in kind:
-        return f'- redirect {kind}: duplicates a file descriptor; no file is written'
     if target == '/dev/null':
+        # Deliberately NOT stage 4's answer: stage 4 gates, so it refuses to
+        # read a target's spelling and calls this a write. The facts inform,
+        # and "discards" is what the operator needs to hear. Keep both.
         return f'- redirect {kind} /dev/null: discards that output'
     if kind in ('<',):
         return f'- redirect < {target}: reads stdin from that file'
@@ -189,44 +211,222 @@ def redirect_fact(r):
         return f'- redirect {kind} {target}: truncates and overwrites that file (creates it if missing)'
     return f'- redirect {kind} {target}'
 
-def build_facts(text, cov):
-    plan = kaish_plan.plan_clauses(text)
-    if plan.get('ok') and plan['clauses'][0].get('name'):
-        c = plan['clauses'][0]
-        name, args, redirects = c['name'], c['args'], c['redirects']
-        cov['kaish_ok'] += 1
-    else:
-        try:
-            toks = shlex.split(text)
-        except ValueError:
-            toks = text.split()
-        name, args, redirects = toks[0], toks[1:], []
-        cov['kaish_fallback'] += 1
-    lines = []
-    depth = 0
-    while name and depth < 2:
+
+# ---------------------------------------------------------------- location
+# Where a path points is read off the word, not asked of the model: on 09-17
+# a home-directory wildcard delete came back scope=project. Only locations
+# OUTSIDE the project are stated -- the project is where a command is
+# expected to work, and staying silent there means a branch name such as
+# `feature/old` can never be mistaken for a path.
+
+_REMOTE = re.compile(r'^[a-z][a-z0-9+.-]*://|^[^/\s:@]+@[^/\s:]+:')
+_TILDE_USER = re.compile(r'^~[A-Za-z_][\w.-]*(/|$)')
+# A word that starts with `/` is not thereby a path: `awk '/^root/ {print}'`,
+# `--format=/%h`. Characters no path an agent types would carry mark those.
+_NOT_PATH = re.compile(r'[\s{}%^()\\]')
+_VAR = re.compile(r'^\$\{?([A-Za-z_]\w*)')
+_ASSIGN = re.compile(r'^[A-Za-z_]\w*=')
+
+
+def _unquote(w):
+    if len(w) >= 2 and w[0] == w[-1] and w[0] in '\'"':
+        return w[1:-1]
+    return w
+
+
+def path_location(word):
+    """(path, phrase) for an argv word naming a place outside the project,
+    else None. `of=/dev/sda` and `--output=/etc/x` are read by their value."""
+    w = _unquote(word)
+    if w.startswith('--') and '=' in w:
+        w = _unquote(w.split('=', 1)[1])
+    elif w.startswith('-'):
+        return None
+    elif _ASSIGN.match(w):
+        w = _unquote(w.split('=', 1)[1])
+    if not w:
+        return None
+    if w.startswith('file://'):
+        return path_location(w[len('file://'):])
+    if _REMOTE.match(w):
+        return w, 'remote: another machine'
+    m = _VAR.match(w)
+    if m:
+        if m.group(1) == 'HOME':
+            return w, 'home directory'
+        return w, f'unexpanded variable ${m.group(1)}: location unknown'
+    if _NOT_PATH.search(w):
+        return None
+    if w == '~' or w.startswith('~/') or _TILDE_USER.match(w):
+        return w, 'home directory'
+    if w.startswith(('/home/', '/Users/', '/root/')) or w == '/root':
+        return w, 'home directory'
+    if w in ('/', '/*'):
+        return w, 'the filesystem root'
+    if w == '/dev/null':
+        return None  # a discard is not a place; its redirect line says so
+    if w.startswith('/dev/'):
+        return w, 'a device'
+    if w in ('/tmp', '/var/tmp') or w.startswith(('/tmp/', '/var/tmp/')):
+        return w, 'temporary directory'
+    if w.startswith('/'):
+        return w, 'system path, outside the project'
+    if '..' in w and posixpath.normpath(w).split('/')[0] == '..':
+        return w, 'relative path outside the working directory'
+    return None
+
+
+def location_fact(args, redirects):
+    seen, parts = set(), []
+    words = list(args) + [r.get('target') for r in redirects
+                          if r.get('target') and not (r.get('kind') or '').startswith('<<')
+                          and not kaish_plan.is_fd_dup(r.get('kind'))]
+    for w in words:
+        loc = path_location(w)
+        if loc and loc[0] not in seen:
+            seen.add(loc[0])
+            parts.append(f'{loc[0]} ({loc[1]})')
+    return '- paths it names outside the project: ' + '; '.join(parts) if parts else None
+
+
+# ---------------------------------------------------------------- facts
+
+FACTS_BUDGET = 1500  # characters of fact lines; the fixed header line is outside it
+_TRIM_NOTE = 64      # room kept for the line that says a trim happened
+
+
+def unwrap(name, args):
+    """(command, its args) that wrapper `name` runs, or None."""
+    values, skip, i = WRAPPER_VALUE_FLAGS.get(name, set()), WRAPPERS[name], 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith('-') and len(a) > 1 and a != '--':
+            i += 2 if a in values else 1
+        elif a == '--' or (name == 'env' and _ASSIGN.match(a)):
+            i += 1
+        elif skip:
+            skip -= 1
+            i += 1
+        else:
+            return a, args[i + 1:]
+    return None
+
+
+def clause_lines(name, args, redirects, cov):
+    """[(line, essential)] for one simple command. Essential lines say what
+    runs, what it writes and where; flag documentation gives way first."""
+    if not name:
+        # kaish planned the clause but it runs no command: an assignment, or
+        # an argument shape it could not render. Say so; never drop it.
+        return [('- no command runs (an assignment or an unreadable clause)', True)]
+    lines, depth = [], 0
+    while name and depth < 3:
         page, rest = verb_page(name, args)
         if page:
             cov['verb_pages'] += 1
             nl = name_line(man(page))
-            lines.append(f'- {nl}' if nl else f'- {page}: manual page exists')
-            lines += flag_facts(page, rest, cov)
+            lines.append((f'- {nl}' if nl else f'- {page}: manual page exists', True))
+            lines += [(f, False) for f in flag_facts(page, rest, cov)]
         else:
             cov['verb_missing'] += 1
-            lines.append(f'- {name}: no manual page found (possibly a shell builtin)')
-        if name in WRAPPERS:
-            pos = [a for a in args if not a.startswith('-')]
-            skip = WRAPPERS[name]
-            if len(pos) > skip:
-                idx = args.index(pos[skip])
-                name, args = args[idx], args[idx + 1:]
-                lines.append(f'- {name} is run by the wrapper above:')
-                depth += 1
-                continue
+            lines.append((f'- {name}: no manual page found (possibly a shell builtin)', True))
+        inner = unwrap(name, args) if name in WRAPPERS else None
+        if inner:
+            name, args = inner
+            lines.append((f'- {name} is run by the wrapper above:', True))
+            depth += 1
+            continue
         break
-    lines += [redirect_fact(r) for r in redirects]
-    body = '\n'.join(lines)
-    return 'Facts about this command from its manual pages and parser:\n' + body[:1500] + '\n'
+    lines += [(f, True) for f in (redirect_fact(r) for r in redirects) if f]
+    loc = location_fact(args, redirects)
+    if loc:
+        lines.append((loc, True))
+    return lines
+
+
+def _fit(lines, cov):
+    """Drop flag documentation from the END until the block fits. A cut is
+    stated in the block and counted, never silent."""
+    size = lambda ls: sum(len(l) + 1 for l, _ in ls)
+    dropped = 0
+    i = len(lines) - 1
+    limit = FACTS_BUDGET if size(lines) <= FACTS_BUDGET else FACTS_BUDGET - _TRIM_NOTE
+    while size(lines) > limit and i >= 0:
+        if not lines[i][1]:
+            del lines[i]
+            dropped += 1
+        i -= 1
+    if dropped:
+        cov['facts_trimmed'] += 1
+        lines.append((f'- ({dropped} flag descriptions trimmed to fit)', True))
+    if size(lines) > FACTS_BUDGET:
+        cov['facts_over_budget'] += 1
+    return [l for l, _ in lines]
+
+
+_REDIR = re.compile(r'^(\d*|&)(>>|>|<)(.*)$')
+
+
+def _shlex_redirects(toks):
+    """(args, redirects) from shell words, in kaish_plan's redirect shape.
+    Handles `> f`, `>f`, `2>/dev/null`, `&> f`, `2>&1` and heredoc openers."""
+    args, reds, i = [], [], 0
+    while i < len(toks):
+        t = toks[i]
+        if t.startswith('<<'):
+            reds.append({'kind': '<<', 'target': None})
+        elif (m := _REDIR.match(t)):
+            kind, target = m.group(1) + m.group(2), m.group(3)
+            if target.startswith('&'):
+                reds.append({'kind': kind + target, 'target': None})
+            else:
+                if not target and i + 1 < len(toks):
+                    i += 1
+                    target = toks[i]
+                reds.append({'kind': kind, 'target': target or None})
+        else:
+            args.append(t)
+        i += 1
+    return args, reds
+
+
+def _fallback_clauses(text):
+    """What kaish could not plan, split the way the hook's own fallback
+    splits it (clause_split: ; && ||), then on bare `|` words."""
+    out = []
+    for clause in clause_split.split_clauses(text) or [text]:
+        try:
+            toks = shlex.split(clause)
+        except ValueError:
+            toks = clause.split()
+        seg = []
+        for t in toks + ['|']:
+            if t != '|':
+                seg.append(t)
+            elif seg:
+                args, reds = _shlex_redirects(seg[1:])
+                out.append((' '.join(seg), seg[0], args, reds))
+                seg = []
+    return out
+
+
+def build_facts(text, cov):
+    plan = kaish_plan.plan_clauses(text)
+    if plan.get('ok'):
+        clauses = [(c['text'], c['name'], c['args'], c['redirects']) for c in plan['clauses']]
+        cov['kaish_ok'] += 1
+    else:
+        clauses = _fallback_clauses(text)
+        if not clauses:
+            raise ValueError('build_facts: no clause to describe (empty command?)')
+        cov['kaish_fallback'] += 1
+    lines = []
+    for i, (ctext, name, args, redirects) in enumerate(clauses, 1):
+        if len(clauses) > 1:
+            lines.append((f'Clause {i}: {ctext}', True))
+        lines += clause_lines(name, args, redirects, cov)
+    body = '\n'.join(_fit(lines, cov))
+    return 'Facts about this command from its manual pages and parser:\n' + body + '\n'
 
 # ---------------------------------------------------------------- model
 
