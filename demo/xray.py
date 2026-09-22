@@ -40,7 +40,7 @@ def show_prompt(rendered, full):
     if not full:
         at = rendered.rfind('<|im_start|>user')
         if at > 0:
-            print(f'{DIM}  … {len(rendered[:at])} bytes of spec prefix (--full-prompt shows them){OFF}')
+            print(f'{DIM}  … {len(rendered[:at].encode())} bytes of spec prefix (--full-prompt shows them){OFF}')
             text = rendered[at:]
     painted = CONTROL.sub(lambda m: f'{MAGENTA}{m.group(0)}{OFF}{DIM}', text)
     for line in painted.split('\n'):
@@ -52,7 +52,7 @@ def main():
     ap.add_argument('--url', default='http://127.0.0.1:18171')
     ap.add_argument('--spec', required=True)
     ap.add_argument('--tie', type=float, default=0.15,
-                    help='margin below which a written value is flagged as a near tie')
+                    help='top-two margin (renormalised) below which a field is flagged as a near tie')
     ap.add_argument('--full-prompt', action='store_true', help='print the spec prefix too')
     ap.add_argument('--no-prompt', action='store_true',
                     help='skip the rendered view (a daemon without `rendered: true`)')
@@ -88,7 +88,7 @@ def main():
                 resp = rpc(a.url, '/v1/opinion', body)
             except urllib.error.HTTPError as e:
                 msg = e.read().decode()[:300]
-                if 'rendered' in msg:
+                if 'unknown field `rendered`' in msg:
                     sys.exit(f'{RED}this daemon predates `rendered: true`: {msg}\n'
                              f'rerun with --no-prompt{OFF}')
                 print(f'{RED}{e.code} {msg}{OFF}')
@@ -111,6 +111,9 @@ def render(item, reads, choices, a, total_ms):
         ans = resp['answers'][0]
         opts = ans['options']
         top = max(opts, key=lambda o: o['prob'])
+        # The write is a greedy first-token pick (under the grammar and the
+        # repetition penalty), so compare it with the first-token top.
+        first_top = max(opts, key=lambda o: o['first_logprob'])
         wrote = written.get(f['field'])
         mass = math.exp(ans['sequence_mass'])
         flags = []
@@ -118,8 +121,8 @@ def render(item, reads, choices, a, total_ms):
             head = f'{DIM}(nothing after it is a choice field: the read is all there is){OFF}'
         else:
             head = f'wrote {BOLD}{json.dumps(wrote)}{OFF}'
-            if wrote != top['option']:
-                flags.append(f'{RED}wrote ≠ top ({top["option"]}){OFF}')
+            if wrote != first_top['option']:
+                flags.append(f'{RED}wrote ≠ first-token top ({first_top["option"]}){OFF}')
         if ans['margin'] < a.tie:
             flags.append(f'{YELLOW}near tie: margin {ans["margin"]:.3f}{OFF}')
         print(f'\n  {BOLD}{CYAN}{f["field"]}{OFF}  {head}  {"  ".join(flags)}')
@@ -133,6 +136,10 @@ def render(item, reads, choices, a, total_ms):
               f' first {ans["first_token_mass"]:+.4f}) · cache {resp["cache"]["described"]}'
               f' · {resp["describe_ms"] + resp["prefill_ms"] + resp["read_ms"]:.0f} ms server{OFF}')
     rendered = last.get('rendered')
+    if rendered is None and not a.no_prompt:
+        # Asked and not returned: a daemon that ignores the flag would let
+        # this view silently skip the one check it exists to make.
+        sys.exit(f'{RED}asked for `rendered` and the response has none{OFF}')
     if rendered is not None:
         digest = hashlib.sha256(rendered.encode()).hexdigest()
         claimed = last['answers'][0]['rendered_sha256']

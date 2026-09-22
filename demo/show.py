@@ -139,7 +139,7 @@ def main():
                + (['--repeat'] if a.watch_loop else [])
                + ['inputs/fleet_feed.txt'], None)),
         '5': ('xray — what it wrote, and what it wrote it from',
-              ['every choice field asked; the written value is an argmax',
+              ['every choice field asked; each written value is a greedy pick',
                'then the exact bytes the read continued, checked by sha256'],
               ([sys.executable, 'xray.py', '--url', a.url,
                 '--spec', 'command-verdict-enum-v1'],

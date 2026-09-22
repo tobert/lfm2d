@@ -95,7 +95,9 @@ def main():
             color = GREEN if mass >= a.unasked_below else RED
             note = ''
             if mass < a.unasked_below:
-                note = f'{RED}{BOLD}unasked: {top["option"]} {top["prob"]:.0%} is renormalised noise{OFF}'
+                held = 'the omitted options held the rest' if dropped else 'the model put it elsewhere'
+                note = (f'{RED}{BOLD}unasked: {top["option"]} {top["prob"]:.0%} is renormalised noise'
+                        f'{OFF}{DIM} ({held}){OFF}')
             elif top['option'] != full_top:
                 note = f'{YELLOW}top moved {full_top} → {top["option"]}{OFF}'
             print(f'  {label:26s} mass {meter(mass, color)} {mass:6.1%}   {cells}   {note}')

@@ -281,12 +281,15 @@ target/release/lfm2d \
 - **`xray.py --spec command-verdict-enum-v1`** — what the model wrote, and
   the distribution it wrote it from. Asks every choice field in turn, puts
   the full option distribution (prob, raw `first_logprob`, token ids, raw
-  mass) under each written value, flags near ties, and prints the exact
-  bytes the last read continued (`rendered: true`) after checking their
-  sha256 against `rendered_sha256`. `git clean -fdx` is the one to show:
-  described as deleting user data, written `undo: easy`, and `scope`
-  written `nothing` at 50.2% against 49.5% for `project`. A daemon older
-  than the `rendered` flag refuses the request; `--no-prompt` skips it.
+  mass) under each written value — the last choice field has no later
+  field to reveal its write, so it shows the read alone — flags near ties,
+  and prints the exact bytes the last read continued (`rendered: true`)
+  after checking their sha256 against `rendered_sha256`. `git clean -fdx`
+  is the one to show: described as deleting user data, written
+  `undo: easy`, and `scope` written `nothing` at 50.2% against 49.5% for
+  `project`. A daemon older than the flag refuses the request (the request
+  type denies unknown fields); `--no-prompt` skips the view, and a
+  response that omits `rendered` when asked ends the demo loudly.
 - **`asked.py --spec command-verdict-enum-v1 --field verdict`** — was the
   model even asked? Each item is read over the full menu, then with each
   option left out once (`item :: a,b` asks a subset). The full menu holds

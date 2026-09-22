@@ -313,8 +313,9 @@ pub struct Answer {
     pub margin: f32,
 }
 
-/// Each cache layer's outcome for this request: `hit`, `miss` or `bypass`
-/// (the request asked for a cold path).
+/// Each cache layer's outcome for this request: `hit`, `miss`, `bypass`
+/// (the request asked for a cold path) or `skipped` (a described hit never
+/// consults the prompt checkpoint).
 #[derive(Clone, Debug, Serialize)]
 pub struct CacheOutcome {
     /// The spec's resident system prefix.

@@ -96,8 +96,11 @@ pub struct OpinionRead {
     pub shared_tokens: usize,
     pub scored_tokens: usize,
     /// sha256 of the rendered text the options continue: prefix, user turn,
-    /// reasoning opening and prefill. Results carry it so a replay can prove it
-    /// rendered what the daemon ran.
+    /// then on `/v1/adjudicate` (`opinion: true`) the reasoning opening and
+    /// the spec's fixed prefill, on `/v1/opinion` the generated description
+    /// through the slot (the text `rendered: true` returns). The two
+    /// endpoints hash different bytes for the same input. Results carry it
+    /// so a replay can prove it rendered what the daemon ran.
     pub rendered_sha256: String,
 }
 
