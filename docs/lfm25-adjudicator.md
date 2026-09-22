@@ -308,7 +308,7 @@ POST /v1/opinion
            "facts": "Facts about this command from its manual pages and parser:\n..."},
  "context": null,
  "questions": [{"field": "verdict", "options": ["allow", "ask", "review"]}],
- "use_cache": true, "timeout_ms": 30000}
+ "rendered": false, "use_cache": true, "timeout_ms": 30000}
 ```
 
 - `spec` names a loaded spec; `GET /v1/opinion/specs` lists them with every
@@ -326,6 +326,13 @@ POST /v1/opinion
   by an order of magnitude, and a prompt the instruments never scored is not
   one the daemon serves.
 - `context` is reserved and must be `null`.
+- `rendered: true` adds `rendered` to the response: the exact text the
+  options continue — the spec prefix and user turn with the chat
+  template's control tokens, then the description up to and including
+  `"<field>": "`. Its sha256 is each answer's `rendered_sha256`, so a
+  consumer can check the one against the other. Off by default, and the
+  key is absent rather than null: the hash is the audit trail, and the text
+  repeats the whole spec prefix on every request.
 
 The daemon renders the prompt, generates every field before the question
 under the output grammar (greedy, the repetition penalty, exactly the

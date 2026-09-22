@@ -174,10 +174,22 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
             "{command}: mass {} — the question was asked",
             answer.read.sequence_mass
         );
-        // A second read is a hit and returns the same numbers.
+        assert!(first.rendered.is_none(), "{command}: rendered unasked");
+        // A second read is a hit and returns the same numbers. It asks for
+        // the rendered text, which is the bytes `rendered_sha256` hashes.
+        let mut asked = request.clone();
+        asked.rendered = true;
         let second = adjudicator
-            .opine(&request, &question, &ok)
+            .opine(&asked, &question, &ok)
             .expect("opine again");
+        let rendered = second.rendered.as_deref().expect("rendered was asked");
+        assert_eq!(
+            lfm2d::hash::sha256_hex_bytes(rendered.as_bytes()),
+            second.answers[0].read.rendered_sha256,
+            "{command}"
+        );
+        assert!(rendered.ends_with("\"verdict\": \""), "{command}: {rendered:?}");
+        assert!(rendered.contains(&format!("Command:\n{command}")), "{command}");
         assert_eq!(second.cache.described, "hit", "{command}");
         assert_eq!(second.described_tokens, first.described_tokens);
         assert_eq!(second.prefill_ms, 0.0);

@@ -99,6 +99,11 @@ pub struct OpinionRequest {
     /// Exactly one in v1. A list, so the shape survives when several slots
     /// can be read in one request.
     pub questions: Vec<Question>,
+    /// Return the exact text the options continue (`rendered` on the
+    /// response). Off by default: `rendered_sha256` is the audit trail, and
+    /// the text carries the whole spec prefix on every request.
+    #[serde(default)]
+    pub rendered: bool,
     #[serde(default = "yes")]
     pub use_cache: bool,
     #[serde(default = "default_timeout")]
@@ -328,6 +333,12 @@ pub struct OpinionResponse {
     /// The fields generated before the slot, as the model wrote them.
     pub described: Vec<DescribedField>,
     pub answers: Vec<Answer>,
+    /// Only when the request asked: the rendered prompt, chat-template
+    /// control tokens included, plus the description up to and including
+    /// the slot — the bytes each answer's `rendered_sha256` hashes. Absent,
+    /// not null, when unasked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rendered: Option<String>,
     pub cache: CacheOutcome,
     /// Tokens in the rendered prompt (prefix and user turn), before the
     /// description.

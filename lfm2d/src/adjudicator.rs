@@ -1318,6 +1318,7 @@ impl Adjudicator {
         let margin = crate::opinion_api::margin(
             &read.options.iter().map(|o| o.prob).collect::<Vec<_>>(),
         );
+        let rendered = format!("{prompt_text}{text}");
         Ok(OpinionResponse {
             prefix: spec.info.clone(),
             spec: request.spec.clone(),
@@ -1330,10 +1331,11 @@ impl Adjudicator {
                     first_token_mass: read.first_token_mass,
                     shared_tokens: prompt_ids.len() + generated.len(),
                     scored_tokens: continuations.iter().map(Vec::len).sum(),
-                    rendered_sha256: sha256_hex_bytes(format!("{prompt_text}{text}").as_bytes()),
+                    rendered_sha256: sha256_hex_bytes(rendered.as_bytes()),
                 },
                 margin,
             }],
+            rendered: request.rendered.then_some(rendered),
             cache,
             prompt_tokens: prompt_ids.len(),
             cached_tokens,

@@ -131,6 +131,9 @@ impl Generator for Fake {
                 },
                 margin: 0.4,
             }],
+            rendered: request
+                .rendered
+                .then(|| format!("fake rendered {}", request.state.command)),
             cache: CacheOutcome {
                 prefix: "hit".into(),
                 state: "miss".into(),
@@ -338,6 +341,24 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
     ] {
         assert!(v.get(key).is_some(), "read lacks {key}: {v}");
     }
+}
+
+#[tokio::test]
+async fn the_rendered_prompt_is_returned_only_when_asked() {
+    let (handle, _) = spawn();
+    let router = lfm2d::adjudicator::router(handle);
+    // Default: the hash is the only evidence of the prompt, and the key is
+    // absent rather than null so an old consumer's payload is unchanged.
+    let (status, v) = post(&router, "/v1/opinion", GOOD).await;
+    assert_eq!(status, 200, "{v}");
+    assert!(v.get("rendered").is_none(), "rendered unasked: {v}");
+    let asked = GOOD.replacen('{', r#"{"rendered":true,"#, 1);
+    let (status, v) = post(&router, "/v1/opinion", &asked).await;
+    assert_eq!(status, 200, "{v}");
+    assert_eq!(v["rendered"], "fake rendered cargo clean");
+    let wrong = GOOD.replacen('{', r#"{"rendered":"yes","#, 1);
+    let (status, v) = post(&router, "/v1/opinion", &wrong).await;
+    assert_eq!(status, 400, "a non-boolean flag is refused: {v}");
 }
 
 #[tokio::test]
