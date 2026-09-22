@@ -50,9 +50,18 @@ spec:
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
-      # The engine frees device memory through the driver on drop, and the
-      # daemon waits for that before exiting (lfm2d/README.md, the ROCm
-      # teardown note). Measured on the host: exit takes a few seconds.
+      # The daemon drains and exits 0 within ~0.3 s of SIGTERM, measured on
+      # the host and inside this image (2026-09-22). A RESTART is still
+      # minutes, and none of it is the daemon: the pod object lingered
+      # 27-39 s after delete, the freed amd.com/gpu was re-offered to the
+      # replacement only after ~3 min of "Insufficient amd.com/gpu"
+      # FailedScheduling backoff, container creation took ~70 s (device
+      # plugin allocate), then 12 s to ready. Two restarts measured: 129 s
+      # and 295 s delete-to-ready. Recreate + one GPU means that is
+      # downtime; a second GPU node would be the fix, not a shorter grace.
+      # (Rootless `podman stop`/`kill` on this host also hung for minutes
+      # AFTER the container had finished — a podman client issue, not
+      # the daemon; the probe's container finished 0.1 s after the signal.)
       terminationGracePeriodSeconds: 30
       securityContext:
         supplementalGroups: [987, 983]
