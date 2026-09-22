@@ -235,35 +235,51 @@ summaries; added explicit generation smoke and split-passage CLI coverage.
 
 ## System 1 opinion demos (`/v1/opinion`)
 
-Three scripts, one story arc: a gut reaction for commands, a cascade that
-prices hesitation, and a read that answers questions with no shell in them.
-Stdlib Python; the `email-triage-v1` spec under `specs/` and the input lines
-under `inputs/` are invented fixtures, like the ones above.
+Four scripts, one story arc — and `show.py` to run the lot: a gut reaction
+for commands, a cascade that prices hesitation, a read that answers
+questions with no shell in them, and a fleet feed on watch. Stdlib Python;
+the `email-triage-v1` spec under `specs/` and the input lines under
+`inputs/` are invented fixtures, like the ones above.
 
-Start a daemon (a throwaway on a free port is the pattern; here the email
-spec is the resident adjudicator prompt so act three runs warm, and the
-shell spec rides along on the menu):
+Start a daemon (a throwaway on a free port is the pattern; the shell spec is
+the resident adjudicator prompt so the escalation acts think in the right
+vocabulary, and the email spec rides along on the menu):
 
 ```sh
 target/release/lfm2d \
   --adjudicator-model /tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf \
   --adjudicator-tokenizer .models/LFM2.5-8B-A1B/tokenizer.json \
-  --adjudicator-prompt demo/specs/email-triage-v1.json \
-  --opinion-spec lfm2d/prompts/command-verdict-enum-v1.json \
+  --adjudicator-prompt lfm2d/prompts/command-verdict-enum-v1.json \
+  --opinion-spec demo/specs/email-triage-v1.json \
   --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
 ```
 
-- **`blink.py`** — a gut for commands. Type a command, get the describe-then-
-  read distribution and a one-line gate verdict in ~40 ms warm. Nothing runs.
-- **`cascade.py --cold`** — the gut gates the expensive thought. Below the
-  gate it escalates to `/v1/adjudicate`, which resumes from the blink's own
-  state (`resumed_tokens`); `--cold` prices the same thought from scratch.
-  The exit ledger shows how little thinking the hesitation rate buys.
-- **`blink_anything.py --spec email-triage-v1 --field verdict`** — the verdict
-  vocabulary is the app's, not ours. Same primitive routes a support inbox
-  (`auto_close` / `human_read`) over a spec written as a demo prop.
+- **`show.py`** — the matinee: four acts in one terminal, title cards
+  between, commands driven through a pty so they echo like someone typed
+  them and each next line waits for the child's own prompt. `--auto` skips
+  the between-act pauses; `--acts 24` picks a subset; `--watch-loop` leaves
+  act four running forever.
+- **`blink.py --pass-option allow`** — a gut for commands. Type a command,
+  get the describe-then-read distribution and a one-line gate verdict in
+  ~40 ms warm. Nothing runs.
+- **`cascade.py --pass-option allow --cold`** — the gut gates the expensive
+  thought. Below the gate it escalates to `/v1/adjudicate`, which resumes
+  from the blink's own state (`resumed_tokens`); `--cold` prices the same
+  thought from scratch. The exit ledger shows how little thinking the
+  hesitation rate buys.
+- **`blink_anything.py --spec email-triage-v1 --field verdict`** — the
+  verdict vocabulary is the app's, not ours. Same primitive routes a
+  support inbox (`auto_close` / `human_read`) over a spec written as a prop.
+- **`night_watch.py --pass-option allow inputs/fleet_feed.txt --repeat`** —
+  a synthetic k8s fleet on loop. The feed is sized to the described cache,
+  so the first pass maps the cluster at cold-read speed and every pass
+  after runs at ~40 ms an event; below-gate events carry a system 2 thought
+  with its reason. At the default 0.8 gate this feed flags ~40%
+  (`journalctl -u kubelet` among them) — show it as calibration evidence
+  or demo it at `--ask-below 0.5`.
 
-All three read `GET /v1/opinion/specs` at runtime; none hard-code a field or
-option. Known prompt gaps show live in the demos (sudo-restart and npm
-publish read allow; see the F9 notes) — they are prompt-policy findings,
-not endpoint bugs.
+All four take `--pass-option` from the caller and check it against
+`GET /v1/opinion/specs` at load: no script hard-codes a field name, an
+option, or which verdict means go. Known prompt gaps show live in the demos
+(sudo-restart and npm publish read allow; see the F9 notes) — they are
+prompt-policy findings, not endpoint bugs.

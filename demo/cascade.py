@@ -5,7 +5,7 @@ it resumes from the very state the blink built, so thinking is a continuation,
 not a restart. --cold prices the third act: the same thought from scratch,
 which is what a System-2-only design pays for every single command.
 
-    python3 cascade.py --url http://127.0.0.1:18171 --cold
+    python3 cascade.py --url http://127.0.0.1:18171 --pass-option allow --cold
 
 Type a command, press enter, nothing runs. Ctrl-D exits.
 """
@@ -62,6 +62,8 @@ def main():
     ap.add_argument('--url', default='http://127.0.0.1:18171')
     ap.add_argument('--spec', default='command-verdict-enum-v1')
     ap.add_argument('--field', default='verdict')
+    ap.add_argument('--pass-option', required=True,
+                    help='the option this system treats as pass-through (checked against the menu)')
     ap.add_argument('--ask-below', type=float, default=0.8)
     ap.add_argument('--cold', action='store_true', help='also price thinking from scratch')
     a = ap.parse_args()
@@ -70,10 +72,13 @@ def main():
         urllib.request.urlopen(a.url.rstrip('/') + '/v1/opinion/specs', timeout=10))}
     field = next(f for f in menu[a.spec]['fields'] if f['field'] == a.field)
     options = field['options']
+    if a.pass_option not in options:
+        sys.exit(f'{a.pass_option!r} is not an option of {a.spec!r}/{a.field} '
+                 f'({options}) — read the menu, do not invent labels')
     describes = [f['field'] for f in menu[a.spec]['fields'][:menu[a.spec]['fields'].index(field)]]
     n_let, n_escal, t_system1, t_system2 = 0, 0, 0.0, 0.0
     print(f'{BOLD}cascade — system 1 blinks, system 2 thinks, you pay only for hesitation{OFF}')
-    print(f'{DIM}gate: escalate unless P(allow) ≥ {a.ask_below}  ·  nothing you type runs{OFF}\n')
+    print(f'{DIM}gate: escalate unless P({a.pass_option}) ≥ {a.ask_below}  ·  nothing you type runs{OFF}\n')
 
     while True:
         try:
@@ -96,7 +101,7 @@ def main():
         probs = {o['option']: o['prob'] for o in ans['options']}
         print(f'  {DIM}blink{OFF}  {mini(probs, options)}   '
               f'{DIM}{read["cache"]["described"]} · {blink_ms:.0f} ms{OFF}')
-        if probs.get('allow', 0) >= a.ask_below:
+        if probs.get(a.pass_option, 0) >= a.ask_below:
             n_let += 1
             t_system1 += blink_ms
             print(f'  {GREEN}passed — no LLM woke up{OFF}\n')
@@ -112,7 +117,7 @@ def main():
         report = gen.get('report') or {}
         resumed = gen.get('resumed_tokens')
         verdict = report.get(a.field, '?')
-        color = {'allow': GREEN, 'ask': YELLOW, 'review': RED}.get(verdict, DIM)
+        color = GREEN if verdict == a.pass_option else RED
         print(f'  {color}thought{OFF}  {BOLD}{verdict}{OFF}  '
               f'{DIM}({resumed} tokens carried from the blink, {think_ms:.0f} ms){OFF}')
         print(f'         {report.get("reason", "")}')
