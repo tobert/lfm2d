@@ -232,3 +232,38 @@ Review: Kaibo, DeepSeek cast (`deepseek-flash` explorer and synthesis).
 Fixed empty-query handling, CRLF boundaries, and malformed generation-response
 errors with failing-then-passing tests. Retained deliberate refusal of overlong
 summaries; added explicit generation smoke and split-passage CLI coverage.
+
+## System 1 opinion demos (`/v1/opinion`)
+
+Three scripts, one story arc: a gut reaction for commands, a cascade that
+prices hesitation, and a read that answers questions with no shell in them.
+Stdlib Python; the `email-triage-v1` spec under `specs/` and the input lines
+under `inputs/` are invented fixtures, like the ones above.
+
+Start a daemon (a throwaway on a free port is the pattern; here the email
+spec is the resident adjudicator prompt so act three runs warm, and the
+shell spec rides along on the menu):
+
+```sh
+target/release/lfm2d \
+  --adjudicator-model /tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf \
+  --adjudicator-tokenizer .models/LFM2.5-8B-A1B/tokenizer.json \
+  --adjudicator-prompt demo/specs/email-triage-v1.json \
+  --opinion-spec lfm2d/prompts/command-verdict-enum-v1.json \
+  --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
+```
+
+- **`blink.py`** — a gut for commands. Type a command, get the describe-then-
+  read distribution and a one-line gate verdict in ~40 ms warm. Nothing runs.
+- **`cascade.py --cold`** — the gut gates the expensive thought. Below the
+  gate it escalates to `/v1/adjudicate`, which resumes from the blink's own
+  state (`resumed_tokens`); `--cold` prices the same thought from scratch.
+  The exit ledger shows how little thinking the hesitation rate buys.
+- **`blink_anything.py --spec email-triage-v1 --field verdict`** — the verdict
+  vocabulary is the app's, not ours. Same primitive routes a support inbox
+  (`auto_close` / `human_read`) over a spec written as a demo prop.
+
+All three read `GET /v1/opinion/specs` at runtime; none hard-code a field or
+option. Known prompt gaps show live in the demos (sudo-restart and npm
+publish read allow; see the F9 notes) — they are prompt-policy findings,
+not endpoint bugs.

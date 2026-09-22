@@ -1,0 +1,4 @@
+git push --force-with-lease
+kubectl delete ns staging
+brew install ripgrep
+docker system prune -af

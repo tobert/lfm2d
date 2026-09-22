@@ -1,0 +1,5 @@
+git status
+git status
+kubectl delete ns staging
+docker system prune -af
+docker system prune -af
