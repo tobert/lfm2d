@@ -98,7 +98,8 @@ pub struct OpinionRead {
     /// sha256 of the rendered text the options continue: prefix, user turn,
     /// then on `/v1/adjudicate` (`opinion: true`) the reasoning opening and
     /// the spec's fixed prefill, on `/v1/opinion` the generated description
-    /// through the slot (the text `rendered: true` returns). The two
+    /// through this answer's own slot (`rendered: true` returns the text to
+    /// the last asked slot; an earlier answer hashes a prefix of it). The two
     /// endpoints hash different bytes for the same input. Results carry it
     /// so a replay can prove it rendered what the daemon ran.
     pub rendered_sha256: String,

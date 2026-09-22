@@ -338,8 +338,10 @@ POST /v1/opinion
 - `rendered: true` adds `rendered` to the response: the exact text the
   options continue — the spec prefix and user turn with the chat
   template's control tokens, then the description up to and including
-  `"<field>": "`. Its sha256 is each answer's `rendered_sha256`, so a
-  consumer can check the one against the other. Off by default, and the
+  the last asked slot's `"<field>": "`. Each answer's `rendered_sha256`
+  hashes this text cut at the end of its own slot, so a consumer checks an
+  answer against the prefix ending at `"<its field>": "` — for a single
+  question, the whole string. Off by default, and the
   key is absent rather than null: the hash is the audit trail, and the text
   repeats the whole spec prefix on every request.
 
@@ -370,9 +372,11 @@ continuations are the tokens the model would have written.
 - **No winner.** Nothing in the response names a choice; the caller picks,
   from its own thresholds on its own data, per spec, and refits when
   `snapshot_id` changes.
-- `described` is the fields the model wrote before the slot, in emission
-  order (a list, because `serde_json` sorts object keys). The read is
-  conditioned on it, so it is part of the answer and is echoed.
+- `described` is the fields the model wrote before the last asked slot,
+  in emission order (a list, because `serde_json` sorts object keys). The
+  read is conditioned on it, so it is part of the answer and is echoed; an
+  earlier answer was read on a prefix of it, and that prefix includes the
+  values the model wrote at each earlier asked slot.
 - Per option: `logprob` is the raw sequence logprob (option plus close,
   full-vocabulary denominators), `first_logprob` the raw logprob of the first
   token alone (the number the F9 slot score reads), `prob` renormalised over
@@ -384,8 +388,10 @@ continuations are the tokens the model would have written.
   (`use_cache: false`) or `skipped` (a described hit never consults the
   prompt checkpoint): the spec's resident prefix; the exact rendered
   prompt (one checkpoint per spec, exact repeat); and the *described*
-  state — the prompt plus its generated description at the slot, kept per
-  spec in a small LRU (`described_cache_capacity` on the menu, 16). Greedy
+  state — the prompt plus its generated description at a slot, kept per
+  spec in a small LRU (`described_cache_capacity` on the menu, 16). The
+  capacity counts ENTRIES, one per asked slot: a three-question request
+  spends three, so the LRU holds about five such commands. Greedy
   decoding under the grammar is a pure function of the rendered prompt on a
   fixed backend, so the description and the model state after it are
   reusable computation, never a cached answer: a hit skips the prefill and
@@ -437,6 +443,9 @@ generation (`lfm2d/tests/opinion_real.rs`). So the cascade an app builds on
 the opinion — read, decide, escalate the unsure ones — pays for the
 description once. A cold request (`use_cache: false`) or one asking for
 `distributions` never resumes.
+
+A spec whose field name contains a quote or a backslash is refused at
+load: slot detection could not tell its escaped key from a later field's.
 
 Refused with 400, never queued: an unknown spec, a field the spec lacks or
 that is not a `choice`, an option outside the enum, fewer than two options,

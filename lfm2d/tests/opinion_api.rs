@@ -523,6 +523,18 @@ fn the_menu_is_read_from_a_prompt_spec_in_required_order() {
     };
     let entry = SpecMenuEntry::from_prompt("tools", &tool_spec, "snap", 16).unwrap();
     assert!(entry.fields.is_empty());
+    // A quote or backslash in a field name is refused at load: the grammar
+    // escapes it, and the escaped key can END with a later field's slot
+    // text (`"x\"b": "` ends with `"b": "`), so a walk would stop at the
+    // wrong slot and read it silently.
+    let mut schema = spec.output_schema.clone().unwrap();
+    let props = schema["properties"].as_object_mut().unwrap();
+    let scope = props.remove("scope").unwrap();
+    props.insert("x\"undo".into(), scope);
+    schema["required"] = serde_json::json!(["effect", "x\"undo", "undo", "verdict", "reason"]);
+    let quoted = lfm2d::adjudicator::PromptSpec { output_schema: Some(schema), ..spec.clone() };
+    let err = SpecMenuEntry::from_prompt("quoted", &quoted, "snap", 16).unwrap_err();
+    assert!(err.contains("quote or backslash"), "{err}");
     let q: lfm2d::opinion_api::Question = serde_json::from_str(r#"{"field":"verdict"}"#).unwrap();
     assert!(entry.resolve(&q).is_err());
 }

@@ -1,12 +1,13 @@
 //! `/v1/opinion`: the typed-decision surface over the resident adjudicator.
 //!
 //! An opinion request names a loaded prompt spec, hands over the state (the
-//! command and, optionally, the facts an app built for it) and asks one of
-//! the spec's choice fields. The daemon renders the same prompt the
-//! generative path renders, generates the fields that precede the question
-//! under the output grammar — the *description* — stops at the question's
-//! value slot, and teacher-forces every option there ([`crate::opinion`]).
-//! Nothing after the slot is decoded.
+//! command and, optionally, the facts an app built for it) and asks one or
+//! more of the spec's choice fields. The daemon renders the same prompt the
+//! generative path renders, generates the fields that precede each question
+//! under the output grammar — the *description* — stands at each asked
+//! value slot as the walk passes it, and teacher-forces every option there
+//! ([`crate::opinion`]). Between asked slots the walk writes what the model
+//! writes; nothing after the LAST asked slot is decoded.
 //!
 //! Why describe first: a read at the verdict slot before the model has
 //! described the command carries nothing on this checkpoint (F9: AUC ~0.5
@@ -211,6 +212,17 @@ impl SpecMenuEntry {
                 let name = name
                     .as_str()
                     .ok_or("required field names must be strings")?;
+                // The engine finds a slot by the text ending with the key as
+                // the grammar writes it. An escaped quote can make an EARLIER
+                // key's text end with a later field's slot (`"x\"b": "`
+                // ends with `"b": "`), and the walk would stop there and
+                // read the wrong state without an error. Refused at load.
+                if name.contains('"') || name.contains('\\') {
+                    return Err(format!(
+                        "field name {name:?} contains a quote or backslash; slot detection \
+                         cannot tell its key from a later field's"
+                    ));
+                }
                 let spec = properties
                     .get(name)
                     .ok_or_else(|| format!("required names a missing property {name:?}"))?;
@@ -353,13 +365,15 @@ pub struct OpinionResponse {
     #[serde(flatten)]
     pub prefix: PrefixInfo,
     pub spec: String,
-    /// The fields generated before the slot, as the model wrote them.
+    /// The fields generated before the LAST asked slot, as the model wrote
+    /// them; an earlier answer was read on a prefix of this description.
     pub described: Vec<DescribedField>,
     pub answers: Vec<Answer>,
     /// Only when the request asked: the rendered prompt, chat-template
     /// control tokens included, plus the description up to and including
-    /// the slot — the bytes each answer's `rendered_sha256` hashes. Absent,
-    /// not null, when unasked.
+    /// the LAST asked slot. Each answer's `rendered_sha256` hashes this text
+    /// cut at the end of its own slot, so only the last answer's hash is of
+    /// the whole string. Absent, not null, when unasked.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rendered: Option<String>,
     pub cache: CacheOutcome,

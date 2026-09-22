@@ -272,6 +272,14 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
                 .opine(&single_req, std::slice::from_ref(&q), &ok)
                 .expect("single cold");
             same_read(answer, &single.answers[0], "cold multi vs cold single");
+            if answer.field == "verdict" {
+                // The last slot's description is the single verdict read's.
+                let pairs = |r: &lfm2d::opinion_api::OpinionResponse| -> Vec<(String, serde_json::Value)> {
+                    r.described.iter().map(|d| (d.field.clone(), d.value.clone())).collect()
+                };
+                assert_eq!(pairs(&multi_cold), pairs(&single), "{command}: described");
+                assert_eq!(multi_cold.described_tokens, single.described_tokens, "{command}");
+            }
         }
         // Every answer's hash covers the rendered text up to its own slot.
         let rendered = multi_cold.rendered.as_deref().expect("rendered was asked");
