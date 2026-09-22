@@ -357,12 +357,13 @@ pub trait Generator: Send + 'static {
         request: &AdjudicateRequest,
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<AdjudicateResponse, Failure>;
-    /// Describe-then-read for `/v1/opinion`: `question` was resolved against
-    /// the spec's menu by the handler. See [`crate::opinion_api`].
+    /// Describe-then-read for `/v1/opinion`: `questions` were resolved
+    /// against the spec's menu by the handler, in emission order. See
+    /// [`crate::opinion_api`].
     fn opine(
         &mut self,
         request: &crate::opinion_api::OpinionRequest,
-        question: &crate::opinion_api::ResolvedQuestion,
+        questions: &[crate::opinion_api::ResolvedQuestion],
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<crate::opinion_api::OpinionResponse, Failure>;
 }
@@ -1035,11 +1036,11 @@ impl Generator for Adjudicator {
     fn opine(
         &mut self,
         request: &crate::opinion_api::OpinionRequest,
-        question: &crate::opinion_api::ResolvedQuestion,
+        questions: &[crate::opinion_api::ResolvedQuestion],
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<crate::opinion_api::OpinionResponse, Failure> {
         request.validate().map_err(Failure::BadRequest)?;
-        self.describe_then_read(request, question, check)
+        self.describe_then_read(request, questions, check)
     }
 }
 
@@ -1129,17 +1130,32 @@ impl Adjudicator {
         })
     }
 
-    /// `/v1/opinion`: generate the fields before the question under the
-    /// grammar, stop at the question's value slot, score every option there.
+    /// `/v1/opinion`: generate the fields before the questions under the
+    /// grammar, stop at each question's value slot as the walk passes it,
+    /// score every option there. One description serves every question —
+    /// they arrive resolved in emission order ([`SpecMenuEntry::resolve_all`]).
     /// See [`crate::opinion_api`] for why the description comes first and
     /// what the caches are.
+    ///
+    /// [`SpecMenuEntry::resolve_all`]: crate::opinion_api::SpecMenuEntry::resolve_all
     fn describe_then_read(
         &mut self,
         request: &crate::opinion_api::OpinionRequest,
-        question: &crate::opinion_api::ResolvedQuestion,
+        questions: &[crate::opinion_api::ResolvedQuestion],
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<crate::opinion_api::OpinionResponse, Failure> {
         use crate::opinion_api::{Answer, CacheOutcome, OpinionResponse};
+        let last = questions
+            .last()
+            .ok_or_else(|| Failure::BadRequest("ask at least one question".into()))?;
+        if questions
+            .windows(2)
+            .any(|w| w[0].describe.len() >= w[1].describe.len())
+        {
+            return Err(Failure::Internal(
+                "questions reached the engine out of emission order".into(),
+            ));
+        }
         let index = self
             .specs
             .iter()
@@ -1170,160 +1186,169 @@ impl Adjudicator {
                 "prompt leaves no adjudicator context to describe the command".into(),
             ));
         }
-        let slot_text = question.slot_text();
         let mut cache = CacheOutcome {
             prefix: if request.use_cache { "hit" } else { "bypass" }.into(),
             state: "miss".into(),
             described: "miss".into(),
         };
-        let described_hit = if request.use_cache {
-            spec.described.get(&prompt_ids, &question.field)
+        // A hit only when EVERY slot is held: a partial set would mix a
+        // cached walk with a fresh one for no saving worth the bookkeeping.
+        let described_hit: Option<Vec<_>> = if request.use_cache {
+            questions
+                .iter()
+                .map(|q| spec.described.get(&prompt_ids, &q.field))
+                .collect()
         } else {
             cache.described = "bypass".into();
             cache.state = "bypass".into();
             None
         };
-        let (state, logits, generated, text, cached_tokens, prefill_ms, describe_ms) =
-            match described_hit {
-                Some((generated, text, state, logits)) => {
-                    cache.described = "hit".into();
-                    cache.state = "skipped".into();
-                    (state, logits, generated, text, prompt_ids.len(), 0., 0.)
+        // One (generated, text, state, logits) per question, standing at its slot.
+        let (slots, cached_tokens, prefill_ms, describe_ms) = match described_hit {
+            Some(slots) => {
+                cache.described = "hit".into();
+                cache.state = "skipped".into();
+                (slots, prompt_ids.len(), 0., 0.)
+            }
+            None => {
+                let begin = Instant::now();
+                let PreparedEvaluation {
+                    mut state,
+                    mut logits,
+                    cached_tokens,
+                } = spec
+                    .cache
+                    .prepare(&self.model, &prompt_ids, request.use_cache, check)?;
+                if request.use_cache && cached_tokens == prompt_ids.len() {
+                    cache.state = "hit".into();
                 }
-                None => {
-                    let begin = Instant::now();
-                    let PreparedEvaluation {
-                        mut state,
-                        mut logits,
-                        cached_tokens,
-                    } = spec
-                        .cache
-                        .prepare(&self.model, &prompt_ids, request.use_cache, check)?;
-                    if request.use_cache && cached_tokens == prompt_ids.len() {
-                        cache.state = "hit".into();
-                    }
-                    let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
-                    let describe = Instant::now();
-                    let mut sampler = crate::constrain::Decoder::new(
-                        Some(&grammar),
-                        logits.device(),
-                        self.model.vocab_size(),
-                        &prompt_ids,
-                        self.repeat_penalty,
-                    )?;
-                    let mut generated = Vec::new();
-                    let mut text = String::new();
-                    let mut at_slot = false;
-                    for _ in prompt_ids.len()..context_limit {
-                        check()?;
-                        let token = sampler.sample(&logits)?;
-                        if self.tokenizer.id_to_token(token).is_none() {
-                            return Err(Failure::Internal(format!(
-                                "model selected unused vocabulary row {token}"
-                            )));
-                        }
-                        if token == self.eos {
-                            break;
-                        }
-                        generated.push(token);
-                        let before = text.len();
-                        text = self
-                            .tokenizer
-                            .decode(&generated, false)
-                            .map_err(|e| Failure::Internal(e.to_string()))?;
-                        if text.ends_with(&slot_text) {
-                            logits = self.model.forward(&[token], &mut state)?;
-                            at_slot = true;
-                            break;
-                        }
-                        // The grammar admits any token whose bytes begin the
-                        // value, so one token can write the slot's closing
-                        // quote AND the first bytes of an answer (`"a`) — the
-                        // model leaving the canonical path at the slot. There
-                        // is no slot to stand at then, and a read off this
-                        // state would score the options on a path the model
-                        // did not take. Refuse with the right diagnosis; the
-                        // harness counts these as their own outcome.
-                        if let Some(at) = text.find(&slot_text)
-                            && at + slot_text.len() > before
-                            && at + slot_text.len() < text.len()
-                        {
-                            return Err(Failure::Internal(format!(
-                                "model wrote past the {:?} slot in one token ({:?}); no slot to read",
-                                question.field,
-                                &text[before..]
-                            )));
-                        }
-                        logits = self.model.forward(&[token], &mut state)?;
-                    }
-                    if !at_slot {
-                        // The grammar makes every field reachable and required,
-                        // so this is the context running out or the model
-                        // ending the turn where the grammar forbids it — loud,
-                        // never a read off the wrong slot.
+                let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
+                let describe = Instant::now();
+                let mut sampler = crate::constrain::Decoder::new(
+                    Some(&grammar),
+                    logits.device(),
+                    self.model.vocab_size(),
+                    &prompt_ids,
+                    self.repeat_penalty,
+                )?;
+                let mut generated = Vec::new();
+                let mut text = String::new();
+                let mut slots = Vec::with_capacity(questions.len());
+                let mut slot_text = questions[0].slot_text();
+                for _ in prompt_ids.len()..context_limit {
+                    check()?;
+                    let token = sampler.sample(&logits)?;
+                    if self.tokenizer.id_to_token(token).is_none() {
                         return Err(Failure::Internal(format!(
-                            "description ended before the {:?} slot after {} tokens: {text:?}",
-                            question.field,
-                            generated.len()
+                            "model selected unused vocabulary row {token}"
                         )));
                     }
-                    logits.device().synchronize()?;
-                    check()?;
-                    let describe_ms = describe.elapsed().as_secs_f64() * 1000.;
-                    if request.use_cache {
-                        spec.described.insert(DescribedEntry {
-                            prompt_ids: prompt_ids.clone(),
-                            field: question.field.clone(),
-                            generated: generated.clone(),
-                            text: text.clone(),
-                            state: state.clone(),
-                            logits: logits.clone(),
-                        });
+                    if token == self.eos {
+                        break;
                     }
-                    (state, logits, generated, text, cached_tokens, prefill_ms, describe_ms)
+                    generated.push(token);
+                    let before = text.len();
+                    text = self
+                        .tokenizer
+                        .decode(&generated, false)
+                        .map_err(|e| Failure::Internal(e.to_string()))?;
+                    logits = self.model.forward(&[token], &mut state)?;
+                    if text.ends_with(&slot_text) {
+                        // At this question's slot: keep the state, then walk
+                        // on from the same logits to the next question's.
+                        let question = &questions[slots.len()];
+                        if request.use_cache {
+                            spec.described.insert(DescribedEntry {
+                                prompt_ids: prompt_ids.clone(),
+                                field: question.field.clone(),
+                                generated: generated.clone(),
+                                text: text.clone(),
+                                state: state.clone(),
+                                logits: logits.clone(),
+                            });
+                        }
+                        slots.push((generated.clone(), text.clone(), state.clone(), logits.clone()));
+                        match questions.get(slots.len()) {
+                            Some(next) => slot_text = next.slot_text(),
+                            None => break,
+                        }
+                        continue;
+                    }
+                    // The grammar admits any token whose bytes begin the
+                    // value, so one token can write the slot's closing
+                    // quote AND the first bytes of an answer (`"a`) — the
+                    // model leaving the canonical path at the slot. There
+                    // is no slot to stand at then, and a read off this
+                    // state would score the options on a path the model
+                    // did not take. Refuse with the right diagnosis; the
+                    // harness counts these as their own outcome.
+                    if let Some(at) = text.rfind(&slot_text)
+                        && at + slot_text.len() > before
+                        && at + slot_text.len() < text.len()
+                    {
+                        return Err(Failure::Internal(format!(
+                            "model wrote past the {:?} slot in one token ({:?}); no slot to read",
+                            questions[slots.len()].field,
+                            &text[before..]
+                        )));
+                    }
                 }
-            };
-        let described = parse_described(&text, &slot_text, &question.describe)?;
-        let read = Instant::now();
-        // Each option and its close on their own pretokens after the slot:
-        // checked at load on a probe, held to here.
-        let mut continuations = Vec::with_capacity(question.options.len());
-        for option in &question.options {
-            let alone = encode_ids(&self.tokenizer, &format!("{option}{}", question.close))
-                .map_err(Failure::Internal)?;
-            let whole = encode_ids(
-                &self.tokenizer,
-                &format!("{prompt_text}{text}{option}{}", question.close),
-            )
-            .map_err(Failure::Internal)?;
-            if alone.is_empty() || !whole.ends_with(&alone) {
-                return Err(Failure::Internal(format!(
-                    "option {option:?} does not tokenize on its own after the slot"
-                )));
+                if slots.len() < questions.len() {
+                    // The grammar makes every field reachable and required,
+                    // so this is the context running out or the model
+                    // ending the turn where the grammar forbids it — loud,
+                    // never a read off the wrong slot.
+                    return Err(Failure::Internal(format!(
+                        "description ended before the {:?} slot after {} tokens: {text:?}",
+                        questions[slots.len()].field,
+                        generated.len()
+                    )));
+                }
+                logits.device().synchronize()?;
+                check()?;
+                let describe_ms = describe.elapsed().as_secs_f64() * 1000.;
+                (slots, cached_tokens, prefill_ms, describe_ms)
             }
-            continuations.push(alone);
-        }
+        };
+        let (last_generated, last_text, _, _) = slots.last().expect("one slot per question");
+        let described = parse_described(last_text, &last.slot_text(), &last.describe)?;
+        let read = Instant::now();
         let candle_check = || check().map_err(|_| candle_core::Error::Msg("cancelled".into()));
-        let scores = crate::opinion::score_continuations(
-            &self.model,
-            &state,
-            &logits,
-            &continuations,
-            &candle_check,
-        )
-        .map_err(|e| check().err().unwrap_or(Failure::Internal(e.to_string())))?;
-        logits.device().synchronize()?;
-        let read_ms = read.elapsed().as_secs_f64() * 1000.;
-        let read = read_options(&question.options, &scores, &continuations, &logits)?;
-        let margin = crate::opinion_api::margin(
-            &read.options.iter().map(|o| o.prob).collect::<Vec<_>>(),
-        );
-        let rendered = format!("{prompt_text}{text}");
-        Ok(OpinionResponse {
-            prefix: spec.info.clone(),
-            spec: request.spec.clone(),
-            described,
-            answers: vec![Answer {
+        let mut answers = Vec::with_capacity(questions.len());
+        for (question, (generated, text, state, logits)) in questions.iter().zip(&slots) {
+            // Each option and its close on their own pretokens after the
+            // slot: checked at load on a probe, held to here.
+            let mut continuations = Vec::with_capacity(question.options.len());
+            for option in &question.options {
+                let alone = encode_ids(&self.tokenizer, &format!("{option}{}", question.close))
+                    .map_err(Failure::Internal)?;
+                let whole = encode_ids(
+                    &self.tokenizer,
+                    &format!("{prompt_text}{text}{option}{}", question.close),
+                )
+                .map_err(Failure::Internal)?;
+                if alone.is_empty() || !whole.ends_with(&alone) {
+                    return Err(Failure::Internal(format!(
+                        "option {option:?} does not tokenize on its own after the {:?} slot",
+                        question.field
+                    )));
+                }
+                continuations.push(alone);
+            }
+            let scores = crate::opinion::score_continuations(
+                &self.model,
+                state,
+                logits,
+                &continuations,
+                &candle_check,
+            )
+            .map_err(|e| check().err().unwrap_or(Failure::Internal(e.to_string())))?;
+            logits.device().synchronize()?;
+            let read = read_options(&question.options, &scores, &continuations, logits)?;
+            let margin = crate::opinion_api::margin(
+                &read.options.iter().map(|o| o.prob).collect::<Vec<_>>(),
+            );
+            answers.push(Answer {
                 field: question.field.clone(),
                 read: crate::opinion::OpinionRead {
                     options: read.options,
@@ -1331,15 +1356,22 @@ impl Adjudicator {
                     first_token_mass: read.first_token_mass,
                     shared_tokens: prompt_ids.len() + generated.len(),
                     scored_tokens: continuations.iter().map(Vec::len).sum(),
-                    rendered_sha256: sha256_hex_bytes(rendered.as_bytes()),
+                    rendered_sha256: sha256_hex_bytes(format!("{prompt_text}{text}").as_bytes()),
                 },
                 margin,
-            }],
-            rendered: request.rendered.then_some(rendered),
+            });
+        }
+        let read_ms = read.elapsed().as_secs_f64() * 1000.;
+        Ok(OpinionResponse {
+            prefix: spec.info.clone(),
+            spec: request.spec.clone(),
+            described,
+            answers,
+            rendered: request.rendered.then(|| format!("{prompt_text}{last_text}")),
             cache,
             prompt_tokens: prompt_ids.len(),
             cached_tokens,
-            described_tokens: generated.len(),
+            described_tokens: last_generated.len(),
             queue_ms: 0.,
             prefill_ms,
             describe_ms,
@@ -1679,7 +1711,7 @@ enum Job {
     Adjudicate(AdjudicateRequest),
     Opinion(
         crate::opinion_api::OpinionRequest,
-        crate::opinion_api::ResolvedQuestion,
+        Vec<crate::opinion_api::ResolvedQuestion>,
     ),
 }
 impl Job {
@@ -1756,13 +1788,19 @@ impl Handle {
                                 );
                                 Reply::Adjudicate(r)
                             }),
-                        Job::Opinion(request, question) => check()
-                            .and_then(|()| generator.opine(request, question, &check))
+                        Job::Opinion(request, questions) => check()
+                            .and_then(|()| generator.opine(request, questions, &check))
                             .map(|mut r| {
                                 r.queue_ms = queue_ms;
                                 tracing::info!(
                                     spec = %r.spec,
-                                    field = %question.field,
+                                    // One key whatever the count, so a
+                                    // single-question query still matches.
+                                    field = %questions
+                                        .iter()
+                                        .map(|q| q.field.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(","),
                                     cached_tokens = r.cached_tokens,
                                     prompt_tokens = r.prompt_tokens,
                                     described_tokens = r.described_tokens,
@@ -1884,10 +1922,10 @@ impl Handle {
                 ))
                 .into_response()
             })?;
-        let question = entry
-            .resolve(&request.questions[0])
+        let questions = entry
+            .resolve_all(&request.questions)
             .map_err(|e| Failure::BadRequest(e).into_response())?;
-        match self.submit(Job::Opinion(request, question), "opinion").await? {
+        match self.submit(Job::Opinion(request, questions), "opinion").await? {
             Reply::Opinion(r) => Ok(r),
             Reply::Adjudicate(_) => {
                 Err(Failure::Internal("worker answered an opinion with a generation".into())

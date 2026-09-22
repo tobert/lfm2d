@@ -106,7 +106,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         }))
         .unwrap();
         let question = entry.resolve(&request.questions[0]).unwrap();
-        let first = adjudicator.opine(&request, &question, &ok).expect("opine");
+        let first = adjudicator.opine(&request, std::slice::from_ref(&question), &ok).expect("opine");
         assert_eq!(first.cache.described, "miss", "{command}");
         // The description is the report's own fields, in order.
         let described: Vec<(&str, &serde_json::Value)> = first
@@ -180,7 +180,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         let mut asked = request.clone();
         asked.rendered = true;
         let second = adjudicator
-            .opine(&asked, &question, &ok)
+            .opine(&asked, std::slice::from_ref(&question), &ok)
             .expect("opine again");
         let rendered = second.rendered.as_deref().expect("rendered was asked");
         assert_eq!(
@@ -234,6 +234,72 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         assert_eq!(resumed.report, report.report, "{command}");
         assert_eq!(resumed.completion_tokens, report.completion_tokens);
         assert_eq!(resumed.cached_tokens, resumed.prompt_tokens);
+        // Several questions: one description, every slot read on the way.
+        // Cold against cold first — the same kernel schedule — so the
+        // multi-question walk must reproduce each single read exactly.
+        let ask = |fields: &[&str], use_cache: bool| -> OpinionRequest {
+            serde_json::from_value(serde_json::json!({
+                "spec": "command-verdict-enum-v1",
+                "state": {"command": command},
+                "questions": fields.iter().map(|f| serde_json::json!({"field": f})).collect::<Vec<_>>(),
+                "use_cache": use_cache,
+                "rendered": true
+            }))
+            .unwrap()
+        };
+        let same_read = |a: &lfm2d::opinion_api::Answer, b: &lfm2d::opinion_api::Answer, why: &str| {
+            assert_eq!(a.field, b.field, "{command}: {why}");
+            assert_eq!(a.read.rendered_sha256, b.read.rendered_sha256, "{command}: {why} {}", a.field);
+            assert_eq!(a.read.sequence_mass, b.read.sequence_mass, "{command}: {why} {}", a.field);
+            for (x, y) in a.read.options.iter().zip(&b.read.options) {
+                assert_eq!(
+                    (x.option.as_str(), x.first_logprob, x.logprob, &x.tokens),
+                    (y.option.as_str(), y.first_logprob, y.logprob, &y.tokens),
+                    "{command}: {why} {}",
+                    a.field
+                );
+            }
+        };
+        let multi_cold_req = ask(&["verdict", "scope", "undo"], false);
+        let questions = entry.resolve_all(&multi_cold_req.questions).unwrap();
+        let multi_cold = adjudicator.opine(&multi_cold_req, &questions, &ok).expect("multi cold");
+        let fields: Vec<&str> = multi_cold.answers.iter().map(|a| a.field.as_str()).collect();
+        assert_eq!(fields, ["scope", "undo", "verdict"], "{command}: emission order");
+        for answer in &multi_cold.answers {
+            let single_req = ask(&[answer.field.as_str()], false);
+            let q = entry.resolve(&single_req.questions[0]).unwrap();
+            let single = adjudicator
+                .opine(&single_req, std::slice::from_ref(&q), &ok)
+                .expect("single cold");
+            same_read(answer, &single.answers[0], "cold multi vs cold single");
+        }
+        // Every answer's hash covers the rendered text up to its own slot.
+        let rendered = multi_cold.rendered.as_deref().expect("rendered was asked");
+        for answer in &multi_cold.answers {
+            let slot = format!("{}: \"", serde_json::to_string(&answer.field).unwrap());
+            let end = rendered.find(&slot).expect("each slot is in the rendered text") + slot.len();
+            assert_eq!(
+                lfm2d::hash::sha256_hex_bytes(rendered[..end].as_bytes()),
+                answer.read.rendered_sha256,
+                "{command}: {}",
+                answer.field
+            );
+        }
+        // Warm: only the verdict slot is cached, so this walk generates, and
+        // its verdict must be the warm single read's; it leaves an entry at
+        // every slot it passed, so a single `scope` read is now a hit.
+        let multi_warm_req = ask(&["scope", "undo", "verdict"], true);
+        let questions = entry.resolve_all(&multi_warm_req.questions).unwrap();
+        let multi_warm = adjudicator.opine(&multi_warm_req, &questions, &ok).expect("multi warm");
+        assert_eq!(multi_warm.cache.described, "miss", "{command}");
+        same_read(&multi_warm.answers[2], &first.answers[0], "warm multi vs warm single");
+        let scope_req = ask(&["scope"], true);
+        let q = entry.resolve(&scope_req.questions[0]).unwrap();
+        let scope_hit = adjudicator
+            .opine(&scope_req, std::slice::from_ref(&q), &ok)
+            .expect("scope hit");
+        assert_eq!(scope_hit.cache.described, "hit", "{command}");
+        same_read(&scope_hit.answers[0], &multi_warm.answers[0], "hit vs the walk that cached it");
         // A cold request never resumes (and neither does one that wants every
         // step's distribution). Its bytes are NOT asserted equal: a cold
         // prefill takes a different kernel schedule and is documented to

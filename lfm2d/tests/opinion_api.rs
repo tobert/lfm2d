@@ -60,6 +60,7 @@ fn menu() -> Vec<SpecMenuEntry> {
 struct Seen {
     opine_calls: usize,
     last_question: Option<ResolvedQuestion>,
+    last_questions: Vec<ResolvedQuestion>,
     last_request_command: Option<String>,
 }
 
@@ -76,13 +77,15 @@ impl Generator for Fake {
     fn opine(
         &mut self,
         request: &OpinionRequest,
-        question: &ResolvedQuestion,
+        questions: &[ResolvedQuestion],
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<OpinionResponse, Failure> {
+        let question = &questions[0];
         {
             let mut seen = self.0.lock().unwrap();
             seen.opine_calls += 1;
             seen.last_question = Some(question.clone());
+            seen.last_questions = questions.to_vec();
             seen.last_request_command = Some(request.state.command.clone());
         }
         if request.state.command == "slow" {
@@ -92,26 +95,29 @@ impl Generator for Fake {
             }
         }
         check()?;
-        let options = question
-            .options
-            .iter()
-            .enumerate()
-            .map(|(i, option)| OptionScore {
-                option: option.clone(),
-                logprob: -0.5 - i as f32,
-                first_logprob: -0.4 - i as f32,
-                prob: if i == 0 {
-                    0.7
-                } else {
-                    0.3 / (question.options.len() - 1) as f32
-                },
-                tokens: vec![10 + i as u32, 99],
-            })
-            .collect();
+        let options = |question: &ResolvedQuestion| {
+            question
+                .options
+                .iter()
+                .enumerate()
+                .map(|(i, option)| OptionScore {
+                    option: option.clone(),
+                    logprob: -0.5 - i as f32,
+                    first_logprob: -0.4 - i as f32,
+                    prob: if i == 0 {
+                        0.7
+                    } else {
+                        0.3 / (question.options.len() - 1) as f32
+                    },
+                    tokens: vec![10 + i as u32, 99],
+                })
+                .collect()
+        };
+        let last = questions.last().expect("the handler never sends none");
         Ok(OpinionResponse {
             prefix: info(),
             spec: request.spec.clone(),
-            described: question
+            described: last
                 .describe
                 .iter()
                 .map(|field| DescribedField {
@@ -119,18 +125,21 @@ impl Generator for Fake {
                     value: serde_json::Value::String(format!("fake {field}")),
                 })
                 .collect(),
-            answers: vec![Answer {
-                field: question.field.clone(),
-                read: OpinionRead {
-                    options,
-                    sequence_mass: -0.14,
-                    first_token_mass: -0.1,
-                    shared_tokens: 40,
-                    scored_tokens: 6,
-                    rendered_sha256: "0".repeat(64),
-                },
-                margin: 0.4,
-            }],
+            answers: questions
+                .iter()
+                .map(|question| Answer {
+                    field: question.field.clone(),
+                    read: OpinionRead {
+                        options: options(question),
+                        sequence_mass: -0.14,
+                        first_token_mass: -0.1,
+                        shared_tokens: 40,
+                        scored_tokens: 6,
+                        rendered_sha256: "0".repeat(64),
+                    },
+                    margin: 0.4,
+                })
+                .collect(),
             rendered: request
                 .rendered
                 .then(|| format!("fake rendered {}", request.state.command)),
@@ -233,8 +242,12 @@ async fn refused_opinion_requests_never_enter_the_generator() {
             r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict","options":["allow","allow"]}]}"#,
         ),
         (
-            "two questions",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict"},{"field":"scope"}]}"#,
+            "the same question twice",
+            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict"},{"field":"verdict"}]}"#,
+        ),
+        (
+            "one bad question among good ones",
+            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"scope"},{"field":"effect"}]}"#,
         ),
         (
             "no questions",
@@ -341,6 +354,28 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
     ] {
         assert!(v.get(key).is_some(), "read lacks {key}: {v}");
     }
+}
+
+#[tokio::test]
+async fn several_questions_share_one_generator_call_in_emission_order() {
+    let (handle, seen) = spawn();
+    let router = lfm2d::adjudicator::router(handle);
+    let body = r#"{"spec":"command-verdict-enum-v1","state":{"command":"git clean -fdx"},
+      "questions":[{"field":"verdict"},{"field":"scope","options":["project","home"]},{"field":"undo"}]}"#;
+    let (status, v) = post(&router, "/v1/opinion", body).await;
+    assert_eq!(status, 200, "{v}");
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.opine_calls, 1, "one description for every question");
+    let asked: Vec<&str> = seen.last_questions.iter().map(|q| q.field.as_str()).collect();
+    assert_eq!(asked, ["scope", "undo", "verdict"], "the engine walks the slots in order");
+    assert_eq!(seen.last_questions[0].options, ["project", "home"], "a narrowed question stays narrowed");
+    let answered: Vec<&str> = v["answers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["field"].as_str().unwrap())
+        .collect();
+    assert_eq!(answered, ["scope", "undo", "verdict"]);
 }
 
 #[tokio::test]

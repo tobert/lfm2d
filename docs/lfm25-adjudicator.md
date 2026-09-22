@@ -319,9 +319,18 @@ POST /v1/opinion
   harnesses render it — the `facts` block verbatim (an app builds it; the
   daemon never does), then `Command:` and the command — so a paired
   generative run and an opinion read see the same bytes.
-- `questions` names one `choice` field of the spec (v1: exactly one; it is
-  a list so the shape survives); `options` may narrow the enum and is
-  scored in the spec's order. Questions come from the spec on disk, never
+- `questions` names one or more `choice` fields of the spec; each
+  question's `options` may narrow its enum and is scored in the spec's
+  order. Several questions share ONE description: the engine walks the
+  grammar once, stands at each asked slot as it passes it, scores the
+  options there and walks on, so asking `scope`, `undo` and `verdict`
+  costs one description plus three reads, not three descriptions.
+  `answers` come back in emission order whatever order they were asked
+  in, each with its own `rendered_sha256` over the text up to its own
+  slot; `rendered` and `described` are the text and fields up to the
+  last one. Each answer is bit-identical to the same question asked
+  alone on the same cache path (`lfm2d/tests/opinion_real.rs`), and the
+  walk leaves a described-cache entry at every slot it passed. Questions come from the spec on disk, never
   from request text: framing words in a rendered prompt move label tokens
   by an order of magnitude, and a prompt the instruments never scored is not
   one the daemon serves.
@@ -431,7 +440,7 @@ description once. A cold request (`use_cache: false`) or one asking for
 
 Refused with 400, never queued: an unknown spec, a field the spec lacks or
 that is not a `choice`, an option outside the enum, fewer than two options,
-more or fewer than one question, a non-null `context`, control tokens in
+no question, a field asked twice, a non-null `context`, control tokens in
 the state. Refused with 500, each with its own message: a description that ends
 before the slot (the grammar makes every field required, so this is the
 context running out or the turn ending where the grammar forbids it); the

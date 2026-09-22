@@ -77,26 +77,28 @@ def main():
             return
         if not item.strip():
             continue
-        reads, total_ms = [], 0.0
-        for i, f in enumerate(choices):
-            body = {'spec': a.spec, 'state': {'command': item},
-                    'questions': [{'field': f['field']}]}
-            if not a.no_prompt and i == len(choices) - 1:
-                body['rendered'] = True
-            t0 = time.perf_counter()
-            try:
-                resp = rpc(a.url, '/v1/opinion', body)
-            except urllib.error.HTTPError as e:
-                msg = e.read().decode()[:300]
-                if 'unknown field `rendered`' in msg:
-                    sys.exit(f'{RED}this daemon predates `rendered: true`: {msg}\n'
-                             f'rerun with --no-prompt{OFF}')
-                print(f'{RED}{e.code} {msg}{OFF}')
-                break
-            total_ms += (time.perf_counter() - t0) * 1000
-            reads.append((f, resp))
-        else:
-            render(item, reads, choices, a, total_ms)
+        # Every choice field in ONE request: one description, each slot read
+        # as the walk passes it; answers come back in emission order.
+        body = {'spec': a.spec, 'state': {'command': item},
+                'questions': [{'field': f['field']} for f in choices]}
+        if not a.no_prompt:
+            body['rendered'] = True
+        t0 = time.perf_counter()
+        try:
+            resp = rpc(a.url, '/v1/opinion', body)
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode()[:300]
+            if 'unknown field `rendered`' in msg:
+                sys.exit(f'{RED}this daemon predates `rendered: true`: {msg}\n'
+                         f'rerun with --no-prompt{OFF}')
+            if 'exactly one question' in msg:
+                sys.exit(f'{RED}this daemon reads one question per request: {msg}{OFF}')
+            print(f'{RED}{e.code} {msg}{OFF}')
+            continue
+        total_ms = (time.perf_counter() - t0) * 1000
+        by_field = {ans['field']: ans for ans in resp['answers']}
+        reads = [(f, {**resp, 'answers': [by_field[f['field']]]}) for f in choices]
+        render(item, reads, choices, a, total_ms)
 
 
 def render(item, reads, choices, a, total_ms):
@@ -133,8 +135,7 @@ def render(item, reads, choices, a, total_ms):
                   f'   {DIM}first_logprob {o["first_logprob"]:+8.3f} · logprob {o["logprob"]:+8.3f}'
                   f' · tokens {o["tokens"]}{OFF}')
         print(f'      {DIM}mass on these options {mass:.2%} (seq {ans["sequence_mass"]:+.4f},'
-              f' first {ans["first_token_mass"]:+.4f}) · cache {resp["cache"]["described"]}'
-              f' · {resp["describe_ms"] + resp["prefill_ms"] + resp["read_ms"]:.0f} ms server{OFF}')
+              f' first {ans["first_token_mass"]:+.4f}){OFF}')
     rendered = last.get('rendered')
     if rendered is None and not a.no_prompt:
         # Asked and not returned: a daemon that ignores the flag would let
@@ -149,7 +150,9 @@ def render(item, reads, choices, a, total_ms):
         print(f'\n  {BOLD}the bytes the {reads[-1][0]["field"]!r} options continue{OFF}  '
               f'{GREEN}sha256 {digest[:12]} ✓ matches rendered_sha256{OFF}')
         show_prompt(rendered, a.full_prompt)
-    print(f'  {DIM}{len(reads)} reads · {total_ms:.0f} ms round trip{OFF}\n')
+    print(f'  {DIM}{len(reads)} slots read in one request · described cache {last["cache"]["described"]}'
+          f' · server {last["prefill_ms"]:.0f} prefill + {last["describe_ms"]:.0f} describe'
+          f' + {last["read_ms"]:.0f} read ms · {total_ms:.0f} ms round trip{OFF}\n')
 
 
 if __name__ == '__main__':

@@ -81,7 +81,7 @@ impl Generator for Fake {
     fn opine(
         &mut self,
         _: &lfm2d::opinion_api::OpinionRequest,
-        _: &lfm2d::opinion_api::ResolvedQuestion,
+        _: &[lfm2d::opinion_api::ResolvedQuestion],
         _: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<lfm2d::opinion_api::OpinionResponse, Failure> {
         Err(Failure::Internal("this fake only generates".into()))

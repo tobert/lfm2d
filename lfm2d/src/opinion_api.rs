@@ -96,8 +96,9 @@ pub struct OpinionRequest {
     /// is settled before a caller depends on it.
     #[serde(default)]
     pub context: Option<serde_json::Value>,
-    /// Exactly one in v1. A list, so the shape survives when several slots
-    /// can be read in one request.
+    /// One or more choice fields. They share one description: the engine
+    /// walks the grammar once and reads each slot as it passes it, so the
+    /// answers come back in emission order whatever order they were asked.
     pub questions: Vec<Question>,
     /// Return the exact text the options continue (`rendered` on the
     /// response). Off by default: `rendered_sha256` is the audit trail, and
@@ -121,8 +122,8 @@ impl OpinionRequest {
         if self.context.is_some() {
             return Err("context is reserved and must be null".into());
         }
-        if self.questions.len() != 1 {
-            return Err("exactly one question per request".into());
+        if self.questions.is_empty() {
+            return Err("ask at least one question".into());
         }
         if self.timeout_ms == 0 || self.timeout_ms > 120000 {
             return Err("timeout_ms must be 1..=120000".into());
@@ -238,6 +239,27 @@ impl SpecMenuEntry {
             described_cache_capacity,
             fields,
         })
+    }
+
+    /// Resolve every question and put them in emission order, the order the
+    /// engine meets their slots. A field asked twice is refused: its two
+    /// reads would be the same slot.
+    pub fn resolve_all(&self, questions: &[Question]) -> Result<Vec<ResolvedQuestion>, String> {
+        if questions.is_empty() {
+            return Err("ask at least one question".into());
+        }
+        let mut resolved = Vec::with_capacity(questions.len());
+        for question in questions {
+            if resolved
+                .iter()
+                .any(|r: &ResolvedQuestion| r.field == question.field)
+            {
+                return Err(format!("field {:?} is asked more than once", question.field));
+            }
+            resolved.push(self.resolve(question)?);
+        }
+        resolved.sort_by_key(|r| r.describe.len());
+        Ok(resolved)
     }
 
     /// Check a question against this spec and fix what the engine needs.
@@ -385,6 +407,41 @@ mod tests {
         assert_eq!(q("a\\b").slot_text(), "\"a\\\\b\": \"");
     }
 
+    fn entry() -> SpecMenuEntry {
+        let choice = |f: &str, o: &[&str]| FieldInfo {
+            field: f.into(),
+            kind: FieldKind::Choice,
+            options: o.iter().map(|s| s.to_string()).collect(),
+        };
+        SpecMenuEntry {
+            spec: "s".into(),
+            snapshot_id: "x".into(),
+            described_cache_capacity: 16,
+            fields: vec![
+                FieldInfo { field: "effect".into(), kind: FieldKind::Text, options: vec![] },
+                choice("scope", &["nothing", "project", "home"]),
+                choice("undo", &["easy", "hard"]),
+                choice("verdict", &["allow", "ask", "review"]),
+            ],
+        }
+    }
+
+    #[test]
+    fn several_questions_resolve_into_emission_order() {
+        let q = |f: &str| Question { field: f.into(), options: None };
+        let got = entry()
+            .resolve_all(&[q("verdict"), q("scope"), q("undo")])
+            .unwrap();
+        let fields: Vec<&str> = got.iter().map(|r| r.field.as_str()).collect();
+        assert_eq!(fields, ["scope", "undo", "verdict"], "answers follow the slots, not the request");
+        assert_eq!(got[2].describe, ["effect", "scope", "undo"]);
+        assert_eq!(got[2].close, "\"}");
+        let err = entry().resolve_all(&[q("undo"), q("undo")]).unwrap_err();
+        assert!(err.contains("more than once"), "{err}");
+        assert!(entry().resolve_all(&[]).is_err());
+        assert!(entry().resolve_all(&[q("scope"), q("effect")]).is_err(), "text is never asked");
+    }
+
     #[test]
     fn margin_is_the_gap_between_the_top_two() {
         assert!((margin(&[0.7, 0.2, 0.1]) - 0.5).abs() < 1e-6);
@@ -394,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn a_request_needs_exactly_one_question_and_no_context() {
+    fn a_request_needs_at_least_one_question_and_no_context() {
         let parse = |s: &str| serde_json::from_str::<OpinionRequest>(s).unwrap();
         let good = parse(r#"{"spec":"s","state":{"command":"x"},"questions":[{"field":"v"}]}"#);
         assert!(good.validate().is_ok());
@@ -402,7 +459,9 @@ mod tests {
         let two = parse(
             r#"{"spec":"s","state":{"command":"x"},"questions":[{"field":"v"},{"field":"w"}]}"#,
         );
-        assert!(two.validate().is_err());
+        assert!(two.validate().is_ok(), "several questions share one description");
+        let none = parse(r#"{"spec":"s","state":{"command":"x"},"questions":[]}"#);
+        assert!(none.validate().is_err());
         let ctx = parse(
             r#"{"spec":"s","state":{"command":"x"},"context":1,"questions":[{"field":"v"}]}"#,
         );
