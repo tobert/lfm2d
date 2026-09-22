@@ -349,6 +349,14 @@ pub trait Generator: Send + 'static {
         request: &AdjudicateRequest,
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<AdjudicateResponse, Failure>;
+    /// Describe-then-read for `/v1/opinion`: `question` was resolved against
+    /// the spec's menu by the handler. See [`crate::opinion_api`].
+    fn opine(
+        &mut self,
+        request: &crate::opinion_api::OpinionRequest,
+        question: &crate::opinion_api::ResolvedQuestion,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<crate::opinion_api::OpinionResponse, Failure>;
 }
 
 // One exact-input checkpoint in addition to the fixed system prefix. This is
@@ -523,42 +531,93 @@ impl Checkpoint {
     }
 }
 
-pub struct Adjudicator {
-    model: Model,
-    tokenizer: tokenizers::Tokenizer,
-    cache: PromptCache,
-    prefix_text: String,
-    eos: u32,
-    info: PrefixInfo,
+/// How many described states each spec keeps ([`DescribedCache`]).
+pub const DESCRIBED_CACHE_CAPACITY: usize = 16;
+
+/// The prompt plus its generated description, standing at a question's slot:
+/// the fourth cache layer. Greedy decoding under the grammar is a pure
+/// function of the rendered prompt on a fixed backend, so the description
+/// and the model state after it are reusable computation — never a cached
+/// answer; the options are always scored fresh. Keyed by the exact prompt
+/// token ids and the question field (a different field stops at a different
+/// slot). Least recently used goes first.
+struct DescribedEntry {
+    prompt_ids: Vec<u32>,
+    field: String,
+    generated: Vec<u32>,
+    text: String,
+    state: ModelState,
+    logits: Tensor,
+}
+struct DescribedCache {
+    capacity: usize,
+    entries: std::collections::VecDeque<DescribedEntry>,
+}
+impl DescribedCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            entries: std::collections::VecDeque::with_capacity(capacity),
+        }
+    }
+    /// A hit is moved to the back (most recent) and its parts cloned:
+    /// `State::clone` shares the immutable prefix buffers.
+    fn get(&mut self, prompt_ids: &[u32], field: &str) -> Option<(Vec<u32>, String, ModelState, Tensor)> {
+        let at = self
+            .entries
+            .iter()
+            .position(|e| e.field == field && e.prompt_ids == prompt_ids)?;
+        let entry = self.entries.remove(at).expect("position came from this deque");
+        let out = (
+            entry.generated.clone(),
+            entry.text.clone(),
+            entry.state.clone(),
+            entry.logits.clone(),
+        );
+        self.entries.push_back(entry);
+        Some(out)
+    }
+    fn insert(&mut self, entry: DescribedEntry) {
+        if self.capacity == 0 {
+            return;
+        }
+        if let Some(at) = self
+            .entries
+            .iter()
+            .position(|e| e.field == entry.field && e.prompt_ids == entry.prompt_ids)
+        {
+            self.entries.remove(at);
+        }
+        while self.entries.len() >= self.capacity {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(entry);
+    }
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// One loaded prompt spec: its rendered prefix resident as model state, its
+/// grammar compiled once, its identity, and the caches that hang off it.
+/// `Adjudicator::specs[0]` is the `--adjudicator-prompt` spec, which
+/// `/v1/adjudicate` serves; every loaded spec is on the `/v1/opinion` menu.
+struct LoadedSpec {
+    name: String,
     /// The spec as loaded: it renders every user turn, so the reasoning mode
     /// and the schema cannot drift apart from what the prefix was built from.
     prompt: PromptSpec,
-    /// `prompt.output_schema` compiled against this tokenizer, once, at load.
+    prefix_text: String,
+    /// `prompt.output_schema` compiled against the tokenizer, once, at load.
     grammar: Option<std::sync::Arc<crate::constrain::Grammar>>,
-    repeat_penalty: f32,
+    cache: PromptCache,
+    described: DescribedCache,
+    info: PrefixInfo,
+    menu: crate::opinion_api::SpecMenuEntry,
 }
-impl Adjudicator {
-    pub fn load(cli: &Cli) -> Result<Self, String> {
-        let path = cli
-            .adjudicator_model
-            .as_ref()
-            .ok_or("missing adjudicator model")?;
-        let tokenizer_path = cli
-            .adjudicator_tokenizer
-            .as_ref()
-            .ok_or("missing adjudicator tokenizer")?;
-        let prompt_path = cli
-            .adjudicator_prompt
-            .as_ref()
-            .ok_or("missing adjudicator prompt")?;
-        let prompt: PromptSpec =
-            serde_json::from_slice(&std::fs::read(prompt_path).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-        let prefix_text = prompt.render_prefix()?;
-        if let Some(opinion) = &prompt.opinion {
-            opinion.validate()?;
-            prompt.render_user_turn_with_prefill("probe", &opinion.prefill)?;
-        }
+impl LoadedSpec {
+    fn load(name: String, prompt: PromptSpec, checkpoint: &Checkpoint, cli: &Cli) -> Result<Self, String> {
         let Checkpoint {
             model,
             tokenizer,
@@ -567,9 +626,11 @@ impl Adjudicator {
             tokenizer_hash,
             weight_dtypes,
             execution,
-        } = Checkpoint::load(path, tokenizer_path, cli.device, cli.device_index)?;
-        if cli.adjudicator_context > model.context_length() {
-            return Err("adjudicator context exceeds model context".into());
+        } = checkpoint;
+        let prefix_text = prompt.render_prefix()?;
+        if let Some(opinion) = &prompt.opinion {
+            opinion.validate()?;
+            prompt.render_user_turn_with_prefill("probe", &opinion.prefill)?;
         }
         // Compile the output grammar before the prefix prefill: a schema this
         // tokenizer cannot honour refuses to start, and never reaches a request.
@@ -577,7 +638,7 @@ impl Adjudicator {
             .output_schema
             .as_ref()
             .map(|schema| {
-                crate::constrain::Grammar::compile(schema, &tokenizer, model.vocab_size(), EOS)
+                crate::constrain::Grammar::compile(schema, tokenizer, model.vocab_size(), EOS)
                     .map_err(|e| format!("output_schema cannot be constrained: {e}"))
             })
             .transpose()?;
@@ -600,7 +661,7 @@ impl Adjudicator {
         // and never reaches a request.
         if let Some(opinion) = &prompt.opinion {
             let probe = prompt.render_user_turn_with_prefill("probe", &opinion.prefill)?;
-            crate::opinion::split_options(&tokenizer, &format!("{prefix_text}{probe}"), opinion)
+            crate::opinion::split_options(tokenizer, &format!("{prefix_text}{probe}"), opinion)
                 .map_err(|e| format!("opinion block cannot be read with this tokenizer: {e}"))?;
         }
         let mut prefix = model.new_state();
@@ -609,15 +670,6 @@ impl Adjudicator {
                 .forward(chunk, &mut prefix)
                 .map_err(|e| e.to_string())?;
         }
-        // Compile/warm device selection kernels before announcing readiness.
-        let _ = GreedySampler::new(
-            &execution.device,
-            model.vocab_size(),
-            &prefix_ids,
-            cli.adjudicator_repeat_penalty,
-        )
-        .map_err(|e| e.to_string())?;
-        execution.device.synchronize().map_err(|e| e.to_string())?;
         let template_version = prompt.template_version();
         let mut identity = serde_json::json!([
             template_version,
@@ -639,9 +691,9 @@ impl Adjudicator {
         let snapshot_id =
             sha256_hex_bytes(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
         let info = PrefixInfo {
-            model_id,
-            weight_hash,
-            tokenizer_hash,
+            model_id: model_id.clone(),
+            weight_hash: weight_hash.clone(),
+            tokenizer_hash: tokenizer_hash.clone(),
             template_version: template_version.into(),
             snapshot_id,
             prefix_tokens: prefix_ids.len(),
@@ -653,35 +705,146 @@ impl Adjudicator {
                 "greedy; repetition_penalty={}; history=full",
                 cli.adjudicator_repeat_penalty
             ),
-            weight_dtypes,
+            weight_dtypes: weight_dtypes.clone(),
         };
+        let menu = crate::opinion_api::SpecMenuEntry::from_prompt(
+            &name,
+            &prompt,
+            &info.snapshot_id,
+            DESCRIBED_CACHE_CAPACITY,
+        )
+        .map_err(|e| format!("prompt spec {name:?}: {e}"))?;
+        // Every choice field's options must tokenize on their own pretokens
+        // after the slot, or the read would score off the model's path. The
+        // tokenizer's pre-tokenizer decides this, not the input, so it is
+        // checked here on a probe and is an invariant at request time.
+        for field in &menu.fields {
+            if field.kind != crate::opinion_api::FieldKind::Choice {
+                continue;
+            }
+            for (close, probe) in [("\",", "{\"x\": \"a\", \""), ("\"}", "{\"x\": \"a\", \"")] {
+                let slot = format!("{probe}{}\": \"", field.field);
+                for option in &field.options {
+                    let alone = encode_ids(tokenizer, &format!("{option}{close}"))?;
+                    let whole = encode_ids(tokenizer, &format!("{prefix_text}{slot}{option}{close}"))?;
+                    if alone.is_empty() || !whole.ends_with(&alone) {
+                        return Err(format!(
+                            "prompt spec {name:?}: option {option:?} of {:?} does not tokenize on \
+                             its own after the slot; it cannot be read",
+                            field.field
+                        ));
+                    }
+                }
+            }
+        }
         Ok(Self {
-            model,
-            tokenizer,
+            name,
+            prompt,
+            prefix_text,
+            grammar,
             cache: PromptCache {
                 prefix,
                 prefix_ids,
                 ready: None,
             },
-            prefix_text,
-            eos: EOS,
+            described: DescribedCache::new(DESCRIBED_CACHE_CAPACITY),
             info,
-            prompt,
-            grammar,
-            repeat_penalty: cli.adjudicator_repeat_penalty,
+            menu,
         })
     }
+}
+
+fn encode_ids(tokenizer: &tokenizers::Tokenizer, text: &str) -> Result<Vec<u32>, String> {
+    Ok(tokenizer
+        .encode(text, false)
+        .map_err(|e| e.to_string())?
+        .get_ids()
+        .to_vec())
+}
+
+pub struct Adjudicator {
+    model: Model,
+    tokenizer: tokenizers::Tokenizer,
+    eos: u32,
+    repeat_penalty: f32,
+    /// `[0]` is the adjudicate spec; the rest come from `--opinion-spec`.
+    specs: Vec<LoadedSpec>,
+}
+impl Adjudicator {
+    pub fn load(cli: &Cli) -> Result<Self, String> {
+        let path = cli
+            .adjudicator_model
+            .as_ref()
+            .ok_or("missing adjudicator model")?;
+        let tokenizer_path = cli
+            .adjudicator_tokenizer
+            .as_ref()
+            .ok_or("missing adjudicator tokenizer")?;
+        let prompt_path = cli
+            .adjudicator_prompt
+            .as_ref()
+            .ok_or("missing adjudicator prompt")?;
+        let checkpoint = Checkpoint::load(path, tokenizer_path, cli.device, cli.device_index)?;
+        if cli.adjudicator_context > checkpoint.model.context_length() {
+            return Err("adjudicator context exceeds model context".into());
+        }
+        let mut specs = Vec::new();
+        let mut names = std::collections::BTreeSet::new();
+        for spec_path in std::iter::once(prompt_path).chain(&cli.opinion_specs) {
+            let name = spec_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| format!("prompt spec path {} has no name", spec_path.display()))?
+                .to_string();
+            if !names.insert(name.clone()) {
+                return Err(format!("prompt spec name {name:?} repeats; names come from file stems"));
+            }
+            let prompt: PromptSpec = serde_json::from_slice(
+                &std::fs::read(spec_path).map_err(|e| format!("{}: {e}", spec_path.display()))?,
+            )
+            .map_err(|e| format!("{}: {e}", spec_path.display()))?;
+            specs.push(LoadedSpec::load(name, prompt, &checkpoint, cli)?);
+        }
+        // Compile/warm device selection kernels before announcing readiness.
+        let _ = GreedySampler::new(
+            &checkpoint.execution.device,
+            checkpoint.model.vocab_size(),
+            &specs[0].cache.prefix_ids,
+            cli.adjudicator_repeat_penalty,
+        )
+        .map_err(|e| e.to_string())?;
+        checkpoint
+            .execution
+            .device
+            .synchronize()
+            .map_err(|e| e.to_string())?;
+        let Checkpoint {
+            model, tokenizer, ..
+        } = checkpoint;
+        Ok(Self {
+            model,
+            tokenizer,
+            eos: EOS,
+            repeat_penalty: cli.adjudicator_repeat_penalty,
+            specs,
+        })
+    }
+    /// The adjudicate spec's identity.
     pub fn info(&self) -> PrefixInfo {
-        self.info.clone()
+        self.specs[0].info.clone()
     }
     pub fn model_info(&self) -> ModelInfo {
         ModelInfo {
-            id: self.info.model_id.clone(),
+            id: self.specs[0].info.model_id.clone(),
             kind: ModelKind::Adjudicator,
-            weight_hash: self.info.weight_hash.clone(),
+            weight_hash: self.specs[0].info.weight_hash.clone(),
             labels: None,
             hidden_size: self.model.hidden_size(),
         }
+    }
+    /// Every loaded spec, as `/v1/opinion/specs` lists it.
+    pub fn menu(&self) -> Vec<crate::opinion_api::SpecMenuEntry> {
+        self.specs.iter().map(|s| s.menu.clone()).collect()
     }
 }
 impl Generator for Adjudicator {
@@ -694,10 +857,11 @@ impl Generator for Adjudicator {
         if request.opinion {
             return self.opinion(request, check);
         }
+        let spec = &mut self.specs[0];
         if let Some(d) = &request.distributions {
             d.validate_vocab(self.model.vocab_size())
                 .map_err(Failure::BadRequest)?;
-            if d.constrained && self.prompt.output_schema.is_none() {
+            if d.constrained && spec.prompt.output_schema.is_none() {
                 return Err(Failure::BadRequest(
                     "distributions.constrained needs an output schema; this adjudicator has none"
                         .into(),
@@ -705,17 +869,17 @@ impl Generator for Adjudicator {
             }
         }
         check()?;
-        let suffix = self.prompt.render_user_turn(&request.input);
+        let suffix = spec.prompt.render_user_turn(&request.input);
         let full = self
             .tokenizer
-            .encode(format!("{}{suffix}", self.prefix_text), false)
+            .encode(format!("{}{suffix}", spec.prefix_text), false)
             .map_err(|e| Failure::Internal(e.to_string()))?
             .get_ids()
             .to_vec();
         if full
             .len()
             .checked_add(request.max_tokens)
-            .is_none_or(|n| n > self.info.context_limit)
+            .is_none_or(|n| n > spec.info.context_limit)
         {
             return Err(Failure::BadRequest(
                 "prompt plus max_tokens exceeds adjudicator context".into(),
@@ -726,7 +890,7 @@ impl Generator for Adjudicator {
             mut state,
             mut logits,
             cached_tokens,
-        } = self
+        } = spec
             .cache
             .prepare(&self.model, &full, request.use_cache, check)?;
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
@@ -739,7 +903,7 @@ impl Generator for Adjudicator {
         // lives inside the decoder and never touches `logits`; the loop below
         // goes through `Decoder::step`, which records from the raw logits.
         let mut sampler = crate::constrain::Decoder::new(
-            self.grammar.as_ref(),
+            spec.grammar.as_ref(),
             logits.device(),
             self.model.vocab_size(),
             &full,
@@ -792,7 +956,7 @@ impl Generator for Adjudicator {
             .tokenizer
             .decode(content, false)
             .map_err(|e| Failure::Internal(e.to_string()))?;
-        let (report, report_error) = match &self.prompt.output_schema {
+        let (report, report_error) = match &spec.prompt.output_schema {
             None => (None, None),
             Some(schema) => match validate_report(&output, schema, finish_reason) {
                 Ok(report) => (Some(report), None),
@@ -800,7 +964,7 @@ impl Generator for Adjudicator {
             },
         };
         Ok(AdjudicateResponse {
-            prefix: self.info.clone(),
+            prefix: spec.info.clone(),
             output,
             report,
             report_error,
@@ -815,22 +979,36 @@ impl Generator for Adjudicator {
             opinion: None,
         })
     }
+
+    fn opine(
+        &mut self,
+        request: &crate::opinion_api::OpinionRequest,
+        question: &crate::opinion_api::ResolvedQuestion,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<crate::opinion_api::OpinionResponse, Failure> {
+        request.validate().map_err(Failure::BadRequest)?;
+        self.describe_then_read(request, question, check)
+    }
 }
 
 impl Adjudicator {
+    /// The F8 read primitive: the spec's fixed `opinion` question at its
+    /// prefill, on `/v1/adjudicate` with `opinion: true`.
     fn opinion(
         &mut self,
         request: &AdjudicateRequest,
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<AdjudicateResponse, Failure> {
-        let spec = self.prompt.opinion.clone().ok_or_else(|| {
+        let spec_slot = &mut self.specs[0];
+        let spec = spec_slot.prompt.opinion.clone().ok_or_else(|| {
             Failure::BadRequest("this adjudicator's prompt spec asks no opinion question".into())
         })?;
         check()?;
         let rendered = format!(
             "{}{}",
-            self.prefix_text,
-            self.prompt
+            spec_slot.prefix_text,
+            spec_slot
+                .prompt
                 .render_user_turn_with_prefill(&request.input, &spec.prefill)
                 .map_err(Failure::BadRequest)?
         );
@@ -844,7 +1022,7 @@ impl Adjudicator {
             .map_err(Failure::Internal)?;
         let shared = shared_ids.len();
         let longest = shared + continuations.iter().map(Vec::len).max().unwrap_or(0);
-        if longest > self.info.context_limit {
+        if longest > spec_slot.info.context_limit {
             return Err(Failure::BadRequest(
                 "prompt plus options exceeds adjudicator context".into(),
             ));
@@ -854,7 +1032,7 @@ impl Adjudicator {
             state,
             logits,
             cached_tokens,
-        } = self
+        } = spec_slot
             .cache
             .prepare(&self.model, &shared_ids, request.use_cache, check)?;
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
@@ -873,29 +1051,9 @@ impl Adjudicator {
         })?;
         logits.device().synchronize()?;
         let decode_ms = score.elapsed().as_secs_f64() * 1000.;
-        let mass = crate::opinion::logsumexp(&scores);
-        let first_ids: std::collections::BTreeSet<u32> =
-            continuations.iter().map(|c| c[0]).collect();
-        let first = candle_nn::ops::log_softmax(&logits, candle_core::D::Minus1)?
-            .to_vec2::<f32>()?
-            .remove(0);
-        let first_token_mass = crate::opinion::logsumexp(
-            &first_ids.iter().map(|&t| first[t as usize]).collect::<Vec<_>>(),
-        );
-        let options = spec
-            .options
-            .iter()
-            .zip(&scores)
-            .zip(&continuations)
-            .map(|((option, &logprob), tokens)| crate::opinion::OptionScore {
-                option: option.clone(),
-                logprob,
-                prob: (logprob - mass).exp(),
-                tokens: tokens.clone(),
-            })
-            .collect();
+        let read = read_options(&spec.options, &scores, &continuations, &logits)?;
         Ok(AdjudicateResponse {
-            prefix: self.info.clone(),
+            prefix: spec_slot.info.clone(),
             output: String::new(),
             report: None,
             report_error: None,
@@ -908,15 +1066,300 @@ impl Adjudicator {
             decode_ms,
             distributions: None,
             opinion: Some(crate::opinion::OpinionRead {
-                options,
-                sequence_mass: mass,
-                first_token_mass,
+                options: read.options,
+                sequence_mass: read.sequence_mass,
+                first_token_mass: read.first_token_mass,
                 shared_tokens: shared,
                 scored_tokens: continuations.iter().map(Vec::len).sum(),
                 rendered_sha256: sha256_hex_bytes(rendered.as_bytes()),
             }),
         })
     }
+
+    /// `/v1/opinion`: generate the fields before the question under the
+    /// grammar, stop at the question's value slot, score every option there.
+    /// See [`crate::opinion_api`] for why the description comes first and
+    /// what the caches are.
+    fn describe_then_read(
+        &mut self,
+        request: &crate::opinion_api::OpinionRequest,
+        question: &crate::opinion_api::ResolvedQuestion,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<crate::opinion_api::OpinionResponse, Failure> {
+        use crate::opinion_api::{Answer, CacheOutcome, OpinionResponse};
+        let index = self
+            .specs
+            .iter()
+            .position(|s| s.name == request.spec)
+            .ok_or_else(|| Failure::BadRequest(format!("no loaded spec {:?}", request.spec)))?;
+        let spec = &mut self.specs[index];
+        let grammar = spec.grammar.clone().ok_or_else(|| {
+            Failure::BadRequest(format!(
+                "spec {:?} has no output schema, so there is nothing to describe or ask",
+                request.spec
+            ))
+        })?;
+        check()?;
+        let prompt_text = format!(
+            "{}{}",
+            spec.prefix_text,
+            spec.prompt.render_user_turn(&request.state.render())
+        );
+        let prompt_ids = self
+            .tokenizer
+            .encode(prompt_text.as_str(), false)
+            .map_err(|e| Failure::Internal(e.to_string()))?
+            .get_ids()
+            .to_vec();
+        let context_limit = spec.info.context_limit;
+        if prompt_ids.len() + 2 >= context_limit {
+            return Err(Failure::BadRequest(
+                "prompt leaves no adjudicator context to describe the command".into(),
+            ));
+        }
+        let slot_text = question.slot_text();
+        let mut cache = CacheOutcome {
+            prefix: if request.use_cache { "hit" } else { "bypass" }.into(),
+            state: "miss".into(),
+            described: "miss".into(),
+        };
+        let described_hit = if request.use_cache {
+            spec.described.get(&prompt_ids, &question.field)
+        } else {
+            cache.described = "bypass".into();
+            cache.state = "bypass".into();
+            None
+        };
+        let (state, logits, generated, text, cached_tokens, prefill_ms, describe_ms) =
+            match described_hit {
+                Some((generated, text, state, logits)) => {
+                    cache.described = "hit".into();
+                    cache.state = "hit".into();
+                    (state, logits, generated, text, prompt_ids.len(), 0., 0.)
+                }
+                None => {
+                    let begin = Instant::now();
+                    let PreparedEvaluation {
+                        mut state,
+                        mut logits,
+                        cached_tokens,
+                    } = spec
+                        .cache
+                        .prepare(&self.model, &prompt_ids, request.use_cache, check)?;
+                    if request.use_cache && cached_tokens == prompt_ids.len() {
+                        cache.state = "hit".into();
+                    }
+                    let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
+                    let describe = Instant::now();
+                    let mut sampler = crate::constrain::Decoder::new(
+                        Some(&grammar),
+                        logits.device(),
+                        self.model.vocab_size(),
+                        &prompt_ids,
+                        self.repeat_penalty,
+                    )?;
+                    let mut generated = Vec::new();
+                    let mut text = String::new();
+                    let mut at_slot = false;
+                    for _ in prompt_ids.len()..context_limit {
+                        check()?;
+                        let token = sampler.sample(&logits)?;
+                        if self.tokenizer.id_to_token(token).is_none() {
+                            return Err(Failure::Internal(format!(
+                                "model selected unused vocabulary row {token}"
+                            )));
+                        }
+                        if token == self.eos {
+                            break;
+                        }
+                        generated.push(token);
+                        logits = self.model.forward(&[token], &mut state)?;
+                        text = self
+                            .tokenizer
+                            .decode(&generated, false)
+                            .map_err(|e| Failure::Internal(e.to_string()))?;
+                        if text.ends_with(&slot_text) {
+                            at_slot = true;
+                            break;
+                        }
+                    }
+                    if !at_slot {
+                        // The grammar makes every field reachable and required,
+                        // so this is the context running out or the model
+                        // ending the turn where the grammar forbids it — loud,
+                        // never a read off the wrong slot.
+                        return Err(Failure::Internal(format!(
+                            "description ended before the {:?} slot after {} tokens: {text:?}",
+                            question.field,
+                            generated.len()
+                        )));
+                    }
+                    logits.device().synchronize()?;
+                    check()?;
+                    let describe_ms = describe.elapsed().as_secs_f64() * 1000.;
+                    if request.use_cache {
+                        spec.described.insert(DescribedEntry {
+                            prompt_ids: prompt_ids.clone(),
+                            field: question.field.clone(),
+                            generated: generated.clone(),
+                            text: text.clone(),
+                            state: state.clone(),
+                            logits: logits.clone(),
+                        });
+                    }
+                    (state, logits, generated, text, cached_tokens, prefill_ms, describe_ms)
+                }
+            };
+        let described = parse_described(&text, &slot_text, &question.describe)?;
+        let read = Instant::now();
+        // Each option and its close on their own pretokens after the slot:
+        // checked at load on a probe, held to here.
+        let mut continuations = Vec::with_capacity(question.options.len());
+        for option in &question.options {
+            let alone = encode_ids(&self.tokenizer, &format!("{option}{}", question.close))
+                .map_err(Failure::Internal)?;
+            let whole = encode_ids(
+                &self.tokenizer,
+                &format!("{prompt_text}{text}{option}{}", question.close),
+            )
+            .map_err(Failure::Internal)?;
+            if alone.is_empty() || !whole.ends_with(&alone) {
+                return Err(Failure::Internal(format!(
+                    "option {option:?} does not tokenize on its own after the slot"
+                )));
+            }
+            continuations.push(alone);
+        }
+        let candle_check = || check().map_err(|_| candle_core::Error::Msg("cancelled".into()));
+        let scores = crate::opinion::score_continuations(
+            &self.model,
+            &state,
+            &logits,
+            &continuations,
+            &candle_check,
+        )
+        .map_err(|e| check().err().unwrap_or(Failure::Internal(e.to_string())))?;
+        logits.device().synchronize()?;
+        let read_ms = read.elapsed().as_secs_f64() * 1000.;
+        let read = read_options(&question.options, &scores, &continuations, &logits)?;
+        let margin = crate::opinion_api::margin(
+            &read.options.iter().map(|o| o.prob).collect::<Vec<_>>(),
+        );
+        Ok(OpinionResponse {
+            prefix: spec.info.clone(),
+            spec: request.spec.clone(),
+            described,
+            answers: vec![Answer {
+                field: question.field.clone(),
+                read: crate::opinion::OpinionRead {
+                    options: read.options,
+                    sequence_mass: read.sequence_mass,
+                    first_token_mass: read.first_token_mass,
+                    shared_tokens: prompt_ids.len() + generated.len(),
+                    scored_tokens: continuations.iter().map(Vec::len).sum(),
+                    rendered_sha256: sha256_hex_bytes(format!("{prompt_text}{text}").as_bytes()),
+                },
+                margin,
+            }],
+            cache,
+            prompt_tokens: prompt_ids.len(),
+            cached_tokens,
+            described_tokens: generated.len(),
+            queue_ms: 0.,
+            prefill_ms,
+            describe_ms,
+            read_ms,
+        })
+    }
+}
+
+/// The scored options and the two masses, from raw sequence scores and the
+/// slot's next-token logits.
+struct ReadOptions {
+    options: Vec<crate::opinion::OptionScore>,
+    sequence_mass: f32,
+    first_token_mass: f32,
+}
+fn read_options(
+    names: &[String],
+    scores: &[f32],
+    continuations: &[Vec<u32>],
+    logits: &Tensor,
+) -> Result<ReadOptions, Failure> {
+    let mass = crate::opinion::logsumexp(scores);
+    let first = candle_nn::ops::log_softmax(logits, candle_core::D::Minus1)?
+        .to_vec2::<f32>()?
+        .remove(0);
+    let first_ids: std::collections::BTreeSet<u32> =
+        continuations.iter().map(|c| c[0]).collect();
+    let first_token_mass = crate::opinion::logsumexp(
+        &first_ids.iter().map(|&t| first[t as usize]).collect::<Vec<_>>(),
+    );
+    let options = names
+        .iter()
+        .zip(scores)
+        .zip(continuations)
+        .map(|((option, &logprob), tokens)| crate::opinion::OptionScore {
+            option: option.clone(),
+            logprob,
+            first_logprob: first[tokens[0] as usize],
+            prob: (logprob - mass).exp(),
+            tokens: tokens.clone(),
+        })
+        .collect();
+    Ok(ReadOptions {
+        options,
+        sequence_mass: mass,
+        first_token_mass,
+    })
+}
+
+/// The fields written before the slot, parsed from the generated text.
+/// `text` ends with `slot_text` (the caller stopped there); what precedes it
+/// is either the object's opening (first field asked) or complete fields and
+/// the grammar's separator.
+pub fn parse_described(
+    text: &str,
+    slot_text: &str,
+    fields: &[String],
+) -> Result<Vec<crate::opinion_api::DescribedField>, Failure> {
+    let body = text.strip_suffix(slot_text).ok_or_else(|| {
+        Failure::Internal(format!("generated text does not end at the slot: {text:?}"))
+    })?;
+    if fields.is_empty() {
+        if body == "{" {
+            return Ok(vec![]);
+        }
+        return Err(Failure::Internal(format!(
+            "no field precedes the slot, but the model wrote {body:?} before it"
+        )));
+    }
+    let body = body.strip_suffix(", ").ok_or_else(|| {
+        Failure::Internal(format!("described fields do not end at a separator: {body:?}"))
+    })?;
+    let object: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&format!("{body}}}"))
+            .map_err(|e| Failure::Internal(format!("described fields are not JSON: {e}: {body:?}")))?;
+    if object.len() != fields.len() {
+        return Err(Failure::Internal(format!(
+            "described {} fields where the spec lists {} before the slot",
+            object.len(),
+            fields.len()
+        )));
+    }
+    fields
+        .iter()
+        .map(|field| {
+            object
+                .get(field)
+                .cloned()
+                .map(|value| crate::opinion_api::DescribedField {
+                    field: field.clone(),
+                    value,
+                })
+                .ok_or_else(|| Failure::Internal(format!("described fields lack {field:?}")))
+        })
+        .collect()
 }
 
 /// Supported output schema: a closed object of required string/boolean fields.
@@ -1154,9 +1597,37 @@ pub fn validate_report(
     Ok(serde_json::Value::Object(report))
 }
 
+/// One unit of work for the single generation worker: a generation or an
+/// opinion read. Both share the queue, the deadline and the cancellation
+/// path; only the generator call differs.
+enum Job {
+    Adjudicate(AdjudicateRequest),
+    Opinion(
+        crate::opinion_api::OpinionRequest,
+        crate::opinion_api::ResolvedQuestion,
+    ),
+}
+impl Job {
+    fn timeout_ms(&self) -> u64 {
+        match self {
+            Job::Adjudicate(r) => r.timeout_ms,
+            Job::Opinion(r, _) => r.timeout_ms,
+        }
+    }
+    fn operation(&self) -> &'static str {
+        match self {
+            Job::Adjudicate(_) => "adjudicate",
+            Job::Opinion(..) => "opinion",
+        }
+    }
+}
+enum Reply {
+    Adjudicate(AdjudicateResponse),
+    Opinion(crate::opinion_api::OpinionResponse),
+}
 struct Work {
-    request: AdjudicateRequest,
-    reply: oneshot::Sender<Result<AdjudicateResponse, Failure>>,
+    job: Job,
+    reply: oneshot::Sender<Result<Reply, Failure>>,
     enqueued: Instant,
     span: tracing::Span,
 }
@@ -1164,6 +1635,9 @@ struct Work {
 pub struct Handle {
     tx: mpsc::SyncSender<Work>,
     info: PrefixInfo,
+    /// What `/v1/opinion` may be asked: read off the loaded specs, so a
+    /// question is refused at the handler and never queued.
+    menu: Arc<Vec<crate::opinion_api::SpecMenuEntry>>,
     exit: WorkerExit,
     stopping: Arc<AtomicBool>,
 }
@@ -1178,7 +1652,7 @@ impl Handle {
             .name("lfm2d-adjudicator".into())
             .spawn(move || {
                 while let Ok(work) = rx.recv() {
-                    let deadline = work.enqueued + Duration::from_millis(work.request.timeout_ms);
+                    let deadline = work.enqueued + Duration::from_millis(work.job.timeout_ms());
                     let check = || {
                         if work.reply.is_closed() || worker_stopping.load(Ordering::SeqCst) {
                             Err(Failure::Cancelled)
@@ -1189,24 +1663,43 @@ impl Handle {
                         }
                     };
                     let _span = work.span.enter();
-                    let queue = work.enqueued.elapsed();
+                    let queue_ms = work.enqueued.elapsed().as_secs_f64() * 1000.;
+                    let operation = work.job.operation();
                     let start = Instant::now();
-                    let result = check()
-                        .and_then(|()| generator.generate(&work.request, &check))
-                        .map(|mut r| {
-                            r.queue_ms = queue.as_secs_f64() * 1000.;
-                            r
-                        });
-                    if let Ok(r) = &result {
-                        tracing::info!(
-                            cached_tokens = r.cached_tokens,
-                            prompt_tokens = r.prompt_tokens,
-                            completion_tokens = r.completion_tokens,
-                            prefill_ms = r.prefill_ms,
-                            decode_ms = r.decode_ms,
-                            "adjudication complete"
-                        );
-                    }
+                    let result = match &work.job {
+                        Job::Adjudicate(request) => check()
+                            .and_then(|()| generator.generate(request, &check))
+                            .map(|mut r| {
+                                r.queue_ms = queue_ms;
+                                tracing::info!(
+                                    cached_tokens = r.cached_tokens,
+                                    prompt_tokens = r.prompt_tokens,
+                                    completion_tokens = r.completion_tokens,
+                                    prefill_ms = r.prefill_ms,
+                                    decode_ms = r.decode_ms,
+                                    "adjudication complete"
+                                );
+                                Reply::Adjudicate(r)
+                            }),
+                        Job::Opinion(request, question) => check()
+                            .and_then(|()| generator.opine(request, question, &check))
+                            .map(|mut r| {
+                                r.queue_ms = queue_ms;
+                                tracing::info!(
+                                    spec = %r.spec,
+                                    field = %question.field,
+                                    cached_tokens = r.cached_tokens,
+                                    prompt_tokens = r.prompt_tokens,
+                                    described_tokens = r.described_tokens,
+                                    described_cache = %r.cache.described,
+                                    prefill_ms = r.prefill_ms,
+                                    describe_ms = r.describe_ms,
+                                    read_ms = r.read_ms,
+                                    "opinion read complete"
+                                );
+                                Reply::Opinion(r)
+                            }),
+                    };
                     if let Err(e) = &result {
                         let kind = match e {
                             Failure::BadRequest(_) => "bad_request",
@@ -1214,9 +1707,9 @@ impl Handle {
                             Failure::Cancelled => "cancelled",
                             Failure::Deadline => "deadline",
                         };
-                        tracing::warn!(error_kind = kind, "adjudication failed");
+                        tracing::warn!(error_kind = kind, operation, "adjudicator work failed");
                     }
-                    crate::telemetry::record_inference_duration("adjudicate", start.elapsed());
+                    crate::telemetry::record_inference_duration(operation, start.elapsed());
                     let _ = work.reply.send(result);
                 }
                 drop(generator);
@@ -1232,9 +1725,19 @@ impl Handle {
         Self {
             tx,
             info,
+            menu: Arc::new(Vec::new()),
             exit,
             stopping,
         }
+    }
+    /// The specs `/v1/opinion` serves. Without this, every opinion request
+    /// is refused as naming an unknown spec.
+    pub fn with_menu(mut self, menu: Vec<crate::opinion_api::SpecMenuEntry>) -> Self {
+        self.menu = Arc::new(menu);
+        self
+    }
+    pub fn menu(&self) -> Vec<crate::opinion_api::SpecMenuEntry> {
+        self.menu.as_ref().clone()
     }
     pub fn stop_signal(&self) -> Arc<AtomicBool> {
         self.stopping.clone()
@@ -1245,23 +1748,17 @@ impl Handle {
     // The Err is an axum `Response`, the shape a handler hands back; boxing it
     // to please the size heuristic would cost a heap allocation per refusal.
     #[allow(clippy::result_large_err)]
-    pub async fn evaluate(
-        &self,
-        request: AdjudicateRequest,
-    ) -> Result<AdjudicateResponse, Response> {
-        request
-            .validate()
-            .map_err(|e| Failure::BadRequest(e).into_response())?;
+    async fn submit(&self, job: Job, span: &'static str) -> Result<Reply, Response> {
         if self.stopping.load(Ordering::SeqCst) {
             return Err(Failure::Cancelled.into_response());
         }
         let (reply, rx) = oneshot::channel();
-        let timeout = Duration::from_millis(request.timeout_ms);
+        let timeout = Duration::from_millis(job.timeout_ms());
         let work = Work {
-            request,
+            job,
             reply,
             enqueued: Instant::now(),
-            span: tracing::info_span!("adjudicate"),
+            span: tracing::info_span!("adjudicator", operation = span),
         };
         self.tx.try_send(work).map_err(|e|match e {
             mpsc::TrySendError::Full(_)=>(StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":{"type":"overloaded","message":"adjudicator queue is full"}}))).into_response(),
@@ -1275,11 +1772,61 @@ impl Handle {
             Ok(Ok(result)) => result.map_err(IntoResponse::into_response),
         }
     }
+    #[allow(clippy::result_large_err)]
+    pub async fn evaluate(
+        &self,
+        request: AdjudicateRequest,
+    ) -> Result<AdjudicateResponse, Response> {
+        request
+            .validate()
+            .map_err(|e| Failure::BadRequest(e).into_response())?;
+        match self.submit(Job::Adjudicate(request), "adjudicate").await? {
+            Reply::Adjudicate(r) => Ok(r),
+            Reply::Opinion(_) => {
+                Err(Failure::Internal("worker answered a generation with an opinion".into())
+                    .into_response())
+            }
+        }
+    }
+    /// Validate against the menu here, so a question the daemon cannot ask
+    /// is a 400 that never occupies the worker.
+    #[allow(clippy::result_large_err)]
+    pub async fn opine(
+        &self,
+        request: crate::opinion_api::OpinionRequest,
+    ) -> Result<crate::opinion_api::OpinionResponse, Response> {
+        request
+            .validate()
+            .map_err(|e| Failure::BadRequest(e).into_response())?;
+        let entry = self
+            .menu
+            .iter()
+            .find(|e| e.spec == request.spec)
+            .ok_or_else(|| {
+                Failure::BadRequest(format!(
+                    "no loaded spec {:?}; GET /v1/opinion/specs lists them",
+                    request.spec
+                ))
+                .into_response()
+            })?;
+        let question = entry
+            .resolve(&request.questions[0])
+            .map_err(|e| Failure::BadRequest(e).into_response())?;
+        match self.submit(Job::Opinion(request, question), "opinion").await? {
+            Reply::Opinion(r) => Ok(r),
+            Reply::Adjudicate(_) => {
+                Err(Failure::Internal("worker answered an opinion with a generation".into())
+                    .into_response())
+            }
+        }
+    }
 }
 pub fn router(handle: Handle) -> Router {
     Router::new()
         .route("/v1/adjudicator", get(info))
         .route("/v1/adjudicate", post(adjudicate))
+        .route("/v1/opinion", post(opine))
+        .route("/v1/opinion/specs", get(specs))
         .with_state(handle)
         .layer(axum::middleware::from_fn(
             crate::server::telemetry_middleware,
@@ -1288,12 +1835,22 @@ pub fn router(handle: Handle) -> Router {
 async fn info(State(h): State<Handle>) -> Json<PrefixInfo> {
     Json(h.info)
 }
+async fn specs(State(h): State<Handle>) -> Json<Vec<crate::opinion_api::SpecMenuEntry>> {
+    Json(h.menu())
+}
 #[allow(clippy::result_large_err)] // an axum handler's Err is a Response by design
 async fn adjudicate(
     State(h): State<Handle>,
     crate::server::ValidJson(request): crate::server::ValidJson<AdjudicateRequest>,
 ) -> Result<Json<AdjudicateResponse>, Response> {
     h.evaluate(request).await.map(Json)
+}
+#[allow(clippy::result_large_err)]
+async fn opine(
+    State(h): State<Handle>,
+    crate::server::ValidJson(request): crate::server::ValidJson<crate::opinion_api::OpinionRequest>,
+) -> Result<Json<crate::opinion_api::OpinionResponse>, Response> {
+    h.opine(request).await.map(Json)
 }
 
 #[cfg(test)]
@@ -1436,6 +1993,104 @@ mod prompt_cache_tests {
             .cloned()
             .fold(f32::NEG_INFINITY, f32::max);
         assert!(total.is_finite(), "tiny fixture must produce finite logits");
+    }
+
+    #[test]
+    fn described_cache_is_keyed_by_prompt_and_field_and_evicts_the_oldest() {
+        let (model, _) = fixture();
+        let entry = |prompt: &[u32], field: &str, generated: &[u32]| {
+            let mut state = model.new_state();
+            let logits = model.forward(prompt, &mut state).unwrap();
+            DescribedEntry {
+                prompt_ids: prompt.to_vec(),
+                field: field.into(),
+                generated: generated.to_vec(),
+                text: format!("{field}:{}", generated.len()),
+                state,
+                logits,
+            }
+        };
+        let mut cache = DescribedCache::new(2);
+        cache.insert(entry(&[1, 2, 3], "verdict", &[4, 5]));
+        cache.insert(entry(&[1, 2, 3], "scope", &[4]));
+        // Same prompt, different field: a different slot, so a different entry.
+        assert_eq!(cache.len(), 2);
+        let (generated, text, state, _) = cache.get(&[1, 2, 3], "verdict").unwrap();
+        assert_eq!(generated, [4, 5]);
+        assert_eq!(text, "verdict:2");
+        assert_eq!(state.len(), 3);
+        assert!(cache.get(&[1, 2, 3], "undo").is_none());
+        assert!(cache.get(&[1, 2, 4], "verdict").is_none());
+        // The hit above made `verdict` most recent, so a third entry evicts `scope`.
+        cache.insert(entry(&[9, 9, 9], "verdict", &[1]));
+        assert_eq!(cache.len(), 2);
+        assert!(cache.get(&[1, 2, 3], "scope").is_none());
+        assert!(cache.get(&[1, 2, 3], "verdict").is_some());
+        // Re-inserting a key replaces rather than duplicates.
+        cache.insert(entry(&[9, 9, 9], "verdict", &[1, 2, 3]));
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.get(&[9, 9, 9], "verdict").unwrap().0, [1, 2, 3]);
+        let mut none = DescribedCache::new(0);
+        none.insert(entry(&[1], "verdict", &[2]));
+        assert_eq!(none.len(), 0);
+    }
+
+    #[test]
+    fn a_cached_description_reads_the_same_state_it_was_generated_from() {
+        // The cache hands back a clone of the state at the slot; scoring off it
+        // must equal scoring off the state that produced it, and must not
+        // advance what the cache holds.
+        let (model, _) = fixture();
+        let mut state = model.new_state();
+        model.forward(&[1, 2, 3], &mut state).unwrap();
+        let logits = model.forward(&[4, 5], &mut state).unwrap();
+        let direct = crate::opinion::score_continuations(&model, &state, &logits, &[vec![6, 7], vec![8]], &|| Ok(())).unwrap();
+        let mut cache = DescribedCache::new(1);
+        cache.insert(DescribedEntry {
+            prompt_ids: vec![1, 2, 3],
+            field: "verdict".into(),
+            generated: vec![4, 5],
+            text: String::new(),
+            state,
+            logits,
+        });
+        for _ in 0..2 {
+            let (_, _, hit_state, hit_logits) = cache.get(&[1, 2, 3], "verdict").unwrap();
+            let cached = crate::opinion::score_continuations(&model, &hit_state, &hit_logits, &[vec![6, 7], vec![8]], &|| Ok(())).unwrap();
+            assert_eq!(direct, cached);
+            assert_eq!(hit_state.len(), 5);
+        }
+    }
+
+    #[test]
+    fn parse_described_reads_the_fields_before_the_slot_in_order() {
+        let fields = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let out = parse_described(
+            "{\"effect\": \"Removes it.\", \"scope\": \"project\", \"undo\": \"easy\", \"verdict\": \"",
+            "\"verdict\": \"",
+            &fields(&["effect", "scope", "undo"]),
+        )
+        .unwrap();
+        let got: Vec<(String, serde_json::Value)> = out.into_iter().map(|d| (d.field, d.value)).collect();
+        assert_eq!(
+            got,
+            [
+                ("effect".to_string(), serde_json::json!("Removes it.")),
+                ("scope".to_string(), serde_json::json!("project")),
+                ("undo".to_string(), serde_json::json!("easy")),
+            ]
+        );
+        // The first field asked: nothing described.
+        assert!(parse_described("{\"verdict\": \"", "\"verdict\": \"", &[]).unwrap().is_empty());
+        // Booleans arrive unquoted and stay booleans.
+        let out = parse_described("{\"writes\": true, \"verdict\": \"", "\"verdict\": \"", &fields(&["writes"])).unwrap();
+        assert_eq!(out[0].value, serde_json::json!(true));
+        // Loud on every mismatch between the spec's field list and the text.
+        assert!(parse_described("{\"effect\": \"x\", \"verdict\": \"", "\"verdict\": \"", &[]).is_err());
+        assert!(parse_described("{\"effect\": \"x\", \"verdict\": \"", "\"verdict\": \"", &fields(&["effect", "scope"])).is_err());
+        assert!(parse_described("{\"effect\": \"x\", \"verdict\": \"", "\"verdict\": \"", &fields(&["scope"])).is_err());
+        assert!(parse_described("{\"effect\": \"x\"\"verdict\": \"", "\"verdict\": \"", &fields(&["effect"])).is_err());
+        assert!(parse_described("{\"effect\": \"x\", ", "\"verdict\": \"", &fields(&["effect"])).is_err());
     }
 
     #[test]

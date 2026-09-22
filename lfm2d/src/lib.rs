@@ -95,6 +95,7 @@ pub mod engine_real;
 pub mod engine_stub;
 pub mod hash;
 pub mod opinion;
+pub mod opinion_api;
 pub mod probe;
 pub mod server;
 pub mod shutdown;

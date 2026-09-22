@@ -197,8 +197,9 @@ async fn main() {
     let mut adjudicator_stop = None;
     let adjudicator = adjudicator.map(|model| {
         let info = model.info();
-        tracing::info!(prefix_tokens=info.prefix_tokens, snapshot_id=%info.snapshot_id, backend=%info.backend, "lfm2d: adjudicator prefix ready");
-        let handle = lfm2d::adjudicator::Handle::spawn(model, info);
+        let menu = model.menu();
+        tracing::info!(prefix_tokens=info.prefix_tokens, snapshot_id=%info.snapshot_id, backend=%info.backend, specs=menu.len(), "lfm2d: adjudicator prefix ready");
+        let handle = lfm2d::adjudicator::Handle::spawn(model, info).with_menu(menu);
         worker_exits.push(handle.exit_signal());
         adjudicator_stop = Some(handle.stop_signal());
         handle

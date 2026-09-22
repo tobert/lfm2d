@@ -78,6 +78,14 @@ impl Drop for Fake {
     }
 }
 impl Generator for Fake {
+    fn opine(
+        &mut self,
+        _: &lfm2d::opinion_api::OpinionRequest,
+        _: &lfm2d::opinion_api::ResolvedQuestion,
+        _: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<lfm2d::opinion_api::OpinionResponse, Failure> {
+        Err(Failure::Internal("this fake only generates".into()))
+    }
     fn generate(
         &mut self,
         r: &AdjudicateRequest,
@@ -133,12 +141,14 @@ impl Generator for Fake {
                 lfm2d::opinion::OptionScore {
                     option: "first".into(),
                     logprob: -0.5,
+                    first_logprob: -0.4,
                     prob: 0.7,
                     tokens: vec![11, 12],
                 },
                 lfm2d::opinion::OptionScore {
                     option: "second".into(),
                     logprob: -1.3,
+                    first_logprob: -1.2,
                     prob: 0.3,
                     tokens: vec![13, 12],
                 },

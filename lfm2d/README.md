@@ -686,3 +686,9 @@ LFM2.5-8B-A1B GGUF inference, reusable hot-prefix state, and validated JSON
 reports are available as a development integration. See
 [the adjudicator guide](../docs/lfm25-adjudicator.md) for build/run commands,
 HTTP semantics, measured limitations, and the published Candle dependency.
+
+Beside `/v1/adjudicate` the same worker serves `/v1/opinion`, the System 1
+read: state in, a typed distribution over a spec's choice field out, no
+text generated past the question's slot and no winner named. The guide's
+"The opinion API" section has the shapes and the numbers;
+`docs/integration.md` invariants 8–11 are its contract.

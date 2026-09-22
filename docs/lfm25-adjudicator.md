@@ -58,8 +58,14 @@ cargo build -p lfm2d --release --features rocm
   --device rocm --threads 8 --bind-addr '127.0.0.1:18152' \
   --adjudicator-model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
   --adjudicator-tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
-  --adjudicator-prompt 'lfm2d/prompts/shell-severity-json-v1.json'
+  --adjudicator-prompt 'lfm2d/prompts/command-verdict-enum-v1.json' \
+  --opinion-spec 'lfm2d/prompts/command-verdict-opinion-v1.json'
 ```
+
+`--adjudicator-prompt` is the spec `/v1/adjudicate` generates from and is
+always on the `/v1/opinion` menu; `--opinion-spec` (repeatable, or
+`LFM2D_OPINION_SPECS` comma-separated) adds further specs to that menu, each
+with its own resident prefix. Specs are named by file stem.
 
 Download the matching `tokenizer.json` from
 [LiquidAI/LFM2.5-8B-A1B](https://huggingface.co/LiquidAI/LFM2.5-8B-A1B/tree/main).
@@ -265,6 +271,111 @@ asks only the verdict, so `{"verdict": "` is its canonical first field;
 `command-verdict-enum-v1-opinion.json` reads verdict-first off the
 describe-first schema, an arm that was measured (it collapses toward `ask`)
 rather than a path the model would write.
+
+### The opinion API: describe-then-read (`/v1/opinion`)
+
+The read above stands the model at a slot the spec fixes. On this checkpoint
+a verdict read *before* the model has described the command carries nothing
+(F9 gold: AUC 0.46–0.55 at 99% mass); the generative path's own verdict
+slot, read *after* `effect`/`scope`/`undo`, is the judgement (AUC 0.74,
+25/74 recall at 4 false alarms). `/v1/opinion` serves that slot directly.
+It is its own endpoint with its own contract (`docs/integration.md`
+invariants 8–11): the typed-decision surface, in the README's words the
+System 1 read; in code, the opinion read.
+
+```json
+POST /v1/opinion
+{"spec": "command-verdict-enum-v1",
+ "state": {"command": "cargo clean",
+           "facts": "Facts about this command from its manual pages and parser:\n..."},
+ "context": null,
+ "questions": [{"field": "verdict", "options": ["allow", "ask", "review"]}],
+ "use_cache": true, "timeout_ms": 30000}
+```
+
+- `spec` names a loaded spec; `GET /v1/opinion/specs` lists them with every
+  schema field in emission order, its `kind` (`text`, `choice`, `boolean`)
+  and a choice field's `options`. **Read the menu at runtime; never
+  hard-code a field name or an option.**
+- `state` is rendered into the user turn exactly as the evaluation
+  harnesses render it — the `facts` block verbatim (an app builds it; the
+  daemon never does), then `Command:` and the command — so a paired
+  generative run and an opinion read see the same bytes.
+- `questions` names one `choice` field of the spec (v1: exactly one; it is
+  a list so the shape survives); `options` may narrow the enum and is
+  scored in the spec's order. Questions come from the spec on disk, never
+  from request text: framing words in a rendered prompt move label tokens
+  by an order of magnitude, and a prompt the instruments never scored is not
+  one the daemon serves.
+- `context` is reserved and must be `null`.
+
+The daemon renders the prompt, generates every field before the question
+under the output grammar (greedy, the repetition penalty, exactly the
+generative path), stops when the generated text ends with `"<field>": "`,
+and teacher-forces every option plus its close there (`",` when another
+field follows, `"}` when the field is last). Each option and its close sit
+on their own pre-tokens after the slot — the tokenizer's pre-tokenizer
+decides that, checked at load on a probe and held at request time — so the
+continuations are the tokens the model would have written.
+
+```json
+{"model_id": "...", "snapshot_id": "...", "spec": "command-verdict-enum-v1",
+ "described": [{"field": "effect", "value": "Removes build artifacts ..."},
+               {"field": "scope", "value": "project"}, {"field": "undo", "value": "easy"}],
+ "answers": [{"field": "verdict",
+   "options": [{"option": "allow", "logprob": -0.1009, "first_logprob": -0.1009, "prob": 0.905, "tokens": [13537, 1377]},
+               {"option": "ask", "logprob": -2.556, "first_logprob": -2.556, "prob": 0.078, "tokens": [1767, 1377]},
+               {"option": "review", "logprob": -4.029, "first_logprob": -4.029, "prob": 0.018, "tokens": [63202, 1377]}],
+   "sequence_mass": -0.0006, "first_token_mass": -0.0006, "margin": 0.827,
+   "shared_tokens": 383, "scored_tokens": 6, "rendered_sha256": "..."}],
+ "cache": {"prefix": "hit", "state": "miss", "described": "miss"},
+ "prompt_tokens": 344, "cached_tokens": 327, "described_tokens": 39,
+ "queue_ms": 1.1, "prefill_ms": 105.8, "describe_ms": 511.6, "read_ms": 46.6}
+```
+
+- **No winner.** Nothing in the response names a choice; the caller picks,
+  from its own thresholds on its own data, per spec, and refits when
+  `snapshot_id` changes.
+- `described` is the fields the model wrote before the slot, in emission
+  order (a list, because `serde_json` sorts object keys). The read is
+  conditioned on it, so it is part of the answer and is echoed.
+- Per option: `logprob` is the raw sequence logprob (option plus close,
+  full-vocabulary denominators), `first_logprob` the raw logprob of the first
+  token alone (the number the F9 slot score reads), `prob` renormalised over
+  the options asked. `sequence_mass` and `first_token_mass` are the raw log
+  mass on the answer set: read `prob` and `margin` beside them, because both
+  are blind to "never asked".
+- `margin` is `prob[top] - prob[runner-up]`.
+- `cache` names each layer's outcome, `hit`, `miss` or `bypass`
+  (`use_cache: false`): the spec's resident prefix; the exact rendered
+  prompt (one checkpoint per spec, exact repeat); and the *described*
+  state — the prompt plus its generated description at the slot, kept per
+  spec in a small LRU (`described_cache_capacity` on the menu, 16). Greedy
+  decoding under the grammar is a pure function of the rendered prompt on a
+  fixed backend, so the description and the model state after it are
+  reusable computation, never a cached answer: a hit skips the prefill and
+  the description and scores the options fresh, in tens of milliseconds.
+  Every layer is keyed under the spec's identity, so a weight, tokenizer,
+  template or spec change empties it.
+
+Measured on ROCm, warm, `command-verdict-enum-v1`, bare commands: a miss
+reads in ~490–740 ms (prefill ~100 ms, description ~500 ms for 33–53
+tokens, read ~45 ms) against ~630–900 ms for the generative report; a hit
+in ~41–46 ms. On the same bytes the read's `first_logprob` and the
+generative path's slot agree to ~5e-6 nats (the block-vs-token kernel
+difference above), the described fields equal the report's field for field,
+and a hit returns bit-identical numbers (`lfm2d/tests/opinion_real.rs`,
+ignored: it loads the 8B). `benchmarks/lfm25/opinion_demo.py` shows all of
+this against a running daemon; `benchmarks/lfm25/prompts/describe_read_eval.py`
+runs the F9 gold set through the endpoint paired on a generative run, and
+`score_instruments.py` scores it beside the slot score.
+
+Refused with 400, never queued: an unknown spec, a field the spec lacks or
+that is not a `choice`, an option outside the enum, fewer than two options,
+more or fewer than one question, a non-null `context`, control tokens in
+the state. Refused with 500: a description that ends before the slot (the
+grammar makes every field required, so this is the context running out),
+or an option that does not tokenize on its own pretokens after the slot.
 
 ## Snapshot semantics
 

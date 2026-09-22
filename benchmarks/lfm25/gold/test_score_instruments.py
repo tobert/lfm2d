@@ -24,6 +24,34 @@ def op(text, p_allow, mass=-0.1):
             'options': {'allow': {'prob': p_allow}, 'ask': {'prob': 1 - p_allow}}}
 
 
+def dr(text, p_allow, raw_first):
+    """A describe-then-read row: renormalised prob AND the raw first-token logprob."""
+    import math
+    r = op(text, p_allow)
+    r['options']['allow']['first_logprob'] = math.log(raw_first)
+    r['options']['ask']['first_logprob'] = math.log(max(1e-9, 1 - raw_first))
+    return r
+
+
+class DescribeThenRead(unittest.TestCase):
+    def test_raw_first_token_cut_is_scored_beside_the_renormalised_one(self):
+        # Renormalised prob says allow everywhere; the raw first token says the
+        # two gold-ask rows sit below 0.9. The two cuts must disagree.
+        run = [dr('a', .99, .99), dr('b', .99, .99), dr('c', .99, .5),
+               dr('d', .99, .6), dr('e', .99, .99), dr('f', .99, .7), dr('g', .99, .99)]
+        out = S.score(GOLD, run)
+        self.assertEqual(out['kind'], 'opinion')
+        self.assertEqual(out['by_cut_on_p_allow']['0.9']['challenge']['recall']['n'], [0, 2])
+        self.assertEqual(out['by_cut_on_raw_p_allow']['0.9']['challenge']['recall']['n'], [2, 2])
+        self.assertEqual(out['by_cut_on_raw_p_allow']['0.9']['pass_through']['false_alarm']['n'], [0, 2])
+        self.assertEqual(out['auc_ask_vs_allow_raw_first']['challenge'], 1.0)
+
+    def test_rows_without_the_raw_number_get_no_raw_cut(self):
+        run = [op('a', .99), op('b', .99), op('c', .5), op('d', .6), op('e', .99), op('f', .7), op('g', .99)]
+        out = S.score(GOLD, run)
+        self.assertNotIn('by_cut_on_raw_p_allow', out)
+
+
 class Generative(unittest.TestCase):
     def test_instruments_come_from_their_own_rows(self):
         run = [gen('a', 'allow'), gen('b', 'ask'), gen('c', 'allow'),

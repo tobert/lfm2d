@@ -49,6 +49,11 @@ pub struct Cli {
     /// 1.0 disables it; 1.05 is the checkpoint author's recommendation.
     #[arg(long, default_value_t = 1.05)]
     pub adjudicator_repeat_penalty: f32,
+    /// Further prompt specs served by `/v1/opinion` beside the adjudicator
+    /// prompt (which is always on the menu). Repeatable; each gets its own
+    /// resident prefix. Named by file stem, so stems must not repeat.
+    #[arg(long = "opinion-spec", env = "LFM2D_OPINION_SPECS", value_delimiter = ',')]
+    pub opinion_specs: Vec<PathBuf>,
 
     /// Directory holding an `Lfm2Embedding`-shaped checkpoint
     /// (`config.json`, `tokenizer.json`, `model.safetensors`). Backs
@@ -253,6 +258,9 @@ impl Cli {
         if self.adjudicator_model.is_some() && (!matches!(self.dtype, DtypeArg::F32) || !(128..=8192).contains(&self.adjudicator_context)) {
             return Err("adjudicator requires --dtype f32 and --adjudicator-context 128..=8192".into());
         }
+        if !self.opinion_specs.is_empty() && self.adjudicator_model.is_none() {
+            return Err("--opinion-spec needs the adjudicator (--adjudicator-model/--adjudicator-tokenizer/--adjudicator-prompt)".into());
+        }
         Ok(())
     }
 }
@@ -329,6 +337,7 @@ mod tests {
             adjudicator_prompt: None,
             adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
+            opinion_specs: Vec::new(),
             embedder_dir: None,
             classifier_dir: None,
             router_dir: None,
@@ -378,6 +387,7 @@ mod tests {
             adjudicator_prompt: None,
             adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
+            opinion_specs: Vec::new(),
             embedder_dir: Some("/tmp/e".into()),
             classifier_dir: Some("/tmp/c".into()),
             router_dir: Some("/tmp/r".into()),

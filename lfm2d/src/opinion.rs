@@ -71,6 +71,10 @@ pub struct OptionScore {
     /// Sum of the RAW logprobs (full-vocabulary denominators) of the option's
     /// tokens, terminator included. `<= 0`.
     pub logprob: f32,
+    /// RAW logprob of the option's first token alone at the slot. The F9
+    /// slot score is this number; `logprob` adds the rest of the word and
+    /// the close.
+    pub first_logprob: f32,
     /// Renormalized over the options. Read it beside `sequence_mass`: when the
     /// model put little mass on the answer set, this is noise that looks like
     /// an answer.

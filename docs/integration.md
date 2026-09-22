@@ -80,6 +80,35 @@ the winner's LABEL inherits that ranking instead of inventing a cutoff
 the model cannot support. Prior calibration (`tau`) moves where the
 argmax falls; it does not create a threshold that separates the classes.
 
+**8. An opinion is a distribution, not a decision.** `POST /v1/opinion`
+(`docs/lfm25-adjudicator.md`, "The opinion API") never names a choice. A
+consumer that acts on one picks the option itself, from thresholds fitted
+on its own data, per spec, and refits when `snapshot_id` changes —
+calibration does not transfer between specs, and the failure is silent.
+Invariant 5 still holds for scores from the encoder heads; an opinion is a
+different instrument with this contract of its own.
+
+**9. Read the raw mass beside the renormalised probability.** `prob` and
+`margin` are renormalised over the options asked; `sequence_mass` and
+`first_token_mass` are the raw log mass the model put on that answer set.
+A low mass means the model was never asked this question here, and a
+renormalised number over it is noise that looks like an answer. A consumer
+that thresholds `prob` or `margin` alone is thresholding that noise on
+low-mass rows; gate on mass first, or record it beside every decision.
+
+**10. An opinion may raise, never lower.** A static denial upstream (the
+cascade's stage 2, kaijutsu's ledger) is never lowered by an opinion. An
+opinion may escalate to the generative adjudicator; it is not the
+adjudicator, and the description it echoes is the model's own text, not
+evidence a consumer may act on.
+
+**11. Specs, fields and options are read from the menu at runtime.**
+`GET /v1/opinion/specs` lists every loaded spec with its fields in emission
+order and each choice field's options. Never hard-code a spec name, a
+field name, an option, or an option's position — invariants 1–3 again,
+for the opinion vocabulary. `described` is an ordered list of
+`{field, value}`, not an object; the order is the spec's.
+
 ## Operational numbers (measured, dated — re-measure before designing on them)
 
 - **Latency** (2026-09-05, server-side, `--threads=8`): `/v1/classify`
