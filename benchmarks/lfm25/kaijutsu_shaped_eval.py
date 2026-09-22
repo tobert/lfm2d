@@ -167,9 +167,9 @@ def parts_of(command, cwd, python_spec):
     return p, parts
 
 
-def read(url, spec, field, text, facts):
+def read(url, spec, fields, text, facts):
     body = {'spec': spec, 'state': {'command': text, 'facts': facts},
-            'questions': [{'field': field}], 'timeout_ms': 120000}
+            'questions': [{'field': f} for f in fields], 'timeout_ms': 120000}
     t0 = time.perf_counter()
     try:
         resp = rpc(url, '/v1/opinion', body, timeout=150)
@@ -179,8 +179,9 @@ def read(url, spec, field, text, facts):
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         return {'outcome': 'transport', 'error': str(e)[:300],
                 'client_ms': (time.perf_counter() - t0) * 1000}
-    ans = resp['answers'][0]
+    ans = next(x for x in resp['answers'] if x['field'] == fields[0])
     return {'outcome': 'read', 'described': resp['described'], 'options': ans['options'],
+            'answers': resp['answers'],
             'sequence_mass': ans['sequence_mass'], 'margin': ans['margin'],
             'rendered_sha256': ans['rendered_sha256'], 'cache': resp['cache']['described'],
             'client_ms': (time.perf_counter() - t0) * 1000}
@@ -191,8 +192,9 @@ def run(a):
     for spec in filter(None, (a.spec, a.python_spec)):
         if spec not in menu:
             sys.exit(f'{spec!r} not on the menu: {sorted(menu)}')
-        if not any(f['field'] == a.field and f['kind'] == 'choice' for f in menu[spec]['fields']):
-            sys.exit(f'{a.field!r} is not a choice field of {spec!r}')
+        for name in [a.field] + a.also:
+            if not any(f['field'] == name and f['kind'] == 'choice' for f in menu[spec]['fields']):
+                sys.exit(f'{name!r} is not a choice field of {spec!r}')
     baseline = [json.loads(l) for l in open(Path(a.baseline) / f'{a.arm}.jsonl') if l.strip()]
     cwd_of = {}
     for r in load_log(a.log):
@@ -202,7 +204,7 @@ def run(a):
     path = out / f'{a.arm}.jsonl'
     done = {json.loads(l)['command_sha256'] for l in open(path) if l.strip()} if path.exists() else set()
     meta = {'arm': a.arm, 'baseline': str(a.baseline), 'url': a.url, 'spec': a.spec,
-            'python_spec': a.python_spec, 'field': a.field,
+            'python_spec': a.python_spec, 'field': a.field, 'also': a.also,
             'snapshot_ids': {s: menu[s]['snapshot_id'] for s in filter(None, (a.spec, a.python_spec))},
             'kaish': subprocess.run([KAISH, '--version'], capture_output=True, text=True).stdout.strip(),
             'started': time.time()}
@@ -229,7 +231,7 @@ def run(a):
             for role, text, facts, label in parts:
                 spec = a.python_spec if role == 'python' else a.spec
                 reads.append({'role': role, 'label': label, 'text': text, 'facts': facts,
-                              **read(a.url, spec, a.field, text, facts)})
+                              **read(a.url, spec, [a.field] + a.also, text, facts)})
             bad = [r['outcome'] for r in reads if r['outcome'] != 'read']
             row.update(outcome='read' if not bad else bad[0], parts=reads)
             f.write(json.dumps(row) + '\n')
@@ -289,6 +291,27 @@ def score(a):
                     words = worst['text'].split()
                     blame[f'shell: {words[0] if words else "?"}'] += 1
         print(f'   the part that flags (min P < 0.8): {blame.most_common(12)}')
+        # Description slots: a submission's score is the MOST severe part's
+        # (AskCoverage); the bare baseline is scored the same way when it
+        # carries the slot.
+        for spec_ in a.severe:
+            field, _, opts = spec_.partition('=')
+            opts = set(opts.split(','))
+            def sev(read):
+                return sum(o['prob'] for x in read.get('answers', []) if x['field'] == field
+                           for o in x['options'] if o['option'] in opts)
+            have = [r for r in paired if all(any(x['field'] == field for x in p.get('answers', []))
+                                             for p in r['parts'])]
+            if not have:
+                print(f'   {field}: not read in this run')
+                continue
+            for cut in (0.2, 0.5):
+                shaped = sum(max(sev(p) for p in r['parts']) > cut for r in have)
+                bare = [r for r in have if any(x['field'] == field
+                                               for x in base[r['command_sha256']].get('answers', []))]
+                b = sum(sev(base[r['command_sha256']]) > cut for r in bare)
+                print(f'   P({field} in {"|".join(sorted(opts))}) > {cut}: shaped {shaped}/{len(have)} '
+                      f'({shaped / len(have):.1%}); bare {b}/{len(bare) or "-"}')
 
 
 def main():
@@ -302,11 +325,15 @@ def main():
     r.add_argument('--spec', default='command-verdict-enum-v1')
     r.add_argument('--python-spec', help='spec for lifted Python heredoc bodies; omit to keep them inline')
     r.add_argument('--field', default='verdict')
+    r.add_argument('--also', action='append', default=[],
+                   help='another choice field read in the same request, per part')
     r.add_argument('--out', required=True)
     s = sub.add_parser('score')
     s.add_argument('--baseline', required=True)
     s.add_argument('--out', required=True)
     s.add_argument('--pass-option', required=True)
+    s.add_argument('--severe', action='append', default=[],
+                   help='FIELD=opt,opt: score a description slot, most severe part per submission')
     a = ap.parse_args()
     (run if a.cmd == 'run' else score)(a)
 

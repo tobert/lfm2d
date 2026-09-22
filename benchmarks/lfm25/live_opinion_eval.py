@@ -83,9 +83,10 @@ def run(a):
     menu = {m['spec']: m for m in rpc(a.url, '/v1/opinion/specs')}
     if a.spec not in menu:
         sys.exit(f'{a.spec!r} not on the menu: {sorted(menu)}')
-    field = next((f for f in menu[a.spec]['fields'] if f['field'] == a.field), None)
-    if not field or field['kind'] != 'choice':
-        sys.exit(f'{a.field!r} is not a choice field of {a.spec!r}')
+    for name in [a.field] + a.also:
+        field = next((f for f in menu[a.spec]['fields'] if f['field'] == name), None)
+        if not field or field['kind'] != 'choice':
+            sys.exit(f'{name!r} is not a choice field of {a.spec!r}')
     rows = load_log(a.log)
     todo = pick(rows, a.arm, a.n, a.seed)
     out = Path(a.out)
@@ -96,7 +97,7 @@ def run(a):
         done = {json.loads(l)['command_sha256'] for l in open(path) if l.strip()}
     meta = {'arm': a.arm, 'n': a.n, 'seed': a.seed, 'log': str(a.log), 'log_rows': len(rows),
             'log_sha256': hashlib.sha256(Path(a.log).read_bytes()).hexdigest(),
-            'spec': a.spec, 'field': a.field, 'snapshot_id': menu[a.spec]['snapshot_id'],
+            'spec': a.spec, 'field': a.field, 'also': a.also, 'snapshot_id': menu[a.spec]['snapshot_id'],
             'url': a.url, 'chosen': len(todo), 'started': time.time()}
     (out / f'{a.arm}.meta.json').write_text(json.dumps(meta, indent=1))
     os.chmod(out / f'{a.arm}.meta.json', 0o600)
@@ -108,12 +109,14 @@ def run(a):
                 continue
             row = {'command_sha256': key, 'command': command, **info}
             body = {'spec': a.spec, 'state': {'command': command},
-                    'questions': [{'field': a.field}], 'timeout_ms': 120000}
+                    'questions': [{'field': x} for x in [a.field] + a.also], 'timeout_ms': 120000}
             t0 = time.perf_counter()
             try:
                 resp = rpc(a.url, '/v1/opinion', body, timeout=150)
-                ans = resp['answers'][0]
-                row.update(outcome='read', described=resp['described'],
+                # The pass field's read stays where the verdict scorer reads
+                # it; every answer (emission order) rides in `answers`.
+                ans = next(x for x in resp['answers'] if x['field'] == a.field)
+                row.update(outcome='read', answers=resp['answers'], described=resp['described'],
                            options=ans['options'], sequence_mass=ans['sequence_mass'],
                            first_token_mass=ans['first_token_mass'], margin=ans['margin'],
                            rendered_sha256=ans['rendered_sha256'], cache=resp['cache'],
@@ -163,6 +166,19 @@ def score(a):
             weighted = sum(r['rows'] for r in flagged) / sum(r['rows'] for r in reads)
             print(f'   P({a.pass_option}) < {cut:<4}: {len(flagged):5d}/{len(reads)} distinct '
                   f'({len(flagged) / len(reads):6.1%}), {weighted:6.1%} of log rows')
+        for spec_ in a.severe:
+            field, _, opts = spec_.partition('=')
+            opts = set(opts.split(','))
+            have = [r for r in reads if any(x['field'] == field for x in r.get('answers', []))]
+            if not have:
+                print(f'   {field}: not read in this run')
+                continue
+            sev = lambda r: sum(o['prob'] for x in r['answers'] if x['field'] == field
+                                for o in x['options'] if o['option'] in opts)
+            for cut in (0.2, 0.5):
+                n = sum(sev(r) > cut for r in have)
+                print(f'   P({field} in {"|".join(sorted(opts))}) > {cut}: {n:5d}/{len(have)} distinct '
+                      f'({n / len(have):6.1%})')
         ms = sorted(r['client_ms'] for r in reads)
         print(f'   client ms p50 {ms[len(ms) // 2]:.0f}  p90 {ms[int(len(ms) * .9)]:.0f}  '
               f'total {sum(ms) / 60000:.1f} min')
@@ -179,11 +195,15 @@ def main():
     r.add_argument('--url', required=True)
     r.add_argument('--spec', default='command-verdict-enum-v1')
     r.add_argument('--field', default='verdict')
+    r.add_argument('--also', action='append', default=[],
+                   help='another choice field read in the same request (several questions, one description)')
     r.add_argument('--out', required=True)
     s = sub.add_parser('score')
     s.add_argument('--out', required=True)
     s.add_argument('--pass-option', required=True,
                    help='the option the consuming system treats as pass-through')
+    s.add_argument('--severe', action='append', default=[],
+                   help='FIELD=opt,opt: also report how often those options hold the slot')
     a = ap.parse_args()
     (run if a.cmd == 'run' else score)(a)
 
