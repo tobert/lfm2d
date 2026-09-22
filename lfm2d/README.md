@@ -691,4 +691,7 @@ Beside `/v1/adjudicate` the same worker serves `/v1/opinion`, the System 1
 read: state in, a typed distribution over a spec's choice field out, no
 text generated past the question's slot and no winner named. The guide's
 "The opinion API" section has the shapes and the numbers;
-`docs/integration.md` invariants 8–11 are its contract.
+`docs/integration.md` invariants 8–11 are its contract. It deploys as its
+own GPU service, `lfm2d-system1` (`Containerfile.rocm`,
+`deploy/k8s-zorak-system1.yaml`), beside this encoder sidecar rather than
+inside it.

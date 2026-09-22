@@ -1,0 +1,88 @@
+# lfm2d-system1 — the resident adjudicator and the opinion API, on ROCm.
+#
+# Two stages, like lfm2d/Containerfile: a builder produces the release
+# binary with the `rocm` feature, the runtime ships that binary plus the
+# prompt specs. The GGUF and tokenizer are mounted at runtime
+# (deploy/k8s-zorak-system1.yaml), never baked in.
+#
+#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.1.0 \
+#       -f lfm2d/Containerfile.rocm .
+#
+# Build context is the repo ROOT; .containerignore allowlists what is
+# COPYed here, so a new COPY needs a line there in the same edit.
+#
+# Base: the ROCm version must match the node's driver generation — zorak
+# runs ROCm 7.2.4 (`/opt/rocm/.info/version`), and the binary links
+# libamdhip64.so.7 / librocblas.so.5 / librocrand.so.1 /
+# libhsa-runtime64.so.1 dynamically. rocm/dev-ubuntu-24.04:7.2.4 (1.2 GB
+# compressed) carries the HIP toolchain and runtime but NOT the math
+# libraries; those come from the image's own ROCm apt repo
+# (repo.radeon.com/rocm/apt/7.2.4) at the same version. The `-complete`
+# tag (7.4 GB) is not needed. The same image is the runtime stage so the
+# libraries are the ones the binary was linked against.
+#
+# The prompt specs are part of the daemon's identity (`snapshot_id` hashes
+# the rendered prefix and the opinion block), so they ship in the image and
+# a spec change is an image release, not a config edit.
+
+ARG ROCM_IMAGE=docker.io/rocm/dev-ubuntu-24.04:7.2.4
+
+FROM ${ROCM_IMAGE} AS builder
+WORKDIR /build
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:/opt/rocm/bin:$PATH \
+    ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm
+# rocm-rs's build script generates bindings (bindgen, so clang/libclang)
+# for EVERY module it knows — hip, rocblas, rocsolver, rocfft, rocsparse,
+# miopen, rocrand — and emits a link flag for each; the linker's
+# --as-needed keeps only what the binary references (rocblas and rocrand,
+# per ldd on the host build). So the builder needs all seven's headers and
+# libraries, and the runtime needs two.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates build-essential pkg-config cmake git clang libclang-dev \
+        rocblas-dev rocsolver-dev rocfft-dev rocsparse-dev miopen-hip-dev rocrand-dev \
+    && apt-get clean \
+    && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component rustfmt
+
+# Cache dependency compilation separately from source changes (see
+# lfm2d/Containerfile for why both manifests are copied up front).
+COPY Cargo.toml Cargo.lock ./
+COPY lfm2d/Cargo.toml lfm2d/Cargo.toml
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs \
+    && mkdir -p lfm2d/src \
+    && echo "fn main() {}" > lfm2d/src/main.rs \
+    && echo "" > lfm2d/src/lib.rs \
+    && cargo build --release -p lfm2d --features rocm 2>/dev/null || true \
+    && rm -r src lfm2d/src
+
+COPY src ./src
+COPY lfm2d/src ./lfm2d/src
+RUN cargo build --release -p lfm2d --features rocm
+
+# The runtime keeps the dev image because candle's ROCm kernels are
+# compiled at FIRST RUN with `hipcc` for the GPU it finds, and cached under
+# CANDLE_ROCM_CACHE_DIR (`~/.cache/candle-rocm/<arch>-<rocm>/` by default;
+# this user has no home). The manifest mounts a persistent directory there
+# so the compile happens once per image+GPU, not once per pod start.
+FROM ${ROCM_IMAGE} AS runtime
+# The binary links librocblas.so.5 and librocrand.so.1; the base image has
+# neither. rocblas carries kernels for every supported architecture, which
+# is most of this layer's size.
+# ldconfig: /opt/rocm-<ver>/lib is in ld.so.conf.d but the cache is not
+# refreshed by the package install in this layer, and without it the
+# binary fails to load librocblas.so.5 at start (measured, 2026-09-22).
+RUN apt-get update && apt-get install -y --no-install-recommends rocblas rocrand \
+    && apt-get clean && ldconfig \
+    && useradd --system --no-create-home --shell /usr/sbin/nologin lfm2d
+COPY --from=builder /build/target/release/lfm2d /usr/local/bin/lfm2d
+COPY lfm2d/prompts /etc/lfm2d/prompts
+RUN mkdir -p /models /var/cache/candle-rocm && chown lfm2d:lfm2d /models /var/cache/candle-rocm
+ENV CANDLE_ROCM_CACHE_DIR=/var/cache/candle-rocm PATH=/opt/rocm/bin:$PATH
+
+# GPU access: the AMD device plugin mounts /dev/kfd and the render node
+# into the pod; the render node is group-owned (`render`, gid 987 on
+# zorak), so the manifest adds that gid as a supplemental group for this
+# non-root user. Nothing here runs as root.
+USER lfm2d
+EXPOSE 8088
+ENTRYPOINT ["/usr/local/bin/lfm2d"]

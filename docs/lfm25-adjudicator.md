@@ -67,6 +67,20 @@ always on the `/v1/opinion` menu; `--opinion-spec` (repeatable, or
 `LFM2D_OPINION_SPECS` comma-separated) adds further specs to that menu, each
 with its own resident prefix. Specs are named by file stem.
 
+### Deploying it: `lfm2d-system1`
+
+The adjudicator deploys as its own service beside the encoder pod, never
+inside it: `lfm2d/Containerfile.rocm` builds the `rocm` feature on
+`rocm/dev-ubuntu-24.04:<host ROCm version>` (the binary links the ROCm
+runtime dynamically, and candle compiles its kernels with `hipcc` at first
+run for the GPU it finds, cached under `CANDLE_ROCM_CACHE_DIR`), and
+`lfm2d/deploy/k8s-zorak-system1.yaml` runs it with one GPU from the AMD
+device plugin, the GGUF and tokenizer from a hostPath, the prompt specs
+baked into the image (they are part of `snapshot_id`, so a spec change is
+an image release), and its own Tailscale identity. The manifest's comments
+carry the measured memory numbers and every deliberate difference from
+the encoder pod.
+
 Download the matching `tokenizer.json` from
 [LiquidAI/LFM2.5-8B-A1B](https://huggingface.co/LiquidAI/LFM2.5-8B-A1B/tree/main).
 The loader checks its vocabulary against the GGUF, checks the control-token

@@ -1,0 +1,178 @@
+# lfm2d-system1 — the resident adjudicator and `/v1/opinion` on zorak's
+# GPU, beside the encoder pod in k8s-zorak.yaml. Amy, 2026-09-22: a
+# separate Deployment, "this will likely be the future of lfm2d."
+#
+# Differences from the encoder pod, all deliberate:
+#   * its own image (lfm2d/Containerfile.rocm): ROCm 7.2.4 runtime, the
+#     `rocm` feature, the prompt specs baked in at /etc/lfm2d/prompts —
+#     the specs are part of `snapshot_id`, so a spec change is a release;
+#   * one AMD GPU through the device plugin (kube-system
+#     amdgpu-device-plugin-daemonset, rocm/k8s-device-plugin:1.31.0.10;
+#     the node advertises amd.com/gpu: 1 and no other pod claims it as of
+#     2026-09-22). This is the cluster's FIRST GPU pod;
+#   * the render node is group-owned on the host (render = 987, video =
+#     983, read live 2026-09-22), so the non-root container user gets
+#     those as supplemental groups;
+#   * models from the same hostPath tree: the GGUF is hard-linked from
+#     /tank/ml/models/llama.cpp (same filesystem, one inode) and the Hub
+#     tokenizer files were staged beside it under LFM2.5-8B-A1B/;
+#   * memory: MEASURED on the host 2026-09-22 with this binary and these
+#     args, /proc/<pid>/status after load and after four reads plus one
+#     generation: VmRSS 401 MiB steady, VmHWM 710 MiB at load. The 6.8 GiB
+#     of weights and state live in GPU-side GTT (rocm-smi VRAM used), which
+#     is host RAM on this APU but OUTSIDE the cgroup's accounting — the
+#     kubelet does not see it. So the request below covers the process,
+#     and the note is the honest reason it looks small for an 8B model;
+#   * one serial worker, like the encoder pod: throughput is 1/latency,
+#     ~1 miss/s, tens per second on described-cache hits.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lfm2d-system1
+  namespace: lfm2d
+  labels:
+    app: lfm2d-system1
+spec:
+  replicas: 1
+  # One GPU, one pod: a rolling update would need a second GPU to
+  # schedule the new pod before the old one leaves.
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: lfm2d-system1 }
+  template:
+    metadata:
+      labels: { app: lfm2d-system1 }
+    spec:
+      nodeSelector:
+        gpu.arch: gfx1151
+      tolerations:
+        - key: "homelab.tobert.org/execution"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      # The engine frees device memory through the driver on drop, and the
+      # daemon waits for that before exiting (lfm2d/README.md, the ROCm
+      # teardown note). Measured on the host: exit takes a few seconds.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        supplementalGroups: [987, 983]
+      containers:
+        - name: lfm2d-system1
+          # Same LAN gitea registry as the encoder image. A real version,
+          # never `:latest`.
+          #
+          # Running imageID digest for 0.1.0, read back off the pod
+          # 2026-09-22 (first deploy, dd23525 + Containerfile.rocm):
+          #   sha256:3fd80001f0f1c9aaf3036b9e6486f0491ba32451ce595c56c815fb2b98dac8d8
+          # Bump this comment WITH the tag. The image is 10.4 GB unpacked
+          # (rocblas ships kernels for every architecture); the first pull
+          # from the LAN registry took 3m25s, then 25 s from container start
+          # to ready including the first-run kernel compile (40 files, 3.1 MB,
+          # persisted on the host cache path below). Startup probe budget is
+          # 5 min; the pull happens before it starts counting.
+          image: 192.168.1.2:3000/amy/lfm2d-system1:0.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            # LFM2.5-8B-A1B Q5_K_M — the checkpoint every F9 number was
+            # measured on. weight_hash
+            # eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e,
+            # tokenizer_hash
+            # 695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41
+            # (both read off /v1/adjudicator on the host, 2026-09-22).
+            - --adjudicator-model=/models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf
+            - --adjudicator-tokenizer=/models/LFM2.5-8B-A1B/tokenizer.json
+            # The spec /v1/adjudicate generates from, always on the opinion
+            # menu. command-verdict-enum-v1: effect, scope, undo, verdict,
+            # reason — the describe-then-read numbers are this spec's.
+            - --adjudicator-prompt=/etc/lfm2d/prompts/command-verdict-enum-v1.json
+            # A second spec on the menu: the verdict-only read (measured to
+            # carry nothing on this checkpoint; served for comparison, not
+            # for decisions).
+            - --opinion-spec=/etc/lfm2d/prompts/command-verdict-opinion-v1.json
+            - --adjudicator-context=4096
+            - --device=rocm
+            # 8 was the flat region for the encoder heads; not re-swept for
+            # the adjudicator, whose work is on the GPU. Sweep before
+            # changing.
+            - --threads=8
+            - --bind-addr=0.0.0.0:8088
+          ports:
+            - containerPort: 8088
+          env:
+            # Same OTLP path as the encoder pod: straight to the ClickStack
+            # gateway with the namespace's copy of the key (k8s-zorak.yaml
+            # says how the Secret is made). HYPERDX_API_KEY stays above the
+            # headers var — $(VAR) expansion only sees earlier entries.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://clickstack-otel-collector.clickstack.svc.cluster.local:4317"
+            - name: HYPERDX_API_KEY
+              valueFrom:
+                secretKeyRef: { name: lfm2d-otlp, key: HYPERDX_API_KEY }
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "authorization=$(HYPERDX_API_KEY)"
+            - name: OTEL_SERVICE_NAME
+              value: lfm2d-system1
+            - name: RAYON_NUM_THREADS
+              value: "8"
+            # candle compiles its ROCm kernels with hipcc on first run for
+            # the GPU it finds and caches them here; the hostPath below
+            # keeps that across restarts. Keyed by arch and ROCm version,
+            # so a driver upgrade recompiles rather than reuses.
+            - name: CANDLE_ROCM_CACHE_DIR
+              value: /var/cache/candle-rocm
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+            - { name: kernel-cache, mountPath: /var/cache/candle-rocm }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8088 }
+            periodSeconds: 5
+            failureThreshold: 1
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8088 }
+            periodSeconds: 10
+            failureThreshold: 3
+          # Load hashes the 6 GB GGUF and prefills every spec's prefix:
+          # ~12 s warm on the host, longer from cold disk. 5 minutes is
+          # generous and costs nothing.
+          startupProbe:
+            httpGet: { path: /readyz, port: 8088 }
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests:
+              # In the pod after load + reads, 2026-09-22: VmRSS 350 MiB,
+              # VmHWM 732 MiB — matches the host measurement above.
+              memory: "1Gi"
+              cpu: "4"
+            limits:
+              amd.com/gpu: 1
+      volumes:
+        - name: models
+          hostPath:
+            path: /tank/ml/models/lfm2d
+            type: Directory
+        # Created once on the host, mode 1777: the container's system uid
+        # is not a host user, and the compiled kernels are cheap to lose.
+        - name: kernel-cache
+          hostPath:
+            path: /tank/ml/cache/lfm2d-system1/candle-rocm
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lfm2d-system1
+  namespace: lfm2d
+  annotations:
+    tailscale.com/hostname: "lfm2d-system1"
+spec:
+  selector: { app: lfm2d-system1 }
+  ports:
+    - port: 8088
+      targetPort: 8088
+  # Its own tagged tailnet identity through the Tailscale operator, like
+  # the encoder service: no 0.0.0.0 listener on the LAN, ACL-targetable.
+  # Funnel is ruled out. Nothing calls this yet; the first consumer is
+  # what this deploy exists to grow.
+  type: LoadBalancer
+  loadBalancerClass: tailscale
