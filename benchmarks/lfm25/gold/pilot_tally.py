@@ -64,12 +64,20 @@ def load_unique(path, field, value):
 
 
 def tally(key, pool, labels, families):
-    rows = []
+    """Rows whose pool entry carries a `drop_reason` (found after blinding: a
+    leak, a duplicate) are listed and left out of every count, so a labelled
+    row that later proved unfit cannot stay in the gold by inertia."""
+    rows, dropped = [], []
     for bid, pid in sorted(key.items()):
         r = pool[pid]
+        if r.get('drop_reason'):
+            dropped.append({'blind_id': bid, 'id': pid, 'drop_reason': r['drop_reason']})
+            continue
         votes = {name: lab[bid] for name, lab in labels.items()}
         rows.append((bid, r, votes))
-    out = {'rows': len(rows), 'labelers': sorted(labels)}
+    if not rows:
+        raise SystemExit('every row is dropped; nothing to tally')
+    out = {'rows': len(rows), 'dropped': dropped, 'labelers': sorted(labels)}
     # Each labeler against the generator's intent, overall and by set.
     per = {}
     for name in labels:

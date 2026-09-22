@@ -44,6 +44,19 @@ class Shapes(unittest.TestCase):
         self.assertEqual(out['per_labeler']['a']['agrees_with_intended'], [2, 3])
         self.assertEqual(against[0]['unattributed_labelers'], ['a', 'c'])
 
+    def test_a_dropped_pool_row_is_listed_and_counted_nowhere(self):
+        pool = dict(POOL)
+        pool['p2'] = {**POOL['p2'], 'drop_reason': 'contamination: real unit name'}
+        labels = {'a': {'b1': 'ask', 'b2': 'ask', 'b3': 'allow'},
+                  'b': {'b1': 'ask', 'b2': 'ask', 'b3': 'allow'}}
+        out = T.tally(KEY, pool, labels, {})
+        self.assertEqual(out['rows'], 2)
+        self.assertEqual(out['dropped'], [{'blind_id': 'b2', 'id': 'p2',
+                                           'drop_reason': 'contamination: real unit name'}])
+        self.assertEqual(out['shape'], {'unanimous_with_intended': 2})
+        self.assertEqual(out['per_labeler']['a']['agrees_with_intended'], [2, 2])
+        self.assertEqual(out['pairwise_agreement'], {'a~b': 1.0})
+
     def test_a_row_without_a_generator_marks_nobody_same_family(self):
         # Both sides None used to compare equal, marking every labeler as the
         # generator's own family -- and with no --family at all, as nobody's.
