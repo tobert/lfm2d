@@ -48,6 +48,21 @@ def load_labels(path, ids):
     return got, problems
 
 
+def load_unique(path, field, value):
+    """Rows of a jsonl file keyed by `field`; a repeated key is refused, never
+    last-wins: a duplicated blind id would let one labeler answer count twice."""
+    out = {}
+    for n, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        k = r[field]
+        if k in out:
+            raise SystemExit(f'{path.name} line {n}: repeated {field} {k!r}')
+        out[k] = value(r)
+    return out
+
+
 def tally(key, pool, labels, families):
     rows = []
     for bid, pid in sorted(key.items()):
@@ -82,10 +97,16 @@ def tally(key, pool, labels, families):
         shape[kind] += 1
         by_family[r['family']][kind] += 1
         if kind != 'unanimous_with_intended':
-            own = [name for name in v if families.get(name) == r.get('gen')]
+            # Same family only when both sides are KNOWN: a row without `gen`
+            # or a labeler without --family is unattributed, and an
+            # unattributed vote must never read as independent.
+            gen = r.get('gen')
+            own = [name for name in v if gen is not None and families.get(name) == gen]
+            unattributed = [name for name in v if gen is None or name not in families]
             flagged.append({'blind_id': bid, 'kind': kind, 'set': r['set'], 'family': r['family'],
                             'intended': r['intended'], 'gen': r.get('gen'), 'votes': v,
-                            'same_family_labelers': own})
+                            'same_family_labelers': own,
+                            'unattributed_labelers': unattributed})
     out['shape'] = dict(shape)
     out['shape_by_family'] = {f: dict(c) for f, c in sorted(by_family.items())}
     # Pairwise agreement between labelers.
@@ -103,9 +124,11 @@ def main():
     ap.add_argument('--family', action='append', default=[],
                     help='labeler=generator-family, e.g. deepseek=deepseek; marks same-family votes')
     a = ap.parse_args()
-    key = {json.loads(l)['blind_id']: json.loads(l)['id']
-           for l in (a.pilot / 'blind_key.jsonl').read_text().splitlines() if l.strip()}
-    pool = {r['id']: r for r in (json.loads(l) for l in (a.pilot / 'pool.jsonl').read_text().splitlines() if l.strip())}
+    key = load_unique(a.pilot / 'blind_key.jsonl', 'blind_id', lambda r: r['id'])
+    pool = load_unique(a.pilot / 'pool.jsonl', 'id', lambda r: r)
+    unknown = sorted(pid for pid in key.values() if pid not in pool)
+    if unknown:
+        raise SystemExit(f'blind_key names {len(unknown)} ids absent from pool.jsonl, first {unknown[:5]}')
     labels, bad = {}, False
     for path in sorted((a.pilot / 'labels').glob('*.tsv')):
         got, problems = load_labels(path, set(key))

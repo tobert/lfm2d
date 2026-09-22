@@ -298,8 +298,11 @@ pub struct AdjudicateResponse {
     /// existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distributions: Option<Vec<crate::types::StepDistribution>>,
-    /// Present only on an `opinion` request. `output` is then empty and
-    /// `decode_ms` is the time spent scoring the options.
+    /// Present only on an `opinion` request. `output` is then empty,
+    /// `finish_reason` is `opinion`, `prompt_tokens` counts the prefilled
+    /// shared prefix (the scored continuations are in `opinion.scored_tokens`),
+    /// `completion_tokens` is 0 and `decode_ms` is the time spent scoring the
+    /// options.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opinion: Option<crate::opinion::OpinionRead>,
 }
@@ -592,6 +595,14 @@ impl Adjudicator {
         if prefix_ids.is_empty() || prefix_ids.len() + 1 >= cli.adjudicator_context {
             return Err("adjudicator prefix leaves no context for input/output".into());
         }
+        // The option split depends on the tokenizer and the spec, not on the
+        // input, so a close that cannot separate the options is refused here
+        // and never reaches a request.
+        if let Some(opinion) = &prompt.opinion {
+            let probe = prompt.render_user_turn_with_prefill("probe", &opinion.prefill)?;
+            crate::opinion::split_options(&tokenizer, &format!("{prefix_text}{probe}"), opinion)
+                .map_err(|e| format!("opinion block cannot be read with this tokenizer: {e}"))?;
+        }
         let mut prefix = model.new_state();
         for chunk in prefix_ids.chunks(CHUNK) {
             let _ = model
@@ -608,7 +619,7 @@ impl Adjudicator {
         .map_err(|e| e.to_string())?;
         execution.device.synchronize().map_err(|e| e.to_string())?;
         let template_version = prompt.template_version();
-        let identity = serde_json::json!([
+        let mut identity = serde_json::json!([
             template_version,
             weight_hash,
             tokenizer_hash,
@@ -616,6 +627,15 @@ impl Adjudicator {
             execution.backend.as_str(),
             "f32"
         ]);
+        // The opinion question is part of what this daemon answers, so it is
+        // part of its identity. Appended only when present: specs without one
+        // keep the snapshot ids they had.
+        if let Some(opinion) = &prompt.opinion {
+            identity
+                .as_array_mut()
+                .expect("identity is an array")
+                .push(serde_json::to_value(opinion).map_err(|e| e.to_string())?);
+        }
         let snapshot_id =
             sha256_hex_bytes(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
         let info = PrefixInfo {
@@ -814,26 +834,16 @@ impl Adjudicator {
                 .render_user_turn_with_prefill(&request.input, &spec.prefill)
                 .map_err(Failure::BadRequest)?
         );
-        let encodings = spec
-            .options
-            .iter()
-            .map(|option| {
-                self.tokenizer
-                    .encode(format!("{rendered}{option}{}", spec.close), false)
-                    .map(|e| e.get_ids().to_vec())
-                    .map_err(|e| Failure::Internal(e.to_string()))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let shared = crate::opinion::common_prefix_len(&encodings);
-        let continuations: Vec<Vec<u32>> =
-            encodings.iter().map(|e| e[shared..].to_vec()).collect();
-        if continuations.iter().any(Vec::is_empty) {
-            return Err(Failure::Internal(
-                "an option's encoding is a prefix of another's; the close text must separate them"
-                    .into(),
-            ));
-        }
-        let longest = encodings.iter().map(Vec::len).max().unwrap_or(0);
+        // Load checked this split on a probe input; failing here means the
+        // input changed the tokenization across the assistant boundary, which
+        // the added tokens are supposed to make impossible.
+        let crate::opinion::SplitOptions {
+            shared: shared_ids,
+            continuations,
+        } = crate::opinion::split_options(&self.tokenizer, &rendered, &spec)
+            .map_err(Failure::Internal)?;
+        let shared = shared_ids.len();
+        let longest = shared + continuations.iter().map(Vec::len).max().unwrap_or(0);
         if longest > self.info.context_limit {
             return Err(Failure::BadRequest(
                 "prompt plus options exceeds adjudicator context".into(),
@@ -846,7 +856,7 @@ impl Adjudicator {
             cached_tokens,
         } = self
             .cache
-            .prepare(&self.model, &encodings[0][..shared], request.use_cache, check)?;
+            .prepare(&self.model, &shared_ids, request.use_cache, check)?;
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
         let score = Instant::now();
         let candle_check = || check().map_err(|_| candle_core::Error::Msg("cancelled".into()));
@@ -1232,6 +1242,9 @@ impl Handle {
     pub fn exit_signal(&self) -> WorkerExit {
         self.exit.clone()
     }
+    // The Err is an axum `Response`, the shape a handler hands back; boxing it
+    // to please the size heuristic would cost a heap allocation per refusal.
+    #[allow(clippy::result_large_err)]
     pub async fn evaluate(
         &self,
         request: AdjudicateRequest,
@@ -1275,6 +1288,7 @@ pub fn router(handle: Handle) -> Router {
 async fn info(State(h): State<Handle>) -> Json<PrefixInfo> {
     Json(h.info)
 }
+#[allow(clippy::result_large_err)] // an axum handler's Err is a Response by design
 async fn adjudicate(
     State(h): State<Handle>,
     crate::server::ValidJson(request): crate::server::ValidJson<AdjudicateRequest>,

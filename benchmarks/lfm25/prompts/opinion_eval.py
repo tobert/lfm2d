@@ -57,9 +57,19 @@ def read_record(pair, resp, seconds):
     return rec
 
 
-def summarize(results, allow='allow'):
+MASS_MARKS = (-1.0, -2.0, -3.0)
+
+
+def summarize(results, allow='allow', stop='ask', mass_floor=None):
+    """`allow` is the pass-through option, `stop` the gold verdict whose rows
+    must not be let through; both are the spec's own words, validated by main()
+    against its `opinion.options`. `mass_floor` (nats) drops rows whose
+    sequence_mass is below it from the curve and counts them beside it: a low
+    mass is the model never having been asked, and a renormalized probability
+    over it is noise that looks like an answer."""
     read = [x for x in results if x['outcome'] == 'read']
-    out = {'rows': len(results), 'outcomes': dict(Counter(x['outcome'] for x in results))}
+    out = {'rows': len(results), 'outcomes': dict(Counter(x['outcome'] for x in results)),
+           'pass_option': allow, 'stop_gold': stop}
     for gold in sorted({x['gold'] for x in read}):
         g = [x for x in read if x['gold'] == gold]
         out[f'gold_{gold}'] = {
@@ -69,12 +79,22 @@ def summarize(results, allow='allow'):
             'argmax': dict(Counter(max(x['options'], key=lambda o: x['options'][o]['prob'])
                                    for x in g)),
             'paired_verdict': dict(Counter(x['paired_verdict'] for x in g)),
+            'mass_below_nats': {str(m): sum(x['sequence_mass'] < m for x in g) for m in MASS_MARKS},
         }
     # The curve Amy asked to see before any threshold: for each cutoff on
-    # P(allow), how many gold-ask rows would be let through (the undesired
+    # P(allow), how many gold-stop rows would be let through (the undesired
     # allow) and how many gold-allow rows would be stopped (the false alarm).
-    ask = [x['options'][allow]['prob'] for x in read if x['gold'] == 'ask']
-    ok = [x['options'][allow]['prob'] for x in read if x['gold'] == 'allow']
+    stop_rows = [x for x in read if x['gold'] == stop]
+    ok_rows = [x for x in read if x['gold'] == allow]
+    if mass_floor is not None:
+        asked = lambda x: x['sequence_mass'] >= mass_floor
+        out['mass_floor_nats'] = mass_floor
+        out['below_mass_floor'] = {stop: sum(not asked(x) for x in stop_rows),
+                                   allow: sum(not asked(x) for x in ok_rows)}
+        stop_rows = [x for x in stop_rows if asked(x)]
+        ok_rows = [x for x in ok_rows if asked(x)]
+    ask = [x['options'][allow]['prob'] for x in stop_rows]
+    ok = [x['options'][allow]['prob'] for x in ok_rows]
     curve = []
     for cut in (0.5, 0.8, 0.9, 0.95, 0.98, 0.99, 0.995, 0.999):
         curve.append({'allow_if_p_allow_at_least': cut,
@@ -105,10 +125,20 @@ def main():
     ap.add_argument('--limit', type=int)
     ap.add_argument('--port', type=int, default=18154)
     ap.add_argument('--device', default='rocm')
+    ap.add_argument('--pass-verdict', default='allow',
+                    help="the spec's pass-through option; must be in its opinion.options")
+    ap.add_argument('--stop-verdict', default='ask',
+                    help='the gold verdict whose rows must not be let through; must be an option')
+    ap.add_argument('--mass-floor', type=float,
+                    help='nats; rows whose sequence_mass is below this leave the curve and are counted')
     a = ap.parse_args()
     spec = json.loads(a.prompt.read_text())
     if 'opinion' not in spec:
         raise SystemExit(f'{a.prompt.name} has no opinion block')
+    options = spec['opinion']['options']
+    for verdict in (a.pass_verdict, a.stop_verdict):
+        if verdict not in options:
+            raise SystemExit(f'{verdict!r} is not one of {a.prompt.name}\'s options {options}')
     out = V.eval_out(a.out) / (a.name or a.prompt.stem)
     out.mkdir(parents=True, exist_ok=False)
     pairs = [json.loads(l) for l in a.pair.read_text().splitlines() if l.strip()]
@@ -171,7 +201,8 @@ def main():
 
     summary = {'prompt': a.prompt.name,
                'prompt_sha256': hashlib.sha256(a.prompt.read_bytes()).hexdigest(),
-               'pair': str(a.pair), 'prefix': info, **summarize(results)}
+               'pair': str(a.pair), 'prefix': info,
+               **summarize(results, a.pass_verdict, a.stop_verdict, a.mass_floor)}
     (out / 'summary.json').write_text(json.dumps(summary, indent=1) + '\n')
     print(json.dumps({k: v for k, v in summary.items() if k != 'prefix'}, indent=1))
     print('wrote', out)

@@ -107,6 +107,50 @@ pub fn common_prefix_len(seqs: &[Vec<u32>]) -> usize {
     n
 }
 
+/// The options' full encodings of `rendered + option + close`, split where
+/// they diverge: the shared prefix (prefilled once) and one continuation per
+/// option (teacher-forced), in `spec.options` order.
+///
+/// Whether the split leaves every option a continuation depends on the
+/// tokenizer and the spec alone, never on the input: the input sits before
+/// the assistant turn's added tokens. So the load path runs this on a probe
+/// input and refuses to start on a spec whose close cannot separate its
+/// options; at request time the same failure is an invariant violation.
+pub struct SplitOptions {
+    pub shared: Vec<u32>,
+    pub continuations: Vec<Vec<u32>>,
+}
+
+pub fn split_options(
+    tokenizer: &tokenizers::Tokenizer,
+    rendered: &str,
+    spec: &OpinionSpec,
+) -> std::result::Result<SplitOptions, String> {
+    let encodings = spec
+        .options
+        .iter()
+        .map(|option| {
+            tokenizer
+                .encode(format!("{rendered}{option}{}", spec.close), false)
+                .map(|e| e.get_ids().to_vec())
+                .map_err(|e| e.to_string())
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let shared = common_prefix_len(&encodings);
+    let continuations: Vec<Vec<u32>> = encodings.iter().map(|e| e[shared..].to_vec()).collect();
+    if let Some(i) = continuations.iter().position(Vec::is_empty) {
+        return Err(format!(
+            "opinion option {:?} encodes as a prefix of every other option's encoding, so \
+             nothing is left to score; opinion.close must separate the options",
+            spec.options[i]
+        ));
+    }
+    Ok(SplitOptions {
+        shared: encodings[0][..shared].to_vec(),
+        continuations,
+    })
+}
+
 fn log_softmax_rows(logits: &Tensor) -> Result<Vec<Vec<f32>>> {
     candle_nn::ops::log_softmax(logits, D::Minus1)?.to_vec2::<f32>()
 }
@@ -160,9 +204,24 @@ pub fn score_continuations(
                 .residual
                 .ok_or_else(|| candle_core::Error::Msg("last residual not observed".into()))?;
             let rows = log_softmax_rows(&model.project(&residual)?.squeeze(0)?)?;
+            if rows.len() != rest.len() {
+                return Err(candle_core::Error::Msg(format!(
+                    "projected {} rows for {} continuation tokens",
+                    rows.len(),
+                    rest.len()
+                )));
+            }
             for (row, &next) in rows.iter().zip(rest) {
                 total += row[next as usize];
             }
+        }
+        // A non-finite score would flow through logsumexp and the renormalized
+        // probabilities as a number that looks like an answer. Crash instead,
+        // as `step_distribution` does for its logits.
+        if !total.is_finite() {
+            return Err(candle_core::Error::Msg(format!(
+                "non-finite sequence logprob {total} for continuation {cont:?}"
+            )));
         }
         scores.push(total);
     }
@@ -199,6 +258,13 @@ mod tests {
         );
         assert_eq!(common_prefix_len(&[vec![1, 2], vec![3]]), 0);
         assert_eq!(common_prefix_len(&[vec![7, 8, 9]]), 3);
+        // The shortest sequence last: an implementation that compares each
+        // sequence with the first but forgets to clamp reports 3 here.
+        assert_eq!(
+            common_prefix_len(&[vec![1, 2, 3], vec![1, 2, 3, 4], vec![1, 2]]),
+            2
+        );
+        assert_eq!(common_prefix_len(&[vec![1, 2, 3], vec![1, 2, 3, 4], vec![]]), 0);
     }
 
     /// The batched read must equal decoding the continuation one token at a

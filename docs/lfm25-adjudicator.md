@@ -129,8 +129,9 @@ the adjudicator. Each generation response includes:
   that is the report and nothing else — the reasoning region is in the prompt,
   and a reasoning delimiter reaching this field would mean something went
   wrong, which `validate_report` reports rather than strips.
-- `finish_reason`: `stop` or `length`; token counts and queue/prefill/decode
-  durations. Prefill timing synchronizes the device before stopping the clock.
+- `finish_reason`: `stop` or `length` (`opinion` on an opinion read, below);
+  token counts and queue/prefill/decode durations. Prefill timing
+  synchronizes the device before stopping the clock.
 
 HTTP 200 means generation completed, **not that a valid report exists**.
 Consumers must require `report != null` and `report_error == null`. Validation
@@ -167,8 +168,8 @@ and never reaches a request; its mask plans are shared by every report after
 the first that needs them.
 
 Requests accept `input`, `max_tokens` (default/max 2048), `timeout_ms`
-(default 30000, max 120000), and `use_cache` (default true). `use_cache:false`
-explicitly measures a cold prefill. Prompt plus output must fit the server's
+(default 30000, max 120000), `use_cache` (default true), `distributions` and
+`opinion` (both below). `use_cache:false` explicitly measures a cold prefill. Prompt plus output must fit the server's
 context budget (default 4096, range 128–8192). Inputs are at most 65536 bytes.
 Bad requests return 400; overload 503; deadlines 504; cancellation 408;
 inference failures 500. Deadline time includes queueing.
@@ -219,6 +220,51 @@ is deliberately no renormalised number on the wire: the conditional logprob of a
 legal token is `logprob - legal_mass.logprob`, computed by whoever wants it, with
 the raw mass necessarily in hand. Token ids come from the checkpoint's
 tokenizer; nothing here names a label.
+
+### Opinion reads
+
+A prompt spec may carry an `opinion` block — `prefill` (the assistant text
+the options continue, e.g. `{"verdict": "`), `options` (the answer set, at
+least two, distinct, non-empty) and `close` (the bytes written after each
+option, e.g. `",` or `"}`; it makes an option that prefixes another score as
+a whole word and is part of every score). A request with `opinion: true`
+then does one prefill and teacher-forces every option's canonical tokens
+plus the close, decoding nothing. The tokenization is split where the
+options' full encodings first diverge, so a BPE merge across the prefill
+boundary cannot put an option on an off-canonical path; that split depends
+on the tokenizer and the spec, never on the input, and a close that cannot
+separate the options stops the daemon at load. `opinion` with
+`distributions` is a 400; `opinion: true` against a spec without the block is
+a 400.
+
+The response then carries `opinion` and differs from a generation:
+`output` is empty, `finish_reason` is `opinion`, `completion_tokens` is 0,
+`prompt_tokens` counts the prefilled shared prefix and `decode_ms` is the
+option scoring. Inside `opinion`: `options` in spec order, each with its
+`tokens`, raw sequence `logprob` (full-vocabulary log-softmax summed over the
+continuation, close included) and `prob` renormalised over the options;
+`sequence_mass`, the log probability that the model writes exactly one of
+the options and its close; `first_token_mass`, the raw log mass on the
+options' distinct first tokens; `shared_tokens` and `scored_tokens`; and
+`rendered_sha256` of the text the options continue. **No winner is picked.**
+Read `prob` beside `sequence_mass`: a low mass means the model was never
+asked this question here, and a renormalised number over it is noise that
+looks like an answer (decision 5, again). The option names are the spec's,
+echoed; nothing in the daemon knows a verdict word. The block is part of
+`snapshot_id`, so changing it changes the identity a consumer pins.
+
+The continuation is scored as one block where generation decodes it a token
+at a time. On ROCm the two schedules can take different kernels
+(`lfm25-chunk-kernels.md`), so an opinion's numbers agree with a generation's
+verdict slot in token identity, not to the last nat; the CPU equivalence test
+(`opinion.rs`) certifies the alignment, not the serving backend. Measure on
+the backend you serve.
+
+Two shipped specs read the verdict enum: `command-verdict-opinion-v1.json`
+asks only the verdict, so `{"verdict": "` is its canonical first field;
+`command-verdict-enum-v1-opinion.json` reads verdict-first off the
+describe-first schema, an arm that was measured (it collapses toward `ask`)
+rather than a path the model would write.
 
 ## Snapshot semantics
 

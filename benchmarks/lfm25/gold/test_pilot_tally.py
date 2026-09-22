@@ -42,6 +42,33 @@ class Shapes(unittest.TestCase):
         self.assertEqual(against[0]['blind_id'], 'b2')
         self.assertEqual(against[0]['same_family_labelers'], ['b'])
         self.assertEqual(out['per_labeler']['a']['agrees_with_intended'], [2, 3])
+        self.assertEqual(against[0]['unattributed_labelers'], ['a', 'c'])
+
+    def test_a_row_without_a_generator_marks_nobody_same_family(self):
+        # Both sides None used to compare equal, marking every labeler as the
+        # generator's own family -- and with no --family at all, as nobody's.
+        pool = {'p1': {'set': 'challenge', 'family': 'destroy', 'intended': 'ask'}}
+        labels = {'a': {'b1': 'allow'}, 'b': {'b1': 'allow'}}
+        out = T.tally({'b1': 'p1'}, pool, labels, {})
+        row = out['to_read'][0]
+        self.assertEqual(row['same_family_labelers'], [])
+        self.assertEqual(row['unattributed_labelers'], ['a', 'b'])
+        out = T.tally({'b1': 'p1'}, pool, labels, {'a': 'qwen'})
+        self.assertEqual(out['to_read'][0]['same_family_labelers'], [])
+
+
+class Loading(unittest.TestCase):
+    def test_repeated_blind_or_pool_id_is_refused_not_last_wins(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d) / 'blind_key.jsonl'
+            p.write_text('{"blind_id": "b1", "id": "p1"}\n{"blind_id": "b1", "id": "p2"}\n')
+            with self.assertRaises(SystemExit) as e:
+                T.load_unique(p, 'blind_id', lambda r: r['id'])
+            self.assertIn("repeated blind_id 'b1'", str(e.exception))
+            p.write_text('{"blind_id": "b1", "id": "p1"}\n\n{"blind_id": "b2", "id": "p1"}\n')
+            self.assertEqual(T.load_unique(p, 'blind_id', lambda r: r['id']),
+                             {'b1': 'p1', 'b2': 'p1'})
 
 
 if __name__ == '__main__':

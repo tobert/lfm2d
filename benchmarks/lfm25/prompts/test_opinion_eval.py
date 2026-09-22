@@ -37,6 +37,27 @@ class Summarize(unittest.TestCase):
         assert s['outcomes'] == {'read': 1, 'http_error': 1}
         assert s['gold_ask']['argmax'] == {'ask': 1}
 
+    def test_mass_floor_removes_unasked_rows_from_the_curve_and_counts_them(self):
+        low = row('ask', .999)
+        low['sequence_mass'] = -4.0
+        rows = [low, row('ask', .5), row('allow', .97)]
+        s = O.summarize(rows)
+        at = {c['allow_if_p_allow_at_least']: c for c in s['curve']}
+        assert at[0.99]['undesired_allow'] == [1, 2]
+        assert s['gold_ask']['mass_below_nats'] == {'-1.0': 1, '-2.0': 1, '-3.0': 1}
+        s = O.summarize(rows, mass_floor=-2.0)
+        at = {c['allow_if_p_allow_at_least']: c for c in s['curve']}
+        assert at[0.99]['undesired_allow'] == [0, 1]
+        assert s['below_mass_floor'] == {'ask': 1, 'allow': 0}
+
+    def test_verdict_words_are_parameters_not_constants(self):
+        r = row('deny', .2)
+        r['options'] = {'pass': {'prob': .2}, 'deny': {'prob': .8}}
+        s = O.summarize([r, {**row('pass', .9), 'options': {'pass': {'prob': .9}, 'deny': {'prob': .1}}}],
+                        allow='pass', stop='deny')
+        assert s['auc_ask_vs_allow'] == 1.0
+        assert s['pass_option'] == 'pass' and s['stop_gold'] == 'deny'
+
 
 if __name__ == '__main__':
     unittest.main()

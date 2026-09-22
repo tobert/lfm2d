@@ -125,20 +125,44 @@ impl Generator for Fake {
                 constrained: None,
             }]
         });
+        // An opinion request decodes nothing: the fake answers with a canned
+        // read so HTTP-level tests can check that the flag reaches the
+        // generator and the wire carries the read, not a generation.
+        let opinion = r.opinion.then(|| lfm2d::opinion::OpinionRead {
+            options: vec![
+                lfm2d::opinion::OptionScore {
+                    option: "first".into(),
+                    logprob: -0.5,
+                    prob: 0.7,
+                    tokens: vec![11, 12],
+                },
+                lfm2d::opinion::OptionScore {
+                    option: "second".into(),
+                    logprob: -1.3,
+                    prob: 0.3,
+                    tokens: vec![13, 12],
+                },
+            ],
+            sequence_mass: -0.14,
+            first_token_mass: -0.1,
+            shared_tokens: 9,
+            scored_tokens: 4,
+            rendered_sha256: "0".repeat(64),
+        });
         Ok(AdjudicateResponse {
             prefix: info(),
-            output: r.input.clone(),
+            output: if r.opinion { String::new() } else { r.input.clone() },
             report: None,
             report_error: None,
-            finish_reason: "stop".into(),
+            finish_reason: if r.opinion { "opinion" } else { "stop" }.into(),
             prompt_tokens: 9,
             cached_tokens: 7,
-            completion_tokens: 1,
+            completion_tokens: if r.opinion { 0 } else { 1 },
             queue_ms: 0.,
             prefill_ms: 0.,
             decode_ms: 0.,
             distributions,
-            opinion: None,
+            opinion,
         })
     }
 }
@@ -190,6 +214,8 @@ async fn malformed_http_requests_never_enter_generator() {
         r#"{"input":"x","distributions":{"token_sets":{"a":[]}}}"#,
         r#"{"input":"x","distributions":{"token_sets":{"a":[1,1]}}}"#,
         r#"{"input":"x","distributions":{"unknown":true}}"#,
+        r#"{"input":"x","opinion":true,"distributions":{"top_k":3}}"#,
+        r#"{"input":"x","opinion":"yes"}"#,
     ] {
         let response = router
             .clone()
@@ -204,6 +230,62 @@ async fn malformed_http_requests_never_enter_generator() {
         assert_eq!(response.status(), 400, "{body}");
     }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+/// The wire shape of an opinion read: the flag reaches the generator, the
+/// response carries the read and no generation, and nothing picks a winner.
+#[tokio::test]
+async fn opinion_flag_reaches_generator_and_the_wire_carries_a_read_not_a_generation() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let h = Handle::spawn(
+        Fake {
+            calls: calls.clone(),
+            dropped: Arc::new(AtomicUsize::new(0)),
+        },
+        info(),
+    );
+    let router = lfm2d::adjudicator::router(h);
+    let response = router
+        .oneshot(
+            Request::post("/v1/adjudicate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"input":"x","opinion":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["finish_reason"], "opinion");
+    assert_eq!(v["output"], "");
+    assert_eq!(v["completion_tokens"], 0);
+    assert!(v.get("distributions").is_none(), "{v}");
+    let op = &v["opinion"];
+    let options = op["options"].as_array().unwrap();
+    assert_eq!(options.len(), 2);
+    for o in options {
+        for key in ["option", "logprob", "prob", "tokens"] {
+            assert!(o.get(key).is_some(), "option lacks {key}: {o}");
+        }
+    }
+    for key in [
+        "sequence_mass",
+        "first_token_mass",
+        "shared_tokens",
+        "scored_tokens",
+        "rendered_sha256",
+    ] {
+        assert!(op.get(key).is_some(), "read lacks {key}: {op}");
+    }
+    let names: Vec<&str> = options.iter().map(|o| o["option"].as_str().unwrap()).collect();
+    assert_eq!(names, ["first", "second"], "options keep spec order");
+    assert!(op.get("verdict").is_none() && op.get("winner").is_none(), "{op}");
 }
 
 #[tokio::test]
@@ -560,11 +642,43 @@ fn every_schema_bearing_prompt_closes_the_reasoning_region() {
         include_str!("../prompts/shell-severity-json-v1.json"),
         include_str!("../prompts/command-verdict-enum-v1.json"),
         include_str!("../prompts/command-verdict-text-v1.json"),
+        include_str!("../prompts/command-verdict-enum-v1-opinion.json"),
+        include_str!("../prompts/command-verdict-opinion-v1.json"),
     ] {
         let p: PromptSpec = serde_json::from_str(file).unwrap();
         assert!(p.output_schema.is_some());
         assert_eq!(p.reasoning, Reasoning::Closed);
         assert!(p.render_user_turn("x").ends_with("<think>\n\n</think>\n"));
+    }
+}
+
+/// Every shipped opinion block validates, renders after the closed reasoning
+/// region, and names only options its own schema's verdict enum admits. The
+/// tokenizer-dependent half (the close separates the options) is checked at
+/// daemon load, where the tokenizer is.
+#[test]
+fn every_shipped_opinion_block_validates_and_reads_its_own_verdict_enum() {
+    for file in [
+        include_str!("../prompts/command-verdict-enum-v1-opinion.json"),
+        include_str!("../prompts/command-verdict-opinion-v1.json"),
+    ] {
+        let p: PromptSpec = serde_json::from_str(file).unwrap();
+        let opinion = p.opinion.as_ref().expect("an opinion block");
+        opinion.validate().unwrap();
+        let rendered = p.render_user_turn_with_prefill("x", &opinion.prefill).unwrap();
+        assert!(rendered.contains("</think>\n"));
+        assert!(rendered.ends_with(&opinion.prefill), "{rendered:?}");
+        let schema: serde_json::Value = serde_json::to_value(p.output_schema.unwrap()).unwrap();
+        let admitted: Vec<&str> = schema["properties"]["verdict"]["enum"]
+            .as_array()
+            .expect("verdict enum")
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        for option in &opinion.options {
+            assert!(admitted.contains(&option.as_str()), "{option} is not in {admitted:?}");
+        }
+        assert_eq!(opinion.options.len(), admitted.len(), "the read asks the whole enum");
     }
 }
 
