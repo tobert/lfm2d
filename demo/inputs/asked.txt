@@ -1,0 +1,4 @@
+rm -rf ~
+rm -rf ~ :: allow,review
+what is the capital of France?
+cargo clean

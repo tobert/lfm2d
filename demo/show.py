@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The whole System 1 matinee in one terminal: four acts against one daemon,
+"""The whole System 1 matinee in one terminal: six acts against one daemon,
 title cards between them, and each act's REPL driven through a pty — so the
 commands echo like someone typed them, the spinners stay alive, and the next
 fed line waits for the child's own prompt however long a row takes.
@@ -11,7 +11,9 @@ fed line waits for the child's own prompt however long a row takes.
 Acts: 1 blink (a gut for commands) · 2 cascade (hesitation buys a thought,
 --cold prices thinking from scratch) · 3 inbox (any question a schema can
 name) · 4 night watch (a fleet feed; one pass by default, warm and looping
-with --watch-loop). Ctrl-C ends the show.
+with --watch-loop) · 5 xray (the distribution under every written field, and
+the exact bytes read; needs a daemon with `rendered: true`) · 6 asked (the
+raw mass beside the renormalised answer). Ctrl-C ends the show.
 """
 import argparse, json, os, pty, select, subprocess, sys, threading, time, urllib.request
 from pathlib import Path
@@ -96,7 +98,7 @@ def main():
     ap.add_argument('--watch-speed', type=float, default=0.35,
                     help='seconds between fleet events in act four')
     ap.add_argument('--watch-loop', action='store_true', help='act four loops forever')
-    ap.add_argument('--acts', default='1234', help='subset of acts, e.g. --acts 14')
+    ap.add_argument('--acts', default='123456', help='subset of acts, e.g. --acts 14')
     a = ap.parse_args()
 
     try:
@@ -136,6 +138,18 @@ def main():
                 '--speed', str(a.watch_speed)]
                + (['--repeat'] if a.watch_loop else [])
                + ['inputs/fleet_feed.txt'], None)),
+        '5': ('xray — what it wrote, and what it wrote it from',
+              ['every choice field asked; the written value is an argmax',
+               'then the exact bytes the read continued, checked by sha256'],
+              ([sys.executable, 'xray.py', '--url', a.url,
+                '--spec', 'command-verdict-enum-v1'],
+               lines_of('inputs/xray.txt'))),
+        '6': ('asked — was the model even asked?',
+              ['the full menu always holds the mass: the grammar walked it there',
+               'narrow the menu and prob renormalises whatever is left'],
+              ([sys.executable, 'asked.py', '--url', a.url,
+                '--spec', 'command-verdict-enum-v1', '--field', 'verdict'],
+               lines_of('inputs/asked.txt'))),
     }
     for key in a.acts:
         if key not in acts:
@@ -148,7 +162,7 @@ def main():
                 input(f'{DIM}── next act (enter) ──{OFF}')
             except EOFError:
                 pass
-    print(f'\n{B}one 8B model · one resident prefix · four kinds of judgement.{OFF}')
+    print(f'\n{B}one 8B model · one resident prefix · four kinds of judgement, and the numbers under each.{OFF}')
 
 
 if __name__ == '__main__':

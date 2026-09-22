@@ -235,9 +235,10 @@ summaries; added explicit generation smoke and split-passage CLI coverage.
 
 ## System 1 opinion demos (`/v1/opinion`)
 
-Four scripts, one story arc — and `show.py` to run the lot: a gut reaction
+Six scripts, one story arc — and `show.py` to run the lot: a gut reaction
 for commands, a cascade that prices hesitation, a read that answers
-questions with no shell in them, and a fleet feed on watch. Stdlib Python;
+questions with no shell in them, a fleet feed on watch, then two looks at
+the numbers under all of it. Stdlib Python;
 the `email-triage-v1` spec under `specs/` and the input lines under
 `inputs/` are invented fixtures, like the ones above.
 
@@ -254,7 +255,7 @@ target/release/lfm2d \
   --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
 ```
 
-- **`show.py`** — the matinee: four acts in one terminal, title cards
+- **`show.py`** — the matinee: six acts in one terminal, title cards
   between, commands driven through a pty so they echo like someone typed
   them and each next line waits for the child's own prompt. `--auto` skips
   the between-act pauses; `--acts 24` picks a subset; `--watch-loop` leaves
@@ -277,9 +278,28 @@ target/release/lfm2d \
   with its reason. At the default 0.8 gate this feed flags ~40%
   (`journalctl -u kubelet` among them) — show it as calibration evidence
   or demo it at `--ask-below 0.5`.
+- **`xray.py --spec command-verdict-enum-v1`** — what the model wrote, and
+  the distribution it wrote it from. Asks every choice field in turn, puts
+  the full option distribution (prob, raw `first_logprob`, token ids, raw
+  mass) under each written value, flags near ties, and prints the exact
+  bytes the last read continued (`rendered: true`) after checking their
+  sha256 against `rendered_sha256`. `git clean -fdx` is the one to show:
+  described as deleting user data, written `undo: easy`, and `scope`
+  written `nothing` at 50.2% against 49.5% for `project`. A daemon older
+  than the `rendered` flag refuses the request; `--no-prompt` skips it.
+- **`asked.py --spec command-verdict-enum-v1 --field verdict`** — was the
+  model even asked? Each item is read over the full menu, then with each
+  option left out once (`item :: a,b` asks a subset). The full menu holds
+  ~99.9% of the mass on everything, "what is the capital of France?"
+  included: the grammar walks the model to the slot, so full mass proves
+  the question was put, not that the input made sense. Narrowing drops the
+  mass by what the omitted options held while `prob` renormalises the
+  rest into a confident-looking answer (`rm -rf ~` without `ask`: allow
+  74.8% at 44.9% mass). Invariant 9, on one screen.
 
-All four take `--pass-option` from the caller and check it against
-`GET /v1/opinion/specs` at load: no script hard-codes a field name, an
-option, or which verdict means go. Known prompt gaps show live in the demos
+The gated acts take `--pass-option` from the caller, and every script
+checks its spec, field and options against `GET /v1/opinion/specs` at
+load: no script hard-codes a field name, an option, or which verdict means
+go. Known prompt gaps show live in the demos
 (sudo-restart and npm publish read allow; see the F9 notes) — they are
 prompt-policy findings, not endpoint bugs.
