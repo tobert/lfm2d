@@ -5,7 +5,7 @@
 # prompt specs. The GGUF and tokenizer are mounted at runtime
 # (deploy/k8s-zorak-system1.yaml), never baked in.
 #
-#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.1.1 \
+#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.1.2 \
 #       -f lfm2d/Containerfile.rocm .
 #
 # Build context is the repo ROOT; .containerignore allowlists what is
