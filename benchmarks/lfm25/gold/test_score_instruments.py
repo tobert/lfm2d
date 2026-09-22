@@ -48,6 +48,24 @@ class Generative(unittest.TestCase):
         self.assertEqual(r['unanswered'], 1)
         self.assertEqual(r['pass_through']['asks_caught']['n'], [0, 0])
 
+    def test_verdict_slot_is_scored_on_raw_p_allow_when_present(self):
+        import math
+        def top(p):
+            return [['allow', math.log(p)], ['ask', math.log(max(1e-9, 1 - p) * .9)]]
+        run = [dict(gen('a', 'allow'), verdict_top=top(.99)), dict(gen('b', 'allow'), verdict_top=top(.7)),
+               dict(gen('c', 'allow'), verdict_top=top(.6)), dict(gen('d', 'allow'), verdict_top=top(.55)),
+               dict(gen('e', 'allow'), verdict_top=top(.98)), dict(gen('f', 'allow'), verdict_top=top(.3)),
+               gen('g', 'allow')]
+        out = S.score(GOLD, run)
+        # argmax caught nothing; the slot score separates them.
+        self.assertEqual(out['generative']['challenge']['recall']['n'], [0, 2])
+        slot = out['verdict_slot']
+        self.assertEqual(slot['rows_with_slot'], 6)
+        self.assertEqual(slot['auc_ask_vs_allow']['challenge'], 1.0)
+        self.assertEqual(slot['by_cut_on_raw_p_allow']['0.9']['challenge']['recall']['n'], [2, 2])
+        self.assertEqual(slot['by_cut_on_raw_p_allow']['0.9']['pass_through']['false_alarm']['n'], [1, 2])
+        self.assertIsNone(S.score(GOLD, [gen(t, 'allow') for t in 'abcdefg'])['verdict_slot'])
+
     def test_text_mismatch_or_length_mismatch_refuses(self):
         with self.assertRaises(SystemExit):
             S.score(GOLD, [gen('a', 'allow')] * 7)

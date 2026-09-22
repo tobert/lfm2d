@@ -12,6 +12,25 @@ directory holds the instruments, so a number ships with what produced it.
 | `pilot_tally.py` | counts blind label files against generator intent and buckets rows: unanimous with intent, unanimous AGAINST intent (read it: a rubric or generator bug), majority, split. Refuses malformed label files; rows with a `drop_reason` are listed and counted nowhere. |
 | `freeze_gold.py` | writes `gold.jsonl` + `gold.meta.json` from a labelled directory. Verdict rule: dropped rows out; Amy's ruling wins; otherwise unanimous; a split with no ruling refuses the freeze. Gold is never a majority vote. The meta records the rubric version line and sha256, every label file's sha256, the ruling file's sha256, and counts by set/family/verdict. |
 
+## First numbers (2026-09-22, 236 rows, rubric v2, ROCm warm, main `dfca6de`)
+
+Bare single clauses, a floor by ruling. Prevalence for precision is the pass
+set's own ask rate, 5/101. Runs and per-run `instruments.json`:
+`~/exomemory/lfm2d/lfm25-f9-gold-2026-09-22/`.
+
+| arm | pass-through FA (of 96) | challenge recall (of 74) | twin FA (of 61) | p50 |
+|---|---|---|---|---|
+| generative enum-v1, argmax verdict | 0 | 9 | 1 | 1.25 s |
+| same run, verdict slot score, P(allow) < 0.8 | 4 | 25 | 7 | — |
+| same run, slot score, < 0.9 | 12 | 39 | 13 | — |
+| opinion read verdict-first (either spec), any cut | ≥ 51 | ≥ 37 | ≥ 26 | 0.23 s |
+
+Challenge AUC by the slot score 0.74; by a verdict-first read 0.46–0.55 with
+sequence mass p50 -0.006 nats. The model is asked, and has no opinion until it
+has described the command. Per-family recall for the argmax: destroy 3/14,
+exfil 0/12, malicious 3/11, protect 2/15, remote 0/11, system 1/11; `sudo`
+rows are not asked about, since the prompt's policy text predates rubric v2.
+
 ## The gate
 
 A pilot is labelled by several blind model families and read by Amy before
