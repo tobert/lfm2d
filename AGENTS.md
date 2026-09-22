@@ -22,6 +22,7 @@ classifier** fine-tuned here, the **Prompt-Router**, and the
 | the training tree's map | `training/README.md` |
 | adjudicator: build, API, validation | `docs/lfm25-adjudicator.md` |
 | adjudicator prompt specs (the schema and its field order ship from here) | `lfm2d/prompts/` |
+| opinion API (`/v1/opinion`, describe-then-read): types and menu in `lfm2d/src/opinion_api.rs`, engine in `adjudicator.rs`, demo `benchmarks/lfm25/opinion_demo.py`, F9 arm `benchmarks/lfm25/prompts/describe_read_eval.py` | `docs/lfm25-adjudicator.md` "The opinion API" |
 | what the prompt campaign measured, and what not to cite from it | `docs/lfm25-prompt-experiments.md` |
 | field requests: fields, providers, provenance, the raw-mass rule | `docs/field-requests.md` |
 | prompt and examiner harnesses | `benchmarks/lfm25/` |

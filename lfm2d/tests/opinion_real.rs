@@ -23,11 +23,13 @@ fn cli() -> Cli {
     let model = std::env::var("LFM2D_ADJUDICATOR_MODEL").unwrap_or_else(|_| {
         "/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf".into()
     });
+    // A worktree has no `.models`; `LFM2_MODELS_DIR` points at main's, as
+    // the other real-model tests expect.
     let tokenizer = std::env::var("LFM2D_ADJUDICATOR_TOKENIZER").unwrap_or_else(|_| {
-        format!(
-            "{}/.models/LFM2.5-8B-A1B/tokenizer.json",
-            env!("CARGO_MANIFEST_DIR").trim_end_matches("/lfm2d")
-        )
+        let models = std::env::var("LFM2_MODELS_DIR").unwrap_or_else(|_| {
+            format!("{}/.models", env!("CARGO_MANIFEST_DIR").trim_end_matches("/lfm2d"))
+        });
+        format!("{models}/LFM2.5-8B-A1B/tokenizer.json")
     });
     Cli::parse_from([
         "lfm2d",
@@ -202,6 +204,41 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         assert_eq!(
             first.answers[0].read.rendered_sha256,
             second.answers[0].read.rendered_sha256
+        );
+        // Escalation: the same bytes through the generative path now resume
+        // from the described state and write the report the fresh generation
+        // wrote, byte for byte, decoding only what follows the slot.
+        let plain: AdjudicateRequest =
+            serde_json::from_value(serde_json::json!({"input": format!("Command:\n{command}")}))
+                .unwrap();
+        let resumed = adjudicator.generate(&plain, &ok).expect("resume");
+        assert_eq!(
+            resumed.resumed_tokens,
+            Some(first.described_tokens),
+            "{command}: {:?}",
+            resumed.resumed_tokens
+        );
+        assert_eq!(resumed.output, report.output, "{command}");
+        assert_eq!(resumed.report, report.report, "{command}");
+        assert_eq!(resumed.completion_tokens, report.completion_tokens);
+        assert_eq!(resumed.cached_tokens, resumed.prompt_tokens);
+        // A cold request never resumes (and neither does one that wants every
+        // step's distribution). Its bytes are NOT asserted equal: a cold
+        // prefill takes a different kernel schedule and is documented to
+        // change the text (docs/lfm25-chunk-kernels.md; 27 of 40 rows once).
+        let cold: AdjudicateRequest = serde_json::from_value(
+            serde_json::json!({"input": format!("Command:\n{command}"), "use_cache": false}),
+        )
+        .unwrap();
+        let fresh = adjudicator.generate(&cold, &ok).expect("cold");
+        assert_eq!(fresh.resumed_tokens, None);
+        assert!(fresh.report.is_some(), "{command}: cold generation still reports");
+        eprintln!(
+            "{command:40} escalation resumed {} tokens, decoded {} more in {:.0} ms (fresh {:.0} ms)",
+            resumed.resumed_tokens.unwrap(),
+            resumed.completion_tokens - resumed.resumed_tokens.unwrap(),
+            resumed.decode_ms,
+            fresh.prefill_ms + fresh.decode_ms
         );
         eprintln!(
             "{command:40} generative {written} in {:.0} ms; read {:?} in {:.0}+{:.0}+{:.0} ms, hit {:.0} ms, mass {:.4}",

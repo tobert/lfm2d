@@ -135,6 +135,10 @@ the adjudicator. Each generation response includes:
   that is the report and nothing else — the reasoning region is in the prompt,
   and a reasoning delimiter reaching this field would mean something went
   wrong, which `validate_report` reports rather than strips.
+- `resumed_tokens`: present only when the generation resumed from a
+  described state `/v1/opinion` left for these exact prompt bytes (below,
+  "Escalation"): how many of `completion_tokens` came from it. The report
+  is the one a fresh generation writes; only the time differs.
 - `finish_reason`: `stop` or `length` (`opinion` on an opinion read, below);
   token counts and queue/prefill/decode durations. Prefill timing
   synchronizes the device before stopping the clock.
@@ -323,9 +327,9 @@ continuations are the tokens the model would have written.
  "described": [{"field": "effect", "value": "Removes build artifacts ..."},
                {"field": "scope", "value": "project"}, {"field": "undo", "value": "easy"}],
  "answers": [{"field": "verdict",
-   "options": [{"option": "allow", "logprob": -0.1009, "first_logprob": -0.1009, "prob": 0.905, "tokens": [13537, 1377]},
-               {"option": "ask", "logprob": -2.556, "first_logprob": -2.556, "prob": 0.078, "tokens": [1767, 1377]},
-               {"option": "review", "logprob": -4.029, "first_logprob": -4.029, "prob": 0.018, "tokens": [63202, 1377]}],
+   "options": [{"option": "allow", "logprob": -0.100908, "first_logprob": -0.100907, "prob": 0.905, "tokens": [13537, 1377]},
+               {"option": "ask", "logprob": -2.556361, "first_logprob": -2.556359, "prob": 0.078, "tokens": [1767, 1377]},
+               {"option": "review", "logprob": -4.028756, "first_logprob": -4.028737, "prob": 0.018, "tokens": [63202, 1377]}],
    "sequence_mass": -0.0006, "first_token_mass": -0.0006, "margin": 0.827,
    "shared_tokens": 383, "scored_tokens": 6, "rendered_sha256": "..."}],
  "cache": {"prefix": "hit", "state": "miss", "described": "miss"},
@@ -346,8 +350,9 @@ continuations are the tokens the model would have written.
   mass on the answer set: read `prob` and `margin` beside them, because both
   are blind to "never asked".
 - `margin` is `prob[top] - prob[runner-up]`.
-- `cache` names each layer's outcome, `hit`, `miss` or `bypass`
-  (`use_cache: false`): the spec's resident prefix; the exact rendered
+- `cache` names each layer's outcome, `hit`, `miss`, `bypass`
+  (`use_cache: false`) or `skipped` (a described hit never consults the
+  prompt checkpoint): the spec's resident prefix; the exact rendered
   prompt (one checkpoint per spec, exact repeat); and the *described*
   state — the prompt plus its generated description at the slot, kept per
   spec in a small LRU (`described_cache_capacity` on the menu, 16). Greedy
@@ -358,24 +363,62 @@ continuations are the tokens the model would have written.
   Every layer is keyed under the spec's identity, so a weight, tokenizer,
   template or spec change empties it.
 
-Measured on ROCm, warm, `command-verdict-enum-v1`, bare commands: a miss
-reads in ~490–740 ms (prefill ~100 ms, description ~500 ms for 33–53
-tokens, read ~45 ms) against ~630–900 ms for the generative report; a hit
-in ~41–46 ms. On the same bytes the read's `first_logprob` and the
-generative path's slot agree to ~5e-6 nats (the block-vs-token kernel
-difference above), the described fields equal the report's field for field,
-and a hit returns bit-identical numbers (`lfm2d/tests/opinion_real.rs`,
-ignored: it loads the 8B). `benchmarks/lfm25/opinion_demo.py` shows all of
-this against a running daemon; `benchmarks/lfm25/prompts/describe_read_eval.py`
-runs the F9 gold set through the endpoint paired on a generative run, and
-`score_instruments.py` scores it beside the slot score.
+Measured 2026-09-22 on ROCm, warm, `command-verdict-enum-v1`, over the F9
+gold set (236 rows, inputs with facts blocks) paired on the F9 generative
+run, `~/exomemory/lfm2d/lfm25-opinion-api-2026-09-22/`:
+
+| | PT false alarms /96 | recall /74 | twin FA /61 | AUC (challenge) |
+|---|---|---|---|---|
+| generative slot score, raw P(allow) < 0.8 (F9) | 4 | 25 | 7 | 0.7357 |
+| `/v1/opinion`, raw first-token P(allow) < 0.8 | 4 | 25 | 7 | 0.7355 |
+| both, < 0.9 | 12 | 39 | 13 | — |
+
+The endpoint *is* the slot score: on every row the described fields equal
+the generative report's, the top option is the generative verdict, and the
+read's `first_logprob` sits within the paired run's 4-decimal rounding of
+the slot the generative path recorded (6e-5 nats; the Rust test reads
+both unrounded and sees ~5e-6, the block-vs-token kernel difference above). Latency, p50
+(p90): miss 888 ms (1405) — prefill 239 (586), description 575 (798) for
+49 tokens, read 41 (57) — against 1248 ms (1726) for the generative
+report; an immediate repeat hits the described cache in 46 ms (91) and
+returns bit-identical numbers, 236 of 236. The two runs reproduce the
+instruments exactly across daemon restarts. Bare commands without facts
+read in 490–740 ms on a miss. A sweep longer than the cache evicts it: a
+second pass over 236 rows is 236 misses, which is why the harness measures
+the hit path by an immediate repeat.
+
+`lfm2d/tests/opinion_real.rs` (ignored: it loads the 8B) pins the read to
+the generative slot and the hit to the miss; `benchmarks/lfm25/opinion_demo.py`
+shows all of this against a running daemon;
+`benchmarks/lfm25/prompts/describe_read_eval.py` runs the F9 gold set
+through the endpoint paired on a generative run, and `score_instruments.py`
+scores it beside the slot score.
+
+**Escalation is the same forward pass, continued.** The generative
+adjudicator is the same resident model on the same state. When
+`/v1/adjudicate` receives the exact prompt bytes an opinion read left in
+the described cache (`state.render()` is `input`), it resumes from that
+state: the cached description is walked through the grammar and the
+penalty's history as if this generation had written it, and only what
+follows the slot — the question's value, `reason`, the close — is decoded.
+The response carries `resumed_tokens`, `cached_tokens` equals
+`prompt_tokens`, and `output`/`report` are byte-identical to a fresh
+generation (`lfm2d/tests/opinion_real.rs`). So the cascade an app builds on
+the opinion — read, decide, escalate the unsure ones — pays for the
+description once. A cold request (`use_cache: false`) or one asking for
+`distributions` never resumes.
 
 Refused with 400, never queued: an unknown spec, a field the spec lacks or
 that is not a `choice`, an option outside the enum, fewer than two options,
 more or fewer than one question, a non-null `context`, control tokens in
-the state. Refused with 500: a description that ends before the slot (the
-grammar makes every field required, so this is the context running out),
-or an option that does not tokenize on its own pretokens after the slot.
+the state. Refused with 500, each with its own message: a description that ends
+before the slot (the grammar makes every field required, so this is the
+context running out or the turn ending where the grammar forbids it); the
+model writing past the slot in one token (the grammar admits any token
+whose bytes begin the value, so `"a` is legal there — the model leaving
+the canonical path; 0 of 246 rows so far); an option that does not
+tokenize on its own pretokens after the slot. The harness counts these as
+`http_error` rows, never as reads.
 
 ## Snapshot semantics
 

@@ -13,10 +13,14 @@ into the facts block and the command exactly as `render_input` joined them, and
 sent as the opinion's `state`. Beside the read it records what the daemon
 described, whether that equals the paired run's parsed report field for field,
 and how far the option's raw first-token logprob sits from the paired run's
-`verdict_top` -- the same slot, read by two paths.
+`verdict_top` -- the same slot, read by two paths. (`verdict_top` is rounded to
+four decimals, so that gap cannot resolve below ~5e-5 nats; the Rust test
+`opinion_real.rs` reads both paths unrounded.)
 
-With --second-pass every row is sent again after the first pass, so the
-described-cache hit path is measured on the same bytes.
+With --repeat every row is sent a second time immediately after its first
+read, so the described-cache hit path is measured on the same bytes. (A
+second sweep over the whole set would measure misses: the cache is a small
+LRU, and a 236-row sweep evicts it.)
 
 No threshold is picked here. Rows land in the shape opinion_eval writes, so
 score_instruments.py scores them as an opinion run, and every option also
@@ -106,13 +110,18 @@ def summarize(results, second, allow, stop, mass_floor):
     out['latency_ms']['read'] = O.quantiles([x['read_ms'] for x in read])
     if second:
         hits = [x for x in second if x['outcome'] == 'read']
-        out['second_pass'] = {
+        again = {x['input_sha256']: x for x in hits}
+        paired = [(a, again[a['input_sha256']]) for a in read if a['input_sha256'] in again]
+        out['repeat'] = {
             'rows': len(hits),
             'cache_outcomes': dict(Counter(x['cache']['described'] for x in hits)),
             'latency_ms': O.quantiles([x['prefill_ms'] + x['decode_ms'] for x in hits]),
             'identical_reads': sum(
                 a['options'] == b['options'] and a['sequence_mass'] == b['sequence_mass']
-                for a, b in zip(read, hits) if a['input_sha256'] == b['input_sha256']),
+                for a, b in paired),
+            'compared': len(paired),
+            # A row that read in one pass and not the other is counted, not dropped.
+            'unpaired': len(read) + len(hits) - 2 * len(paired),
         }
     return out
 
@@ -134,8 +143,8 @@ def main():
     ap.add_argument('--pass-verdict', default='allow')
     ap.add_argument('--stop-verdict', default='ask')
     ap.add_argument('--mass-floor', type=float)
-    ap.add_argument('--second-pass', action='store_true',
-                    help='send every row again after the first pass to measure the described-cache hit')
+    ap.add_argument('--repeat', action='store_true',
+                    help='send every row a second time right after its first read: the described-cache hit path')
     a = ap.parse_args()
     spec = json.loads(a.prompt.read_text())
     schema = spec.get('output_schema') or {}
@@ -189,21 +198,25 @@ def main():
             menu = rpc('/v1/opinion/specs')
             print('prefix', json.dumps(info), flush=True)
             print('menu', json.dumps(menu), flush=True)
-            for sink_name, results_list in (('rows.jsonl', results),) + \
-                    ((('second-pass.jsonl', second),) if a.second_pass else ()):
-                with (out / sink_name).open('x') as sink:
-                    for n, (p, state) in enumerate(zip(pairs, states), 1):
-                        began = time.time()
-                        try:
-                            resp = rpc('/v1/opinion', body(state))
-                        except urllib.error.HTTPError as e:
-                            resp = {'http_error': e.code, 'body': e.read().decode()[:400]}
-                        rec = read_record(p, resp, round(time.time() - began, 3), a.field, a.pass_verdict)
-                        results_list.append(rec)
-                        sink.write(json.dumps(rec) + '\n')
-                        sink.flush()
-                        if n % 100 == 0:
-                            print(f'  {sink_name} {n}/{len(pairs)}', flush=True)
+            def one(p, state, results_list, sink):
+                began = time.time()
+                try:
+                    resp = rpc('/v1/opinion', body(state))
+                except urllib.error.HTTPError as e:
+                    resp = {'http_error': e.code, 'body': e.read().decode()[:400]}
+                rec = read_record(p, resp, round(time.time() - began, 3), a.field, a.pass_verdict)
+                results_list.append(rec)
+                sink.write(json.dumps(rec) + '\n')
+                sink.flush()
+
+            with (out / 'rows.jsonl').open('x') as sink, \
+                    ((out / 'repeat.jsonl').open('x') if a.repeat else open('/dev/null', 'w')) as again:
+                for n, (p, state) in enumerate(zip(pairs, states), 1):
+                    one(p, state, results, sink)
+                    if a.repeat:
+                        one(p, state, second, again)
+                    if n % 100 == 0:
+                        print(f'  {n}/{len(pairs)}', flush=True)
         finally:
             proc.terminate()
             try:

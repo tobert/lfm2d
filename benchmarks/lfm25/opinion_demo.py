@@ -3,7 +3,8 @@
 
 For each command: one describe-then-read (a described-cache miss unless the
 daemon has seen those bytes), then the same request again (a hit), and
-optionally the generative `/v1/adjudicate` verdict for the same bytes. Prints
+optionally the generative `/v1/adjudicate` verdict for the same bytes — which
+resumes from the described state, so the column is what escalation costs. Prints
 what the model described, the renormalised probabilities beside the raw mass,
 the margin, and the wall time of each path. Picks no winner: the columns are
 what a caller would threshold on its own data.
@@ -37,7 +38,8 @@ def main():
     ap.add_argument('--field', default='verdict')
     ap.add_argument('--facts-from', help='JSON file mapping command -> facts block')
     ap.add_argument('--generative', action='store_true',
-                    help='also run /v1/adjudicate on the same bytes and show its verdict and time')
+                    help='also run /v1/adjudicate on the same bytes after the read: it resumes from '
+                         'the described state (escalation) and shows its verdict and time')
     ap.add_argument('--json', action='store_true', help='print the raw responses too')
     a = ap.parse_args()
     facts = json.load(open(a.facts_from)) if a.facts_from else {}
@@ -53,7 +55,7 @@ def main():
     print(f'spec {a.spec}  question {a.field} over {options}  describes {describes}')
     print(f'{"command":34s} ' + ' '.join(f'{o[:7]:>7s}' for o in options) +
           f' {"mass":>7s} {"margin":>6s} {"miss ms":>8s} {"hit ms":>7s}' +
-          (f' {"generative":>12s} {"gen ms":>7s}' if a.generative else ''))
+          (f' {"generative":>12s} {"esc ms":>7s} {"resumed":>8s}' if a.generative else ''))
     for command in commands:
         state = {'command': command}
         if command in facts:
@@ -74,10 +76,12 @@ def main():
                 f' {answer["sequence_mass"]:7.3f} {answer["margin"]:6.2f} {miss_ms:8.0f} {hit_ms:7.0f}')
         if a.generative:
             t0 = time.perf_counter()
-            gen = rpc(a.url, '/v1/adjudicate', {'input': f'Command:\n{command}'})
+            rendered = state.get('facts', '') + f'Command:\n{command}'  # OpinionState::render
+            gen = rpc(a.url, '/v1/adjudicate', {'input': rendered})
             gen_ms = (time.perf_counter() - t0) * 1000
             verdict = (gen.get('report') or {}).get(a.field, gen.get('report_error', 'error'))
-            line += f' {str(verdict):>12s} {gen_ms:7.0f}'
+            resumed = gen.get('resumed_tokens')
+            line += f' {str(verdict):>12s} {gen_ms:7.0f} {str(resumed):>8s}'
         print(line)
         described = ', '.join(f'{d["field"]}={json.dumps(d["value"])}' for d in first['described'])
         cache = first['cache']

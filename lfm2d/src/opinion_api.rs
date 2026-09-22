@@ -172,9 +172,15 @@ pub struct ResolvedQuestion {
 }
 
 impl ResolvedQuestion {
-    /// The text the generation must end with to stand at the slot.
+    /// The text the generation must end with to stand at the slot: the key
+    /// as the grammar writes it (`serde_json` escaping, so a quote or a
+    /// backslash in a field name still matches), the separator, the value's
+    /// opening quote.
     pub fn slot_text(&self) -> String {
-        format!("\"{}\": \"", self.field)
+        format!(
+            "{}: \"",
+            serde_json::to_string(&self.field).expect("a string always serializes")
+        )
     }
 }
 
@@ -351,6 +357,21 @@ pub fn margin(probs: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slot_text_is_the_key_as_the_grammar_writes_it() {
+        let q = |field: &str| ResolvedQuestion {
+            field: field.into(),
+            describe: vec![],
+            options: vec!["a".into(), "b".into()],
+            close: "\"}".into(),
+        };
+        assert_eq!(q("verdict").slot_text(), "\"verdict\": \"");
+        // A quote or a backslash in a field name is escaped exactly as the
+        // grammar (serde_json) writes the key, so the stop still matches.
+        assert_eq!(q("a\"b").slot_text(), "\"a\\\"b\": \"");
+        assert_eq!(q("a\\b").slot_text(), "\"a\\\\b\": \"");
+    }
 
     #[test]
     fn margin_is_the_gap_between_the_top_two() {

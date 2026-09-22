@@ -305,6 +305,14 @@ pub struct AdjudicateResponse {
     /// options.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opinion: Option<crate::opinion::OpinionRead>,
+    /// Present only when the generation resumed from a described state that
+    /// `/v1/opinion` left for these exact prompt bytes: how many of
+    /// `completion_tokens` were taken from it rather than decoded now. The
+    /// report is the one a fresh generation writes (greedy under the grammar
+    /// is a pure function of the prompt); only the time differs. Cold
+    /// requests and requests asking for `distributions` never resume.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resumed_tokens: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -577,6 +585,18 @@ impl DescribedCache {
         self.entries.push_back(entry);
         Some(out)
     }
+    /// The deepest description held for these prompt bytes, whatever field
+    /// it stopped at: the most of the report that a generation can resume
+    /// from. Moved to the back like a hit.
+    fn get_deepest(&mut self, prompt_ids: &[u32]) -> Option<(Vec<u32>, String, ModelState, Tensor)> {
+        let field = self
+            .entries
+            .iter()
+            .filter(|e| e.prompt_ids == prompt_ids)
+            .max_by_key(|e| e.generated.len())
+            .map(|e| e.field.clone())?;
+        self.get(prompt_ids, &field)
+    }
     fn insert(&mut self, entry: DescribedEntry) {
         if self.capacity == 0 {
             return;
@@ -671,13 +691,16 @@ impl LoadedSpec {
                 .map_err(|e| e.to_string())?;
         }
         let template_version = prompt.template_version();
+        // The repetition penalty shapes every description and report, so a
+        // consumer that refits on `snapshot_id` must see it change.
         let mut identity = serde_json::json!([
             template_version,
             weight_hash,
             tokenizer_hash,
             prefix_ids,
             execution.backend.as_str(),
-            "f32"
+            "f32",
+            cli.adjudicator_repeat_penalty
         ]);
         // The opinion question is part of what this daemon answers, so it is
         // part of its identity. Appended only when present: specs without one
@@ -723,7 +746,10 @@ impl LoadedSpec {
                 continue;
             }
             for (close, probe) in [("\",", "{\"x\": \"a\", \""), ("\"}", "{\"x\": \"a\", \"")] {
-                let slot = format!("{probe}{}\": \"", field.field);
+                let slot = format!(
+                    "{probe}{}: \"",
+                    serde_json::to_string(&field.field).map_err(|e| e.to_string())?
+                );
                 for option in &field.options {
                     let alone = encode_ids(tokenizer, &format!("{option}{close}"))?;
                     let whole = encode_ids(tokenizer, &format!("{prefix_text}{slot}{option}{close}"))?;
@@ -886,13 +912,35 @@ impl Generator for Adjudicator {
             ));
         }
         let begin = Instant::now();
-        let PreparedEvaluation {
-            mut state,
-            mut logits,
-            cached_tokens,
-        } = spec
-            .cache
-            .prepare(&self.model, &full, request.use_cache, check)?;
+        // Escalation from an opinion: if `/v1/opinion` left a described state
+        // for these exact prompt bytes, continue from its slot rather than
+        // describing again. Greedy under the grammar is a pure function of
+        // the prompt, so the report is the one a fresh generation writes. A
+        // request that wants every step's distribution, or a cold one, gets
+        // the fresh path.
+        let resumed = if request.use_cache && request.distributions.is_none() {
+            spec.described
+                .get_deepest(&full)
+                .filter(|(generated, ..)| generated.len() < request.max_tokens)
+        } else {
+            None
+        };
+        let (mut state, mut logits, cached_tokens, mut generated, resumed_tokens) = match resumed {
+            Some((generated, _, state, logits)) => {
+                let n = generated.len();
+                (state, logits, full.len(), generated, Some(n))
+            }
+            None => {
+                let PreparedEvaluation {
+                    state,
+                    logits,
+                    cached_tokens,
+                } = spec
+                    .cache
+                    .prepare(&self.model, &full, request.use_cache, check)?;
+                (state, logits, cached_tokens, Vec::new(), None)
+            }
+        };
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
         let decode = Instant::now();
         // Constrained decoding. With an `output_schema` this masks the logits
@@ -902,14 +950,17 @@ impl Generator for Adjudicator {
         // See `crate::constrain` for the grammar's scope and rulings. The mask
         // lives inside the decoder and never touches `logits`; the loop below
         // goes through `Decoder::step`, which records from the raw logits.
+        // A resumed description is history for the penalty and walked by the
+        // grammar, exactly as if this loop had sampled it.
+        let history: Vec<u32> = full.iter().chain(&generated).copied().collect();
         let mut sampler = crate::constrain::Decoder::new(
             spec.grammar.as_ref(),
             logits.device(),
             self.model.vocab_size(),
-            &full,
+            &history,
             self.repeat_penalty,
         )?;
-        let mut generated = Vec::new();
+        sampler.advance(&generated)?;
         // Allocated only when asked for: the distribution computation below
         // costs nothing on the request path that doesn't request it.
         let mut distributions = request
@@ -917,7 +968,7 @@ impl Generator for Adjudicator {
             .as_ref()
             .map(|_| Vec::with_capacity(request.max_tokens));
         let mut finish_reason = "length";
-        for i in 0..request.max_tokens {
+        for i in generated.len()..request.max_tokens {
             check()?;
             // One call selects AND records, so the record cannot be moved
             // to the wrong side of the grammar mask: see `Decoder::step`.
@@ -977,6 +1028,7 @@ impl Generator for Adjudicator {
             decode_ms: decode.elapsed().as_secs_f64() * 1000.,
             distributions,
             opinion: None,
+            resumed_tokens,
         })
     }
 
@@ -1073,6 +1125,7 @@ impl Adjudicator {
                 scored_tokens: continuations.iter().map(Vec::len).sum(),
                 rendered_sha256: sha256_hex_bytes(rendered.as_bytes()),
             }),
+            resumed_tokens: None,
         })
     }
 
@@ -1134,7 +1187,7 @@ impl Adjudicator {
             match described_hit {
                 Some((generated, text, state, logits)) => {
                     cache.described = "hit".into();
-                    cache.state = "hit".into();
+                    cache.state = "skipped".into();
                     (state, logits, generated, text, prompt_ids.len(), 0., 0.)
                 }
                 None => {
@@ -1173,15 +1226,35 @@ impl Adjudicator {
                             break;
                         }
                         generated.push(token);
-                        logits = self.model.forward(&[token], &mut state)?;
+                        let before = text.len();
                         text = self
                             .tokenizer
                             .decode(&generated, false)
                             .map_err(|e| Failure::Internal(e.to_string()))?;
                         if text.ends_with(&slot_text) {
+                            logits = self.model.forward(&[token], &mut state)?;
                             at_slot = true;
                             break;
                         }
+                        // The grammar admits any token whose bytes begin the
+                        // value, so one token can write the slot's closing
+                        // quote AND the first bytes of an answer (`"a`) — the
+                        // model leaving the canonical path at the slot. There
+                        // is no slot to stand at then, and a read off this
+                        // state would score the options on a path the model
+                        // did not take. Refuse with the right diagnosis; the
+                        // harness counts these as their own outcome.
+                        if let Some(at) = text.find(&slot_text)
+                            && at + slot_text.len() > before
+                            && at + slot_text.len() < text.len()
+                        {
+                            return Err(Failure::Internal(format!(
+                                "model wrote past the {:?} slot in one token ({:?}); no slot to read",
+                                question.field,
+                                &text[before..]
+                            )));
+                        }
+                        logits = self.model.forward(&[token], &mut state)?;
                     }
                     if !at_slot {
                         // The grammar makes every field reachable and required,
@@ -2033,6 +2106,72 @@ mod prompt_cache_tests {
         let mut none = DescribedCache::new(0);
         none.insert(entry(&[1], "verdict", &[2]));
         assert_eq!(none.len(), 0);
+    }
+
+    /// The resume path rebuilds the sampler with `prompt + resumed` as
+    /// history instead of sampling the resumed tokens. Candle's history is a
+    /// seen-set that every selection marks, so the two must agree; this pins
+    /// it with logits where the penalty decides the pick.
+    #[test]
+    fn a_sampler_built_from_resumed_history_selects_as_the_incremental_one_would() {
+        let device = candle_core::Device::Cpu;
+        let vocab = 8usize;
+        // `top` leads by less than the penalty takes off; `runner` is never
+        // in any history here.
+        let logits = |top: usize, runner: usize| {
+            let mut v = vec![0.5f32; vocab];
+            v[top] = 3.0;
+            v[runner] = 2.9;
+            Tensor::new(v.as_slice(), &device).unwrap().unsqueeze(0).unwrap()
+        };
+        let prompt = [1u32, 2];
+        // Incremental: sample 5 then 6 (each becomes history).
+        let mut incremental =
+            crate::constrain::Decoder::new(None, &device, vocab, &prompt, 1.05).unwrap();
+        let mut resumed_tokens = Vec::new();
+        for top in [5usize, 6] {
+            let t = incremental.sample(&logits(top, 7)).unwrap();
+            assert_eq!(t as usize, top);
+            resumed_tokens.push(t);
+        }
+        // Rebuilt: the same tokens as constructor history, walked by `advance`.
+        let history: Vec<u32> = prompt.iter().chain(&resumed_tokens).copied().collect();
+        let mut rebuilt =
+            crate::constrain::Decoder::new(None, &device, vocab, &history, 1.05).unwrap();
+        rebuilt.advance(&resumed_tokens).unwrap();
+        // 5 is the raw argmax but penalised in both, so 7 wins; a sampler
+        // that forgot the resumed tokens would pick 5.
+        let l = logits(5, 7);
+        let a = incremental.sample(&l).unwrap();
+        let b = rebuilt.sample(&l).unwrap();
+        assert_eq!(a, b);
+        let mut forgetful =
+            crate::constrain::Decoder::new(None, &device, vocab, &prompt, 1.05).unwrap();
+        assert_eq!(forgetful.sample(&l).unwrap(), 5);
+        assert_ne!(a, 5, "the penalty must have moved the pick off the resumed token");
+    }
+
+    #[test]
+    fn get_deepest_returns_the_longest_description_for_the_prompt() {
+        let (model, _) = fixture();
+        let entry = |field: &str, generated: &[u32]| {
+            let mut state = model.new_state();
+            let logits = model.forward(&[1, 2, 3], &mut state).unwrap();
+            DescribedEntry {
+                prompt_ids: vec![1, 2, 3],
+                field: field.into(),
+                generated: generated.to_vec(),
+                text: String::new(),
+                state,
+                logits,
+            }
+        };
+        let mut cache = DescribedCache::new(4);
+        cache.insert(entry("scope", &[4]));
+        cache.insert(entry("verdict", &[4, 5, 6]));
+        cache.insert(entry("undo", &[4, 5]));
+        assert_eq!(cache.get_deepest(&[1, 2, 3]).unwrap().0, [4, 5, 6]);
+        assert!(cache.get_deepest(&[1, 2, 4]).is_none());
     }
 
     #[test]

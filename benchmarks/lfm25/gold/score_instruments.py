@@ -143,7 +143,10 @@ def slot_score(pairs, stop, allow, prevalence):
 
 def score(gold, run, stop='ask', allow='allow', prevalence=None, mass_floor=None):
     pairs = join(gold, run)
-    kind = 'opinion' if any('options' in r for r in run) else 'generative'
+    # An opinion run is what an opinion harness wrote, even if every request
+    # failed: classifying by the presence of `options` would score an
+    # all-error opinion run as a generative one with every row unanswered.
+    kind = 'opinion' if any(r.get('outcome') in ('read', 'http_error') for r in run) else 'generative'
     pass_rows = [g for g in gold if g['set'] == 'pass']
     if prevalence is None:
         prevalence = sum(g['verdict'] == stop for g in pass_rows) / len(pass_rows) if pass_rows else None

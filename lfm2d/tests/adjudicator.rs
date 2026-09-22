@@ -173,6 +173,7 @@ impl Generator for Fake {
             decode_ms: 0.,
             distributions,
             opinion,
+            resumed_tokens: None,
         })
     }
 }

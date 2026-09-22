@@ -952,6 +952,21 @@ impl Decoder {
         Ok((token, Some(step)))
     }
 
+    /// Walk tokens that were already generated under this grammar — a
+    /// description resumed from the described cache. The masker advances
+    /// over them exactly as `sample` would have; the sampler's history must
+    /// have been built with them. A token the grammar cannot continue is the
+    /// same loud error `accept` raises: it means the cached tokens and the
+    /// grammar disagree, never something to decode past.
+    pub fn advance(&mut self, tokens: &[u32]) -> candle_core::Result<()> {
+        if let Self::Json { masker, .. } = self {
+            for &token in tokens {
+                masker.accept(token).map_err(candle_core::Error::msg)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn masker(&self) -> Option<&Masker> {
         match self {
             Self::Free(_) => None,
