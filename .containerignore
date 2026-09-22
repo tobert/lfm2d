@@ -9,3 +9,4 @@
 !lfm2d/Cargo.toml
 !lfm2d/src/
 !lfm2d/prompts/
+!demo/specs/

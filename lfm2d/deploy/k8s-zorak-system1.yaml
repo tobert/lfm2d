@@ -70,8 +70,11 @@ spec:
           # Same LAN gitea registry as the encoder image. A real version,
           # never `:latest`.
           #
-          # Running imageID digest for 0.1.0, read back off the pod
-          # 2026-09-22 (first deploy, dd23525 + Containerfile.rocm):
+          # Running imageID digest for 0.1.1, read back off the pod
+          # 2026-09-22 (c18543f + Containerfile.rocm: `rendered: true`, the
+          # demo specs under /etc/lfm2d/demo-specs):
+          #   sha256:3937c201ec4a48099f6c3ddab937bc053b55eed5411be742a9839fb96ef1135b
+          # 0.1.0 (first deploy, dd23525) was
           #   sha256:3fd80001f0f1c9aaf3036b9e6486f0491ba32451ce595c56c815fb2b98dac8d8
           # Bump this comment WITH the tag. The image is 10.4 GB unpacked
           # (rocblas ships kernels for every architecture); the first pull
@@ -79,7 +82,7 @@ spec:
           # to ready including the first-run kernel compile (40 files, 3.1 MB,
           # persisted on the host cache path below). Startup probe budget is
           # 5 min; the pull happens before it starts counting.
-          image: 192.168.1.2:3000/amy/lfm2d-system1:0.1.0
+          image: 192.168.1.2:3000/amy/lfm2d-system1:0.1.1
           imagePullPolicy: IfNotPresent
           args:
             # LFM2.5-8B-A1B Q5_K_M — the checkpoint every F9 number was
@@ -98,6 +101,9 @@ spec:
             # carry nothing on this checkpoint; served for comparison, not
             # for decisions).
             - --opinion-spec=/etc/lfm2d/prompts/command-verdict-opinion-v1.json
+            # The demos' support-inbox prop (demo/specs, invented; act three
+            # of demo/show.py). Not a measured spec — never a decision input.
+            - --opinion-spec=/etc/lfm2d/demo-specs/email-triage-v1.json
             - --adjudicator-context=4096
             - --device=rocm
             # 8 was the flat region for the encoder heads; not re-swept for
