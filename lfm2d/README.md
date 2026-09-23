@@ -279,7 +279,9 @@ takes singular `input` because it scores one text against many routes.
 Errors: `{"error": {"message", "type"}}`. `type` is `"bad_request"` (400 —
 malformed/empty input, or a call against a head this instance never
 loaded), `"not_found"` (404 — `/v1/tokenize`'s unknown `model`, or
-`/v1/probe`'s/`/v1/opinion`'s unknown `spec`), or `"internal"` (500 — a
+`/v1/opinion`'s unknown `spec`; `/v1/probe` names no spec at all, so it
+never 404s that way — with `--no-probe` set, the whole route is simply
+absent, its own plain unmatched-route 404), or `"internal"` (500 — a
 loaded model's forward pass failed, or the worker thread itself died).
 Never a silently-wrong `200`.
 
@@ -736,12 +738,18 @@ guide's "Runtime spec registration" and `docs/integration.md` invariant
 
 Two more routes are answered without ever entering a spec's judgement
 contract: `POST /v1/tokenize` (any loaded model, encoder head or
-adjudicator, over a cloned tokenizer — never queues behind either worker)
-and `POST /v1/probe` (raw inference over exact text on the adjudicator's
-own stack — top-k logprobs, teacher-forced continuations, greedy
-`generate`, and an explicit warm/cold resume report, with an optional
-`decode_from` byte offset that replays part of the schedule one token at a
-time — the daemon's own decode-loop forward call, reused — so a caller
-can reproduce `/v1/opinion`'s exact schedule, not just the bulk-prefill
-one). Both are instruments for inspecting the daemon's own numbers, not
-decision APIs; see the guide's "Probe and tokenize" section.
+adjudicator, over a cloned tokenizer — never queues behind either worker;
+every clone has truncation/padding cleared, so a >512-token request
+through an embedder-style tokenizer never silently reports a truncated
+count) and `POST /v1/probe` (raw inference over exact text — or exact
+token `ids` — on the adjudicator's own stack: top-k logprobs,
+teacher-forced continuations, greedy `generate`, and an explicit warm/cold
+resume report that always picks the LONGEST matching resident prefix,
+never just the first one checked. An optional `decode_from` byte offset
+(or, with `ids`, `decode_from_token`) replays part of the schedule one
+token at a time — the daemon's own decode-loop forward call, reused — so
+a caller can reproduce `/v1/opinion`'s exact schedule, not just the
+bulk-prefill one; prefer the `ids` form when replaying a generation, since
+`text`/`decode_from` re-tokenizes fresh and BPE is not injective in that
+direction). Both are instruments for inspecting the daemon's own numbers,
+not decision APIs; see the guide's "Probe and tokenize" section.

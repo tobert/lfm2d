@@ -332,6 +332,39 @@ fn probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from() {
                  stepwise_tokens={} — BIT-IDENTICAL to /v1/opinion",
                 probe_resp.cache.prefill_tokens, probe_resp.cache.stepwise_tokens
             );
+
+            // Probe must never mutate spec state (kaibo review,
+            // 2026-09-23): re-run the SAME /v1/opinion request now that
+            // the probe above has warm-resumed this spec's resident
+            // prefix (cloning it, per `resolve_best_prefix_mut`'s
+            // contract) and torn through its own stepwise/bulk forwards
+            // on that CLONE. If the probe had somehow mutated the spec's
+            // own resident `ModelState` (a bug in the clone, or in how
+            // `forward_chunks` is handed `&mut state`), this second read
+            // would diverge from the first one above.
+            let repeat_opinion = adjudicator
+                .opine(&opinion_req, std::slice::from_ref(&question), &ok)
+                .expect("opine again, after the probe");
+            assert_eq!(
+                repeat_opinion.cache.described, "hit",
+                "{label} {command}: the described cache must still be intact after the probe"
+            );
+            for (before, after) in
+                opinion_resp.answers[0].read.options.iter().zip(&repeat_opinion.answers[0].read.options)
+            {
+                assert_eq!(before.tokens, after.tokens, "{label} {command}: {:?}", before.option);
+                assert_eq!(
+                    before.first_logprob, after.first_logprob,
+                    "{label} {command}: {:?} first_logprob changed after an intervening probe — \
+                     the probe mutated spec state",
+                    before.option
+                );
+                assert_eq!(
+                    before.logprob, after.logprob,
+                    "{label} {command}: {:?} sequence_logprob changed after an intervening probe",
+                    before.option
+                );
+            }
         }
     }
 }
@@ -367,17 +400,40 @@ fn probe_generate_and_top_k_smoke_test_on_real_weights() {
         resp.generated.iter().map(|s| s.text.as_str()).collect::<Vec<_>>()
     );
 
-    // A `check` that already reports the deadline blown propagates as a
-    // clean `Failure::Deadline`, never a panic — same contract every other
-    // engine method (`generate`/`opine`) gives the worker's `check`
-    // closure.
-    let deadline: ProbeRequest = serde_json::from_value(serde_json::json!({
+    // A REAL mid-flight deadline: `generate: 256` requests far more steps
+    // than can run in 150ms, and the `check` closure here does exactly
+    // what the worker's own deadline check does (`Instant::now() >=
+    // deadline` — `Handle::spawn`'s dispatch loop, `adjudicator.rs`) —
+    // time-based, not pre-failed. A PREVIOUS version of this test passed a
+    // `check` that was already `Err` before the first call, which any
+    // implementation satisfies trivially at the top of `probe_impl` and
+    // proves nothing about whether the generate LOOP itself polls `check`
+    // between steps rather than only once at the start (kaibo review,
+    // 2026-09-23) — this version proves that: it asserts the call
+    // returned in well under the time 256 real steps would take, i.e. it
+    // actually stopped mid-generation.
+    let deadline_at = std::time::Instant::now() + std::time::Duration::from_millis(150);
+    let check = || {
+        if std::time::Instant::now() >= deadline_at {
+            Err(lfm2d::adjudicator::Failure::Deadline)
+        } else {
+            Ok(())
+        }
+    };
+    let long_generate: ProbeRequest = serde_json::from_value(serde_json::json!({
         "text": "hello",
         "generate": 256,
-        "timeout_ms": 1
+        "use_cache": false
     }))
     .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(5));
-    let err = adjudicator.probe(&deadline, &|| Err(lfm2d::adjudicator::Failure::Deadline)).unwrap_err();
-    assert!(matches!(err, lfm2d::adjudicator::Failure::Deadline));
+    let start = std::time::Instant::now();
+    let err = adjudicator.probe(&long_generate, &check).unwrap_err();
+    let elapsed = start.elapsed();
+    assert!(matches!(err, lfm2d::adjudicator::Failure::Deadline), "{err:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "the deadline must stop generation mid-flight, not run all 256 steps and check only \
+         once at the end: took {elapsed:?}"
+    );
+    eprintln!("mid-flight deadline: stopped after {elapsed:?} (limit was 150ms + one step's overrun)");
 }

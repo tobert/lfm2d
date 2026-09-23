@@ -80,7 +80,17 @@ async fn a_wellformed_request_returns_ids_tokens_and_the_tokenizer_hash() {
     assert!(!ids.is_empty());
     assert_eq!(tokens[0]["start"], 0);
     assert_eq!(tokens.last().unwrap()["end"], 2, "\"hi\" is 2 bytes");
-    assert!(value["context"].is_null(), "context absent (not null-but-present) when unasked");
+    // `serde_json::Value`'s `[]` indexing returns `Value::Null` for BOTH a
+    // genuinely-absent key and a key present with a JSON `null` value, so
+    // `value["context"].is_null()` can never distinguish "absent" from
+    // "null" and would pass either way — the actual promise
+    // (`#[serde(skip_serializing_if = "Option::is_none")]` on
+    // `TokenizeResponse::context`) is that the key is OMITTED, checked
+    // here by asking the object directly whether the key exists at all.
+    assert!(
+        !value.as_object().unwrap().contains_key("context"),
+        "context must be ABSENT (skip_serializing_if), not present-and-null, when unasked: {value}"
+    );
 }
 
 #[tokio::test]

@@ -231,7 +231,7 @@ async fn main() {
     let mut router = build_router(AppState { worker, ready: ready.clone() });
     router = router.merge(lfm2d::tokenize_api::router(Arc::new(tokenizers)));
     if let Some(handle) = adjudicator {
-        router = router.merge(lfm2d::adjudicator::router(handle, cli.probe));
+        router = router.merge(lfm2d::adjudicator::router(handle, cli.probe_route_enabled()));
     }
 
     let (shutdown_handle, shutdown_signal) = shutdown::channel();

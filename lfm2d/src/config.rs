@@ -294,6 +294,22 @@ impl Cli {
         }
         Ok(())
     }
+
+    /// Whether `POST /v1/probe` should be routed at all — the exact value
+    /// `main.rs` passes as `adjudicator::router`'s `probe_enabled`
+    /// argument (`router.merge(lfm2d::adjudicator::router(handle,
+    /// cli.probe_route_enabled()))`). Factored out so the
+    /// `--no-probe`/`LFM2D_PROBE`-flag-to-router-argument wiring is
+    /// itself unit-testable via `Cli::parse_from` (real clap parsing,
+    /// same as `Cli::parse` in production) without needing to load a
+    /// model or bind a socket — `main.rs`'s own line is then a trivial,
+    /// visibly-correct pass-through with no conditional logic of its own
+    /// left untested (kaibo review, 2026-09-23). No effect when the
+    /// adjudicator itself is not configured; there is no route to add
+    /// either way.
+    pub fn probe_route_enabled(&self) -> bool {
+        self.probe
+    }
 }
 
 /// The resolved severity ranking, ascending — `(rank, label)` pairs with
@@ -640,6 +656,21 @@ mod tests {
         assert!(cli.probe, "on by default");
         let cli = Cli::parse_from(["lfm2d", "--no-probe"]);
         assert!(!cli.probe, "the bare flag needs no value");
+    }
+
+    /// The actual value `main.rs` hands to `adjudicator::router`'s
+    /// `probe_enabled` argument, exercised through real clap parsing —
+    /// see `probe_route_enabled`'s doc comment for why this exists as its
+    /// own test rather than folding into the one above.
+    #[test]
+    fn probe_route_enabled_matches_the_no_probe_flag() {
+        let _guard = PROBE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: guarded by PROBE_ENV_LOCK.
+        unsafe {
+            std::env::remove_var("LFM2D_PROBE");
+        }
+        assert!(Cli::parse_from(["lfm2d"]).probe_route_enabled());
+        assert!(!Cli::parse_from(["lfm2d", "--no-probe"]).probe_route_enabled());
     }
 
     #[test]
