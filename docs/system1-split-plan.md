@@ -31,60 +31,57 @@ implementation and start pushing the kaish/shell stuff over to kaijutsu."
    `~/exomemory/lfm2d/lfm25-probe-f9-2026-09-23/`.
 4. **This doc lives in `docs/`** until the move is done.
 
-## Runtime spec registration (proposed design)
+## Runtime spec registration (ruled 2026-09-23)
+
+Amy: "could the id be a content hash so we get some idempotency? whatever
+algo we use for kaibo's cas should be fine right?" and "keep specs in memory
+for now ... clients should just upload any time they're not sure, and we'll
+do the content identity so it's idempotent for free-ish."
 
 Today the menu is fixed at boot: `--opinion-spec` paths, loaded in
-`Adjudicator::load` (`lfm2d/src/adjudicator.rs`), with each spec's name
-taken from its file stem. `Handle.menu` is an `Arc<Vec<SpecMenuEntry>>`,
-set once with `with_menu`.
+`Adjudicator::load` (`lfm2d/src/adjudicator.rs`), with each spec's name taken
+from its file stem. `Handle.menu` is an `Arc<Vec<SpecMenuEntry>>`, set once.
+`LoadedSpec::load` needs no file: it takes a parsed `PromptSpec`, and every
+check it runs is a load-time refusal. Registration reuses it unchanged.
 
-Nothing in `LoadedSpec::load` needs a file. It takes a parsed `PromptSpec`,
-and every check it runs is a load-time refusal: the grammar compiles, the
-options tokenize on their own after the slot, and the opinion block splits.
-Registration reuses it unchanged.
+**Identity.** A spec's `id` is the lowercase hex SHA-256 of the exact bytes
+uploaded. That is kaibo's CAS digest (`kaibo/src/cas.rs`, `Digest::of_bytes`)
+and lfm2d's own `hash.rs`. The hash covers the exact bytes and nothing is
+canonicalized first. Parsing into `serde_json::Value` and re-serializing
+would sort every object's keys, and a spec's field order is its emission
+order (memory: btreemap-sorting-reaches-the-prompt). So two specs that
+differ only in field order are different specs and must get different ids.
+The cost is that re-formatting a spec's whitespace also gives it a new id,
+which does no harm. Boot-time specs get an id the same way, from their file
+bytes, and also answer to their file-stem name.
 
 **The wire:**
 
 | call | what it does |
 |---|---|
-| `PUT /v1/opinion/specs/{name}` | Body is the spec JSON. On the worker thread it runs `LoadedSpec::load`: render, compile the grammar, prefill the prefix. It returns the menu entry with its `snapshot_id`. `200` if a spec with identical content was already there (a no-op), `201` if new or replaced, `422` with the load-time refusal text if the spec cannot be served. |
-| `DELETE /v1/opinion/specs/{name}` | Frees the spec's prefix state and its described cache. |
+| `POST /v1/opinion/specs` | The body is the spec's bytes. Returns the menu entry with `id` and `snapshot_id`. `200` if that id is already loaded (no work done), `201` if it was loaded now. `400` if the body is not a spec, `422` with the load-time refusal text if the spec cannot be served. |
+| `DELETE /v1/opinion/specs/{id}` | Unloads an uploaded spec. Boot-time specs cannot be deleted. |
 | `GET /v1/opinion/specs` | Unchanged: the menu, read at runtime (invariant 11). |
+| `POST /v1/opinion` | `spec` is an id, or a boot-time name. An unknown spec is `404`, which tells the client to upload it and retry. |
+| `POST /v1/adjudicate` | Takes `spec` as well. Amy: "yeah, it takes a spec". Escalation resumes from that spec's described state. Without `spec` it still serves the `--adjudicator-prompt` spec, so existing callers keep working. |
 
-**Contract points** (these become invariants in `docs/integration.md`):
+**Memory only**, with a capacity limit for uploaded specs
+(`--opinion-spec-capacity`). Past the limit, the least recently used upload
+is evicted, and its next request gets a `404` that tells the client to upload
+it again. Boot specs are never evicted. Every spec holds a resident prefix
+state, which is why there is a limit.
 
-- **A name can change meaning, a `snapshot_id` cannot.** Replacing a spec
-  under the same name gives a new `snapshot_id` and drops that spec's
-  described cache. Invariant 8 already tells consumers to refit when the
-  `snapshot_id` changes.
-- **Requests can pin the version they expect.** An optional
-  `snapshot_id` on `/v1/opinion` returns `409` if the loaded spec has
-  moved. This closes the race where a request is checked against the old
-  menu, then queued, then served by the new spec.
-- **Registered specs live in memory only** (proposed). A restart forgets
-  them. The consumer re-registers when it gets "no loaded spec" or on its
-  own start. The source of truth then stays with the owner, and lfm2d holds
-  no state that could drift from it.
-- **A capacity limit** (`--opinion-spec-capacity`): every spec holds a
-  resident prefix state, so registering past the limit is refused. Replacing
-  a spec never counts against it.
-- The spec menu still never comes from request text, so "spec menu never
-  request text" holds. Registration is a separate write on its own route,
-  and an opinion request only names a spec.
-- **Trust:** the tailnet is the boundary, the same as every other route.
-  Registration is a write that changes what other consumers read, so each
-  registration gets its own span and log line, recording the name, the
-  snapshot_id and the source address.
+An id cannot change what it means, so no request needs a `409` pin.
+`snapshot_id` still tells a consumer when the model under that spec changed,
+and invariant 8's rule to refit on a new `snapshot_id` still applies.
+Registration is a separate write on its own route, and opinion requests only
+name a spec, so "the spec menu never comes from request text" holds. Each
+registration and eviction gets its own span and log line, recording the id,
+the snapshot_id, the load time and the source address.
 
-**Open:** `/v1/adjudicate` always serves `specs[0]`, which comes from the
-boot-time `--adjudicator-prompt`. To be a clean System 1, adjudication
-should also name a spec, and escalation should resume from that spec's
-described state. It then follows that no spec at all is needed at boot.
-
-**kaijutsu side:** at start and on "no loaded spec", it PUTs each spec from
-its own tree. It records the returned `snapshot_id` beside every decision.
-It sends `snapshot_id` on requests so that a spec swapped under it fails
-loudly instead of quietly changing what the thresholds mean.
+**kaijutsu side:** it uploads each spec from its own tree whenever it is
+unsure, and always after a `404`. It records `id` and `snapshot_id` beside
+every decision.
 
 ## Inventory and disposition (proposed; Amy to rule per row)
 
@@ -94,10 +91,10 @@ mean it moves. "drop" means it is deleted; its history stays in lfm2d's git.
 | path | what it is | proposed |
 |---|---|---|
 | `src/` trunk, embedding, colbert, sequence/token classification, routing, config, labels | LFM2 encoder runtime | stays |
-| `src/cascade.rs`, `tests/cascade.rs`, `/v1/cascade` | v6 severity rank then router: a composite of shell clauses | → kaijutsu as logic over `/v1/classify` + `/v1/route`, or drop |
+| `src/cascade.rs`, `tests/cascade.rs`, `/v1/cascade` | v6 severity rank then router: a composite of shell clauses | **drop** (ruled: "kaijutsu will do it differently, and a lot in .kai scripts"). The advisory hook calls `/v1/cascade` for 2+ clauses, so it goes when the hook does |
 | `tests/severity_ladder.rs`, `tests/clause_routing.rs` | shell-specific checkpoint tests | → ktd, or drop |
 | `/v1/classify`, `/v1/route`, `/v1/spans*`, `/embed` | general head endpoints | stays. Which checkpoints get served is deploy config |
-| the shell severity checkpoint | an output of training | built in ktd, deployed by config |
+| the shell severity checkpoint | an output of training | **retire** once unused (ruled: "Retire the shell severity head if we're not using it"). It IS in use today: the Claude Code advisory hook (`~/.claude/settings.json`, `/v1/classify` + `/v1/cascade` on lfm2d-1) and kaijutsu `gate.toml` `[classifier]`. It retires after the kaijutsu gate replaces both |
 | `lfm2d/hooks/` | advisory hook, kaish_plan, clause_split, stage4 | → kaijutsu (`kj/hook_gate.rs`, `kj/plan_clauses.rs` already overlap) |
 | `lfm2d/prompts/command-verdict-*`, `shell-severity-*` | shell specs | → kaijutsu, registered at runtime |
 | `benchmarks/lfm25/results/`, runtime docs `docs/lfm25-*` (kernels, cache, fusion, gqa, prefill) | engine performance record | stays |
@@ -135,10 +132,8 @@ are (`~/.local/share/lfm2-training-data/`); they never lived in a repo.
 
 ## Open questions for Amy
 
-- Should registered specs be memory-only with the consumer re-registering
-  (proposed), or kept on disk in a spool directory?
-- Should adjudication name its spec, so no spec is needed at boot?
-- `src/cascade.rs` and `/v1/cascade`: move to kaijutsu, or drop?
-- Does the `lfm2d-1` encoder pod keep serving the shell severity head
-  from a checkpoint built in ktd, or does that head retire?
+- The severity head is live in two places, so what replaces the advisory
+  hook: a kaijutsu gate calling `/v1/opinion`, or retire the hook outright?
+- Should `--adjudicator-prompt` become optional, so a daemon can boot with
+  no spec and serve only uploads?
 - Does ktd get a remote (private), and when?
