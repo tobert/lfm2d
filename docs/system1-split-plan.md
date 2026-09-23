@@ -91,10 +91,10 @@ mean it moves. "drop" means it is deleted; its history stays in lfm2d's git.
 | path | what it is | proposed |
 |---|---|---|
 | `src/` trunk, embedding, colbert, sequence/token classification, routing, config, labels | LFM2 encoder runtime | stays |
-| `src/cascade.rs`, `tests/cascade.rs`, `/v1/cascade` | v6 severity rank then router: a composite of shell clauses | **drop** (ruled: "kaijutsu will do it differently, and a lot in .kai scripts"). The advisory hook calls `/v1/cascade` for 2+ clauses, so it goes when the hook does |
+| `src/cascade.rs`, `tests/cascade.rs`, `/v1/cascade` | v6 severity rank then router: a composite of shell clauses | **drop now** (ruled: "kaijutsu will do it differently, and a lot in .kai scripts") |
 | `tests/severity_ladder.rs`, `tests/clause_routing.rs` | shell-specific checkpoint tests | → ktd, or drop |
 | `/v1/classify`, `/v1/route`, `/v1/spans*`, `/embed` | general head endpoints | stays. Which checkpoints get served is deploy config |
-| the shell severity checkpoint | an output of training | **retire** once unused (ruled: "Retire the shell severity head if we're not using it"). It IS in use today: the Claude Code advisory hook (`~/.claude/settings.json`, `/v1/classify` + `/v1/cascade` on lfm2d-1) and kaijutsu `gate.toml` `[classifier]`. It retires after the kaijutsu gate replaces both |
+| the shell severity checkpoint | an output of training | **retire now.** Amy: "the old lfm2d service will stay frozen indefinitely. so we can move on." `lfm2d-1` keeps serving it from its frozen image to the Claude Code hook and kaijutsu `gate.toml`; main stops carrying it |
 | `lfm2d/hooks/` | advisory hook, kaish_plan, clause_split, stage4 | → kaijutsu (`kj/hook_gate.rs`, `kj/plan_clauses.rs` already overlap) |
 | `lfm2d/prompts/command-verdict-*`, `shell-severity-*` | shell specs | → kaijutsu, registered at runtime |
 | `benchmarks/lfm25/results/`, runtime docs `docs/lfm25-*` (kernels, cache, fusion, gqa, prefill) | engine performance record | stays |
