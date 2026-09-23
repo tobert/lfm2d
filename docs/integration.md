@@ -133,6 +133,25 @@ also a clean `404`. Boot-time specs (`--adjudicator-prompt`/
 this implements (kaijutsu owns the shell specs and uploads them at
 startup and on change, rather than lfm2d shipping them).
 
+**13. `/v1/tokenize` and `/v1/probe` are instruments, not judgement
+APIs — invariants 5 and 8–11 do not apply to either.** Neither returns a
+decision, a calibrated score, or an opinion; `/v1/probe` takes free-form
+request text by design (unlike `/v1/opinion`, whose questions come only
+from a loaded spec's menu — invariant 11 exists precisely because that
+one doesn't take request text). A consumer must not treat a `/v1/probe`
+number as comparable to a `/v1/opinion`/`/v1/adjudicate` verdict without
+checking first: `/v1/probe`'s warm resume reproduces
+`POST /v1/adjudicate {"opinion": true}`'s read bit-identically, but does
+**NOT** reproduce `POST /v1/opinion`'s own read bit-identically — measured
+disagreement up to several nats at the same slot on the same input, because
+the two paths take different kernels for the same tokens on this backend
+(`docs/lfm25-adjudicator.md` "Probe and tokenize"). `/v1/probe` may be
+disabled entirely (`--no-probe`/`LFM2D_PROBE=0`) without affecting
+`/v1/opinion` or `/v1/adjudicate`; a consumer must not assume its
+presence. `/v1/tokenize` carries no invariant beyond the general ones
+(1–3, for whichever model's vocabulary is asked about) — it exposes
+tokenization, not a scored or judged quantity.
+
 ## Operational numbers (measured, dated — re-measure before designing on them)
 
 - **Latency** (2026-09-05, server-side, `--threads=8`): `/v1/classify`

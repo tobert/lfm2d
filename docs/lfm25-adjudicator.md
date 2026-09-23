@@ -548,6 +548,191 @@ DELETE /v1/opinion/specs/{id}
   — `newly_loaded`/`evicted` in the response's telemetry, not the wire
   body.
 
+## Probe and tokenize
+
+Ruled 2026-09-23, `docs/system1-split-plan.md` "Tokenize and probe
+endpoints". Amy: "if we don't still have a tokenizing endpoint on lfm2d I
+think we should still have that... might add a general inference endpoint
+too so we can use it to probe the model consistently." Neither `/v1/opinion`
+nor `/v1/adjudicate` fit: both take questions only from a loaded spec's
+menu, never request text, on purpose (framing words move label tokens by
+an order of magnitude — "The opinion API" above). These two routes are
+the escape hatch: raw text in, raw numbers out, no menu, no judgement
+contract.
+
+### `POST /v1/tokenize`
+
+```json
+{"model": "command-verdict-enum-v1-adjudicator-or-any-loaded-id",
+ "text": "cargo clean", "context": null}
+```
+
+- `model` is any id `GET /v1/models` lists (an encoder head), or the
+  adjudicator's own id (`GET /v1/adjudicator`'s `model_id`) — each is a
+  separate tokenizer, read from a `TokenizerRegistry`
+  (`lfm2d/src/tokenize_api.rs`) built once at startup from every loaded
+  model's own tokenizer, cloned out BEFORE that model's owning engine
+  moves into its worker thread (`RealEngine::tokenizers`,
+  `Adjudicator::tokenizer_clone`, both called from `main.rs` ahead of
+  `WorkerHandle::spawn_crash_on_panic`/`adjudicator::Handle::spawn`). The
+  shadow `--candidate-classifier-dir` head is excluded, matching its
+  absence from `/v1/models`. Unknown `model` is `404`.
+- **Answered entirely on the request handler, over the cloned tokenizer —
+  it shares no queue with either worker.** `lfm2d/tests/tokenize_api.rs`
+  proves this directly: a `Generator` double that never returns still lets
+  `/v1/tokenize` answer in milliseconds.
+- Response: `ids` (vocabulary ids), `tokens` (`{id, token, start, end}` per
+  token — `start`/`end` are UTF-8 BYTE offsets into `text`, same
+  convention as `/v1/spans`; `token` is the tokenizer's own byte-level BPE
+  piece, e.g. a leading space reads as `"Ġ..."`, NOT a decoded string),
+  and `tokenizer_hash` (sha256 of that model's `tokenizer.json`, same
+  convention as `weight_hash`).
+- With `context`: a `context` block — the tokens `text` occupies once
+  `context` precedes it (found by stripping the longest common prefix
+  `context`'s own encoding shares with `context + text`'s), and
+  `suffix_stable`: whether `text`, tokenized ALONE, is exactly the tail of
+  `context + text`'s tokenization. This is the SAME readability check
+  `LoadedSpec::load` runs on every opinion option before trusting it can
+  be taught-forced at a slot, and `describe_then_read` re-runs per request
+  (`suffix_is_stable`, `lfm2d/src/adjudicator.rs`) — factored into one
+  function all three call, so `/v1/tokenize` reports exactly the fact
+  those paths enforce, never a second implementation of it that could
+  drift. `false` means a BPE merge crossed the `context`/`text` boundary
+  (the classic case: `context` ends in a space, so the option's first
+  token picks up a leading-space variant it would not have alone) — the
+  same hazard that makes teacher-forcing arbitrary text at an arbitrary
+  slot unsafe without this check.
+
+### `POST /v1/probe`
+
+Raw inference over exact text, on the adjudicator's own stack. **An
+instrument, not a judgement API: no calibration contract, and
+`docs/integration.md` invariants 8–11 do not apply to it.** It takes
+request text by design — unlike `/v1/opinion`, whose questions come only
+from a spec's menu — which is exactly why it is a separate route with a
+separate, weaker contract.
+
+On by default whenever the adjudicator is configured; `--no-probe` (or
+`LFM2D_PROBE=0`/`false`) removes the route entirely (`404`, never
+present-but-`403` — an unauthenticated prober should not learn "this
+feature exists but is off" from "this daemon never had it"). Runs as a
+worker `Job` like `/v1/opinion`, sharing the adjudicator's bounded queue
+and deadline handling.
+
+```json
+{"text": "cargo clean", "top_k": 5, "continuations": ["allow\"}", "ask\"}"],
+ "generate": 0, "use_cache": true, "timeout_ms": 30000}
+```
+
+or, in place of `text`:
+
+```json
+{"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "cargo clean"}],
+ "assistant_prefill": "{\"verdict\": \""}
+```
+
+- **Input**: exactly one of `text` (exact bytes, fed as-is — no template,
+  and none of `validate_text`'s literal-control-token refusal that every
+  other prompt path in this crate enforces, because the whole point is
+  inspecting what the model does with bytes those paths would refuse to
+  render) or `messages` (rendered `<|startoftext|>` then one
+  `<|im_start|>{role}\n{content}<|im_end|>\n` per message, then an opened,
+  unclosed assistant turn, optionally continued by `assistant_prefill` —
+  the SAME renderer `PromptSpec::render_prefix`/`render_user_turn` use for
+  a spec's own turns, reused rather than reimplemented). `role` must be
+  `system`/`user`/`assistant`; message `content` and `assistant_prefill`
+  DO go through `validate_text` (they sit inside the templated structure,
+  so a literal control token in them would corrupt it, same reasoning as
+  every spec-driven path). The response echoes `rendered` only when
+  `messages` was used (a `text` request already has its own bytes in the
+  request body) and always carries `rendered_sha256`.
+- `top_k` (0–20, default 5, `crate::types::MAX_DISTRIBUTION_TOP_K` — the
+  same cap `/v1/adjudicate`'s `distributions.top_k` uses): full-vocabulary
+  top-k logprobs at the last input position, RAW (no repetition penalty,
+  no renormalization) — same convention as every other distribution this
+  daemon reports.
+- `continuations` (0–32 strings, each non-empty): each is teacher-forced
+  after the input and scored via
+  `crate::opinion::score_continuations_verbose` — the SAME forward-pass
+  loop `/v1/opinion` and `/v1/adjudicate`'s `opinion: true` share, now
+  also returning the PER-TOKEN logprobs those endpoints throw away.
+  Per option: `tokens` (the continuation's own canonical encoding),
+  `token_logprobs`, `sequence_logprob` (their sum), `first_logprob`
+  (`token_logprobs[0]`, the F9 slot-score number), and `canonical` —
+  whether this continuation's tokens, encoded alone, are exactly the tail
+  of the rendered input with this text appended
+  (`suffix_is_stable` again). `canonical: false` is reported, never
+  refused: this is an inspection tool, and a non-canonical continuation is
+  still real data. The block also carries `sequence_mass`
+  (`logsumexp` of the options' sequence logprobs) and the ONE renormalized
+  number this endpoint allows, `prob` over the continuations — read it
+  beside `sequence_mass`, same "low mass means unasked, not wrong"
+  convention as everywhere else in this crate.
+- `generate` (0–256): greedy steps under the EXACT SAME deterministic
+  policy production uses (sign-aware repetition penalty over `full_ids`,
+  no grammar — `crate::constrain::Decoder::new(None, ...)`), stopping
+  early at end-of-text. Each step carries its own `top_k` via
+  `crate::types::step_distribution_under`, the same machinery
+  `/v1/adjudicate`'s `distributions` uses. Step 0's distribution IS
+  "`top_k` at the last input position" — computed once, not twice.
+- `use_cache` (default true): the daemon scans every loaded spec (boot and
+  uploaded) for one whose resident prefix is a token-id prefix of the
+  rendered input; if found, it clones that spec's prefix state and
+  bulk-forwards only the suffix (`forward_chunks`, `CHUNK`-sized pieces —
+  the SAME function `PromptCache::prepare`'s cache-miss branch uses, so
+  the two schedules cannot silently diverge into two implementations of
+  "forward a suffix onto a resident prefix"). `false` always runs cold
+  from zero. The response's `cache` block always states which happened:
+  `used_cache`, `resumed_spec` (the matched spec's id, if any), and
+  `cached_tokens`. **Never mutates any spec's own request-serving cache**
+  (`PromptCache::prepare`'s `ready` slot) — a probe against arbitrary text
+  must not silently evict a spec's warm production cache as a side effect.
+- **Bounds**: input tokens must fit the adjudicator context (`400`
+  otherwise); `continuations`/`generate` are capped as above (also `400`,
+  never clamped); `timeout_ms` 1–120000.
+- **Identity block**: `model_id`, `weight_hash`, `tokenizer_hash`,
+  `backend`, `dtype`, `sampling` (mirrors `PrefixInfo`'s fields, minus the
+  spec-specific ones — a probe is not bound to a spec), plus
+  `rendered_sha256`.
+- Telemetry: one span per probe, fields are lengths/counts only
+  (`input_tokens`, `cached_tokens`, `continuations`, `generated`,
+  `prefill_ms`, `score_ms`) — never the text, matching this crate's
+  blanket rule (`lib.rs`'s module docs, "no span, log, or metric anywhere
+  in this crate ever records input text").
+
+**What `use_cache: true` can and cannot reproduce bit-identically —
+measured, not assumed.** `/v1/probe`'s warm resume is ONE bulk forward of
+everything after a spec's resident prefix. `POST /v1/adjudicate
+{"opinion": true}` (the F8 read, "Opinion reads" above) is the SAME shape:
+its `rendered` text (prefix + user turn + the spec's fixed `prefill`
+string) is bulk-prefilled in one call via `PromptCache::prepare`, no
+decode loop at all — so a probe fed that exact text plus the spec's
+options as continuations reproduces it EXACTLY (`lfm2d/tests/probe_real.rs`,
+`#[ignore]`d: token identity, `first_logprob`, and `sequence_logprob` all
+bit-identical, `cached_tokens` equal to the spec's resident prefix length).
+
+`POST /v1/opinion`'s `describe_then_read` is NOT the same shape, even for
+a spec with nothing to describe: it still writes the JSON object's own
+opening (`{"verdict": "` — several tokens) through a GREEDY DECODE LOOP,
+one token at a time, because that text is GENERATED under the grammar,
+not given outright. A bulk forward of N tokens and N single-token forwards
+are the same computation in exact arithmetic, but not on this backend —
+quantized ROCm kernels differ by batch size (`lfm25-chunk-kernels.md`'s
+"block size picks the kernel"; `cold-and-cached-schedules-disagree`). So a
+probe fed `/v1/opinion`'s own `rendered` text does NOT reproduce it
+bit-for-bit — measured on ROCm, `cargo clean`, `ask`'s `first_logprob`
+disagreed by 0.05 nats with ZERO fields preceding the slot
+(`command-verdict-opinion-v1`) and by up to 3.4 nats with three
+(`command-verdict-enum-v1`, `effect`/`scope`/`undo` before `verdict`) —
+small in the zero-field case, large enough to flip a threshold in the
+three-field one. **A probe of `/v1/opinion`'s own rendered text is not a
+substitute for `/v1/opinion`'s answer; it is a different, related
+computation, and the endpoint's job is to let a caller measure exactly how
+different — not to hide that there's a gap.** Cold (`use_cache: false`)
+is reported the same way: measured, never asserted equal to warm, exactly
+because production is always warm and a cold probe answers a genuinely
+different question.
+
 ## Snapshot semantics
 
 Candle's `quantized_lfm2_moe::{Model, State}` separates immutable weights
