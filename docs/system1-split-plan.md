@@ -95,7 +95,7 @@ mean it moves. "drop" means it is deleted; its history stays in lfm2d's git.
 | `tests/severity_ladder.rs`, `tests/clause_routing.rs` | shell-specific checkpoint tests | → ktd, or drop |
 | `/v1/classify`, `/v1/route`, `/v1/spans*`, `/embed` | general head endpoints | stays. Which checkpoints get served is deploy config |
 | the shell severity checkpoint | an output of training | **retire now.** Amy: "the old lfm2d service will stay frozen indefinitely. so we can move on." `lfm2d-1` keeps serving it from its frozen image to the Claude Code hook and kaijutsu `gate.toml`; main stops carrying it |
-| `lfm2d/hooks/` | advisory hook, kaish_plan, clause_split, stage4 | → kaijutsu (`kj/hook_gate.rs`, `kj/plan_clauses.rs` already overlap) |
+| `lfm2d/hooks/` | advisory hook, kaish_plan, clause_split, stage4 | **moved to ktd `hooks/`** (`02cf276`, Amy's pick). `~/.claude/settings.json` now runs it from there. The lfm2d copy is deleted at sign-off |
 | `lfm2d/prompts/command-verdict-*`, `shell-severity-*` | shell specs | → kaijutsu, registered at runtime |
 | `benchmarks/lfm25/results/`, runtime docs `docs/lfm25-*` (kernels, cache, fusion, gqa, prefill) | engine performance record | stays |
 | `benchmarks/lfm25/examine/` | lens, routing and knockout tooling | stays (general over slots); its README examples go generic |
