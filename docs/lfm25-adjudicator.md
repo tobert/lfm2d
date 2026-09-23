@@ -677,16 +677,37 @@ or, in place of `text`:
   "`top_k` at the last input position" — computed once, not twice.
 - `use_cache` (default true): the daemon scans every loaded spec (boot and
   uploaded) for one whose resident prefix is a token-id prefix of the
-  rendered input; if found, it clones that spec's prefix state and
-  bulk-forwards only the suffix (`forward_chunks`, `CHUNK`-sized pieces —
+  input up to `decode_from` (or the whole input, when `decode_from` is
+  absent); if found, it clones that spec's prefix state and bulk-forwards
+  only the suffix up to there (`forward_chunks`, `CHUNK`-sized pieces —
   the SAME function `PromptCache::prepare`'s cache-miss branch uses, so
   the two schedules cannot silently diverge into two implementations of
-  "forward a suffix onto a resident prefix"). `false` always runs cold
-  from zero. The response's `cache` block always states which happened:
-  `used_cache`, `resumed_spec` (the matched spec's id, if any), and
-  `cached_tokens`. **Never mutates any spec's own request-serving cache**
-  (`PromptCache::prepare`'s `ready` slot) — a probe against arbitrary text
-  must not silently evict a spec's warm production cache as a side effect.
+  "forward a suffix onto a resident prefix"). `false` always runs the bulk
+  phase cold from zero. The response's `cache` block always states which
+  happened: `used_cache`, `resumed_spec` (the matched spec's id, if any),
+  `cached_tokens`, and the schedule split (`prefill_tokens`,
+  `stepwise_tokens` — see `decode_from`). **Never mutates any spec's own
+  request-serving cache** (`PromptCache::prepare`'s `ready` slot) — a
+  probe against arbitrary text must not silently evict a spec's warm
+  production cache as a side effect.
+- `decode_from` (optional, a BYTE offset into the rendered input — the
+  same bytes `rendered_sha256` hashes): splits the schedule. Everything
+  BEFORE it is bulk-forwarded exactly as `use_cache` describes above;
+  everything FROM it onward is forwarded ONE TOKEN AT A TIME via
+  `forward_chunks(..., chunk_size: 1, ...)` — the SAME `model.forward(&[token],
+  &mut state)` call `describe_then_read`'s decode loop makes per generated
+  token, reused at that chunk size rather than reimplemented (see
+  `forward_chunks`'s doc comment). Must land exactly on a token boundary
+  of the input's own tokenization (the byte offsets `/v1/tokenize` itself
+  reports) — refused with `400` naming the nearest boundaries either side
+  otherwise, never rounded silently. This is what lets a caller replay
+  `/v1/opinion`'s OWN schedule, not just the bulk-only one below: set it
+  to the byte length of the prompt text BEFORE any of the model's own
+  output (prefix + user turn, ending right where the forced object/key
+  opening — `{"verdict`, in the shipped verdict specs — begins), and the
+  response reproduces `/v1/opinion`'s slot bit-for-bit (measured below).
+  Omitted, the whole input stays in the bulk phase — today's only
+  schedule before this field existed, and still the default.
 - **Bounds**: input tokens must fit the adjudicator context (`400`
   otherwise); `continuations`/`generate` are capped as above (also `400`,
   never clamped); `timeout_ms` 1–120000.
@@ -700,16 +721,19 @@ or, in place of `text`:
   blanket rule (`lib.rs`'s module docs, "no span, log, or metric anywhere
   in this crate ever records input text").
 
-**What `use_cache: true` can and cannot reproduce bit-identically —
-measured, not assumed.** `/v1/probe`'s warm resume is ONE bulk forward of
-everything after a spec's resident prefix. `POST /v1/adjudicate
-{"opinion": true}` (the F8 read, "Opinion reads" above) is the SAME shape:
-its `rendered` text (prefix + user turn + the spec's fixed `prefill`
-string) is bulk-prefilled in one call via `PromptCache::prepare`, no
-decode loop at all — so a probe fed that exact text plus the spec's
-options as continuations reproduces it EXACTLY (`lfm2d/tests/probe_real.rs`,
+**What each schedule can reproduce bit-identically — measured, not
+assumed.** Without `decode_from`, `/v1/probe`'s warm resume is ONE bulk
+forward of everything after a spec's resident prefix.
+`POST /v1/adjudicate {"opinion": true}` (the F8 read, "Opinion reads"
+above) is the SAME shape: its `rendered` text (prefix + user turn + the
+spec's fixed `prefill` string) is bulk-prefilled in one call via
+`PromptCache::prepare`, no decode loop at all — so a bulk-only probe fed
+that exact text plus the spec's options as continuations reproduces it
+EXACTLY (`lfm2d/tests/probe_real.rs`,
+`probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm`,
 `#[ignore]`d: token identity, `first_logprob`, and `sequence_logprob` all
-bit-identical, `cached_tokens` equal to the spec's resident prefix length).
+bit-identical, `cached_tokens` equal to the spec's resident prefix
+length).
 
 `POST /v1/opinion`'s `describe_then_read` is NOT the same shape, even for
 a spec with nothing to describe: it still writes the JSON object's own
@@ -719,19 +743,31 @@ not given outright. A bulk forward of N tokens and N single-token forwards
 are the same computation in exact arithmetic, but not on this backend —
 quantized ROCm kernels differ by batch size (`lfm25-chunk-kernels.md`'s
 "block size picks the kernel"; `cold-and-cached-schedules-disagree`). So a
-probe fed `/v1/opinion`'s own `rendered` text does NOT reproduce it
-bit-for-bit — measured on ROCm, `cargo clean`, `ask`'s `first_logprob`
-disagreed by 0.05 nats with ZERO fields preceding the slot
-(`command-verdict-opinion-v1`) and by up to 3.4 nats with three
+**bulk-only** probe fed `/v1/opinion`'s own `rendered` text does NOT
+reproduce it bit-for-bit — measured on ROCm, `cargo clean`, `ask`'s
+`first_logprob` disagreed by 0.05 nats with ZERO fields preceding the
+slot (`command-verdict-opinion-v1`) and by up to 3.4 nats with three
 (`command-verdict-enum-v1`, `effect`/`scope`/`undo` before `verdict`) —
 small in the zero-field case, large enough to flip a threshold in the
-three-field one. **A probe of `/v1/opinion`'s own rendered text is not a
-substitute for `/v1/opinion`'s answer; it is a different, related
-computation, and the endpoint's job is to let a caller measure exactly how
-different — not to hide that there's a gap.** Cold (`use_cache: false`)
-is reported the same way: measured, never asserted equal to warm, exactly
-because production is always warm and a cold probe answers a genuinely
-different question.
+three-field one.
+
+**`decode_from` closes that gap.** Set to the byte length of the prompt
+text alone (before any of the model's own output), a probe fed
+`/v1/opinion`'s `rendered` text reproduces its slot EXACTLY — same token
+identity, same `first_logprob`, same `sequence_logprob` — for BOTH the
+zero-described-fields spec and the three-fields one that measured the 3.4
+nat gap above (`lfm2d/tests/probe_real.rs`,
+`probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from`,
+`#[ignore]`d, 2026-09-23). **So: `/v1/probe` reproduces
+`POST /v1/adjudicate {"opinion": true}` with the bulk-only (default)
+schedule, and reproduces `POST /v1/opinion` when given its OWN decode
+schedule via `decode_from`** — the caller supplies the split, because only
+the caller (having asked `/v1/opinion` or read `describe_then_read`'s own
+code) knows where a given render's generation actually began; `/v1/probe`
+has no spec/field awareness to infer it. Cold (`use_cache: false`) is
+reported the same way regardless of schedule: measured, never asserted
+equal to warm, exactly because production is always warm and a cold probe
+answers a genuinely different question.
 
 ## Snapshot semantics
 

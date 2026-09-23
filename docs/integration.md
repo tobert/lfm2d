@@ -140,17 +140,24 @@ request text by design (unlike `/v1/opinion`, whose questions come only
 from a loaded spec's menu — invariant 11 exists precisely because that
 one doesn't take request text). A consumer must not treat a `/v1/probe`
 number as comparable to a `/v1/opinion`/`/v1/adjudicate` verdict without
-checking first: `/v1/probe`'s warm resume reproduces
+checking first WHICH schedule it ran: with `decode_from` omitted,
+`/v1/probe`'s bulk-only resume reproduces
 `POST /v1/adjudicate {"opinion": true}`'s read bit-identically, but does
-**NOT** reproduce `POST /v1/opinion`'s own read bit-identically — measured
-disagreement up to several nats at the same slot on the same input, because
-the two paths take different kernels for the same tokens on this backend
-(`docs/lfm25-adjudicator.md` "Probe and tokenize"). `/v1/probe` may be
-disabled entirely (`--no-probe`/`LFM2D_PROBE=0`) without affecting
-`/v1/opinion` or `/v1/adjudicate`; a consumer must not assume its
-presence. `/v1/tokenize` carries no invariant beyond the general ones
-(1–3, for whichever model's vocabulary is asked about) — it exposes
-tokenization, not a scored or judged quantity.
+**NOT** reproduce `POST /v1/opinion`'s own read that way — measured
+disagreement up to several nats at the same slot on the same input,
+because the two paths take different kernels for the same tokens on this
+backend. `/v1/probe` CAN reproduce `POST /v1/opinion`'s own read
+bit-identically, but only when the caller supplies `decode_from` — the
+byte offset where that read's generation actually began — since
+`/v1/probe` has no spec/field awareness to infer it itself; without that
+offset, or with the wrong one, the numbers are a different, related
+computation, not `/v1/opinion`'s answer (`docs/lfm25-adjudicator.md`
+"Probe and tokenize"). `/v1/probe` may be disabled entirely
+(`--no-probe`/`LFM2D_PROBE=0`) without affecting `/v1/opinion` or
+`/v1/adjudicate`; a consumer must not assume its presence. `/v1/tokenize`
+carries no invariant beyond the general ones (1–3, for whichever model's
+vocabulary is asked about) — it exposes tokenization, not a scored or
+judged quantity.
 
 ## Operational numbers (measured, dated — re-measure before designing on them)
 

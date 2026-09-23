@@ -739,6 +739,9 @@ contract: `POST /v1/tokenize` (any loaded model, encoder head or
 adjudicator, over a cloned tokenizer — never queues behind either worker)
 and `POST /v1/probe` (raw inference over exact text on the adjudicator's
 own stack — top-k logprobs, teacher-forced continuations, greedy
-`generate`, and an explicit warm/cold resume report). Both are instruments
-for inspecting the daemon's own numbers, not decision APIs; see the
-guide's "Probe and tokenize" section.
+`generate`, and an explicit warm/cold resume report, with an optional
+`decode_from` byte offset that replays part of the schedule one token at a
+time — the daemon's own decode-loop forward call, reused — so a caller
+can reproduce `/v1/opinion`'s exact schedule, not just the bulk-prefill
+one). Both are instruments for inspecting the daemon's own numbers, not
+decision APIs; see the guide's "Probe and tokenize" section.
