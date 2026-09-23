@@ -11,7 +11,7 @@ use crate::{
 };
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -1018,11 +1018,12 @@ impl<T: SpecIdentity> SpecStore<T> {
         self.uploaded.push_back(spec);
         Ok((self.uploaded.back().expect("just inserted"), true, evicted))
     }
-    /// Unload an uploaded spec by id. A boot spec's id/name is never
-    /// removable — [`RemoveOutcome::Boot`] — and an uploaded spec's id also
-    /// answers only to itself here, matching [`SpecStore::resolve_mut`].
+    /// Unload an uploaded spec by id. A boot spec's id OR name is never
+    /// removable — [`RemoveOutcome::Boot`], matching the same two keys
+    /// [`SpecStore::resolve_mut`] answers a boot spec to (an uploaded
+    /// spec's id still answers only to itself here, same as resolution).
     fn remove(&mut self, id: &str) -> RemoveOutcome<T> {
-        if self.boot.iter().any(|s| s.id() == id) {
+        if self.boot.iter().any(|s| s.id() == id || s.name() == id) {
             return RemoveOutcome::Boot;
         }
         match self.uploaded.iter().position(|s| s.id() == id) {
@@ -1379,7 +1380,16 @@ impl Generator for Adjudicator {
             })
             .map(|(spec, newly_loaded, evicted)| (spec.menu.clone(), newly_loaded, evicted))
             .map_err(Failure::Unprocessable)?;
-        check()?;
+        // No `check()` here. `register_or_load` above already committed the
+        // mutation (inserted the spec, possibly evicted an LRU one) —
+        // `self.specs` is the new truth regardless of what happens next.
+        // Returning `Err` past this point would tell the worker's dispatch
+        // to skip publishing the menu (see the `Job::Register` arm in
+        // `Handle::spawn`) and tell the caller the registration failed,
+        // while the store already disagrees with both. A disconnected
+        // caller or an expired deadline are still real, but they're the
+        // CALLER's problem (a `504`/dropped response) — never a reason to
+        // un-happen a mutation that already happened.
         Ok(RegisterOutcome {
             entry,
             newly_loaded,
@@ -2141,6 +2151,14 @@ impl Handle {
         let finished = exit.clone();
         let stopping = Arc::new(AtomicBool::new(false));
         let worker_stopping = stopping.clone();
+        // Created here, before the worker thread starts, and cloned into
+        // it: the WORKER publishes every registration/eviction/delete to
+        // this directly, synchronously, as part of processing that job —
+        // never the async request task that happened to submit it. See the
+        // long comment on the `Job::Register`/`Job::Unregister` arms below
+        // for why that distinction is the whole fix.
+        let menu = Arc::new(std::sync::RwLock::new(Vec::new()));
+        let worker_menu = menu.clone();
         let worker = std::thread::Builder::new()
             .name("lfm2d-adjudicator".into())
             .spawn(move || {
@@ -2198,9 +2216,28 @@ impl Handle {
                                 );
                                 Reply::Opinion(r)
                             }),
+                        // Register/Unregister publish `worker_menu` HERE, on
+                        // this thread, unconditionally once `generator`
+                        // reports the store changed — never deferred to the
+                        // async task that submitted the job. That task's
+                        // oneshot receiver can already be gone by the time
+                        // we get here (the caller disconnected, or hit its
+                        // own client-side deadline) and `work.reply.send`
+                        // below is allowed to fail silently for exactly
+                        // that reason; if publishing waited for a
+                        // successful reply, a disconnected caller's
+                        // registration would sit in the store forever
+                        // without ever reaching `Handle.menu`, and a caller
+                        // whose reply raced another admin request could
+                        // publish an older snapshot last. Publishing here,
+                        // on the single serial worker thread, in the same
+                        // order jobs are dequeued, closes both: by the time
+                        // ANY reply is sent (or not), the store and the
+                        // published menu already agree.
                         Job::Register(id, prompt) => check()
                             .and_then(|()| generator.register(id.clone(), prompt.clone(), &check))
                             .map(|r| {
+                                *worker_menu.write().expect("menu lock poisoned") = r.menu.clone();
                                 tracing::info!(
                                     id = %r.entry.id,
                                     snapshot_id = %r.entry.snapshot_id,
@@ -2214,7 +2251,8 @@ impl Handle {
                         Job::Unregister(id) => check().map(|()| {
                             let outcome = generator.unregister(id);
                             match &outcome {
-                                UnregisterOutcome::Deleted { entry, .. } => {
+                                UnregisterOutcome::Deleted { entry, menu } => {
+                                    *worker_menu.write().expect("menu lock poisoned") = menu.clone();
                                     tracing::info!(
                                         id = %entry.id,
                                         snapshot_id = %entry.snapshot_id,
@@ -2262,17 +2300,14 @@ impl Handle {
                 std::process::exit(1);
             }
         });
-        Self {
-            tx,
-            info,
-            menu: Arc::new(std::sync::RwLock::new(Vec::new())),
-            exit,
-            stopping,
-        }
+        Self { tx, info, menu, exit, stopping }
     }
     /// The specs `/v1/opinion` serves at boot. Without this, every opinion
     /// request is refused as naming an unknown spec. Registration and
-    /// deletion keep this current afterward — see [`Handle::replace_menu`].
+    /// deletion keep this current afterward — the WORKER publishes it
+    /// directly (see the `Job::Register`/`Job::Unregister` arms in
+    /// `spawn`), never a request task, so this is the only caller of
+    /// [`Handle::replace_menu`] left.
     pub fn with_menu(self, menu: Vec<crate::opinion_api::SpecMenuEntry>) -> Self {
         self.replace_menu(menu);
         self
@@ -2280,11 +2315,12 @@ impl Handle {
     pub fn menu(&self) -> Vec<crate::opinion_api::SpecMenuEntry> {
         self.menu.read().expect("menu lock poisoned").clone()
     }
-    /// Overwrite the live menu wholesale — called after every registration
-    /// or deletion with the fresh full list the worker just computed, so
-    /// every `Handle` clone (one canonical instance shared through the
-    /// `Arc`/`RwLock`, no matter how many `State<Handle>` extractions axum
-    /// makes per request) sees the same menu the worker's `specs` now holds.
+    /// Overwrite the live menu wholesale. Boot-time setup only
+    /// (`with_menu`) — a registration or deletion publishes through the
+    /// worker's own clone of this `Arc`, not through this method, so it
+    /// happens exactly once, synchronously, on the thread that made the
+    /// mutation, regardless of whether the request that triggered it is
+    /// still around to hear back.
     fn replace_menu(&self, menu: Vec<crate::opinion_api::SpecMenuEntry>) {
         *self.menu.write().expect("menu lock poisoned") = menu;
     }
@@ -2369,30 +2405,27 @@ impl Handle {
             ),
         }
     }
-    /// `POST /v1/opinion/specs`: `bytes` is the exact uploaded body. The id
-    /// is computed here, once, centrally — never inside a `Generator`, so
-    /// it is the same content hash regardless of which engine is running
-    /// (production `Adjudicator` or a test double) and cannot drift between
-    /// them. Returns `201` for a genuine load, `200` for an already-loaded
-    /// id (boot or upload) — no work done either way past this point.
+    /// `POST /v1/opinion/specs`: `bytes` is the exact uploaded body — already
+    /// bounded to `MAX_SPEC_BYTES` by the route's `DefaultBodyLimit` layer
+    /// (`router`, below); anything over that never reaches here at all
+    /// (axum answers `413` itself). The id is computed here, once,
+    /// centrally — never inside a `Generator`, so it is the same content
+    /// hash regardless of which engine is running (production `Adjudicator`
+    /// or a test double) and cannot drift between them. Returns `201` for a
+    /// genuine load, `200` for an already-loaded id (boot or upload) — no
+    /// work done either way past this point. The published menu is NOT
+    /// updated here — see the worker's `Job::Register` arm in `spawn`.
     #[allow(clippy::result_large_err)]
     pub async fn register(
         &self,
         bytes: Vec<u8>,
     ) -> Result<(StatusCode, crate::opinion_api::SpecMenuEntry), Response> {
-        if bytes.len() > MAX_SPEC_BYTES {
-            return Err(Failure::BadRequest(format!(
-                "spec exceeds {MAX_SPEC_BYTES} bytes"
-            ))
-            .into_response());
-        }
         let id = crate::hash::sha256_hex_bytes(&bytes);
         let prompt: PromptSpec = serde_json::from_slice(&bytes).map_err(|e| {
             Failure::BadRequest(format!("spec is not a valid prompt spec: {e}")).into_response()
         })?;
         match self.submit(Job::Register(id, prompt), "register").await? {
             Reply::Register(outcome) => {
-                self.replace_menu(outcome.menu);
                 let status = if outcome.newly_loaded { StatusCode::CREATED } else { StatusCode::OK };
                 Ok((status, outcome.entry))
             }
@@ -2404,14 +2437,12 @@ impl Handle {
     }
     /// `DELETE /v1/opinion/specs/{id}`: `204` on deletion, `403` for a
     /// boot-time spec's id (refused, never deleted), `404` for an unknown
-    /// id — already gone, or never loaded.
+    /// id — already gone, or never loaded. The published menu is NOT
+    /// updated here — see the worker's `Job::Unregister` arm in `spawn`.
     #[allow(clippy::result_large_err)]
     pub async fn unregister(&self, id: String) -> Result<StatusCode, Response> {
         match self.submit(Job::Unregister(id.clone()), "unregister").await? {
-            Reply::Unregister(UnregisterOutcome::Deleted { menu, .. }) => {
-                self.replace_menu(menu);
-                Ok(StatusCode::NO_CONTENT)
-            }
+            Reply::Unregister(UnregisterOutcome::Deleted { .. }) => Ok(StatusCode::NO_CONTENT),
             Reply::Unregister(UnregisterOutcome::BootSpec) => Err(Failure::Forbidden(format!(
                 "{id:?} is a boot-time spec (--adjudicator-prompt/--opinion-spec) and cannot be \
                  deleted at runtime"
@@ -2434,7 +2465,15 @@ pub fn router(handle: Handle) -> Router {
         .route("/v1/opinion", post(opine))
         .route(
             "/v1/opinion/specs",
-            get(specs).post(register_spec),
+            get(specs)
+                .post(register_spec)
+                // Scoped to this route (not the whole router): a body over
+                // MAX_SPEC_BYTES never reaches `register_spec` at all —
+                // axum answers 413 itself, consistently, for every
+                // oversized body rather than only the ones past its own
+                // 2 MiB default (which `register_spec`'s own check used to
+                // sit behind for 1-2 MiB bodies, and never saw beyond it).
+                .layer(DefaultBodyLimit::max(MAX_SPEC_BYTES)),
         )
         .route("/v1/opinion/specs/{id}", axum::routing::delete(delete_spec))
         .with_state(handle)
@@ -2600,6 +2639,46 @@ mod spec_store_tests {
         assert_eq!(s.uploaded.len(), 2, "capacity is never exceeded");
     }
 
+    /// The sibling of `capacity_plus_one_uploads_evicts_the_least_recently_used`,
+    /// but touching `a` via a RE-REGISTRATION (`register_or_load`'s own
+    /// "already uploaded" branch) rather than via `resolve_mut` — a
+    /// distinct code path (`POST /v1/opinion/specs` of the same bytes
+    /// again, not a `/v1/opinion` read) that must ALSO count as use, per
+    /// the ruling ("registered or served"). This is the one the mutation
+    /// round targets: dropping the touch from `register_or_load`'s
+    /// already-uploaded branch (so a re-registration doesn't move the
+    /// entry to the back) makes this fail while the sibling test above
+    /// still passes, since that one never re-registers anything.
+    #[test]
+    fn reregistering_an_upload_also_counts_as_use_and_protects_it_from_eviction() {
+        let mut s = store(&["boot"], 2);
+        s.register_or_load("a", || Ok::<_, ()>(f("a"))).unwrap();
+        s.register_or_load("b", || Ok::<_, ()>(f("b"))).unwrap();
+        // Re-register `a`'s own id — the already-uploaded branch, not a
+        // resolve_mut read — so `b` becomes the LRU one.
+        let loads = std::cell::Cell::new(0);
+        let (entry, newly_loaded, evicted) = s
+            .register_or_load("a", || {
+                loads.set(loads.get() + 1);
+                Ok::<_, ()>(f("a"))
+            })
+            .unwrap();
+        assert_eq!(entry.id, "a");
+        assert!(!newly_loaded, "re-registering an already-uploaded id does no load");
+        assert!(evicted.is_none());
+        assert_eq!(loads.get(), 0, "the already-uploaded branch never calls the loader");
+        let (entry, newly_loaded, evicted) = s.register_or_load("c", || Ok::<_, ()>(f("c"))).unwrap();
+        assert_eq!(entry.id, "c");
+        assert!(newly_loaded);
+        assert_eq!(
+            evicted.as_deref(),
+            Some("b"),
+            "b is the least recently used upload -- a was protected by its RE-REGISTRATION, not a read"
+        );
+        assert!(s.resolve_mut(Some("a")).is_some(), "a survives");
+        assert!(s.resolve_mut(Some("b")).is_none(), "b was evicted");
+    }
+
     #[test]
     fn boot_specs_are_never_evicted_however_many_uploads_arrive() {
         let mut s = store(&["boot"], 1);
@@ -2625,6 +2704,20 @@ mod spec_store_tests {
         assert!(s.resolve_mut(Some("up1")).is_none(), "404 after delete");
         assert!(matches!(s.remove("up1"), RemoveOutcome::NotFound), "deleting twice is a clean not-found");
         assert!(matches!(s.remove("never-loaded"), RemoveOutcome::NotFound));
+    }
+
+    #[test]
+    fn remove_refuses_a_boot_spec_by_its_name_too_not_only_its_id() {
+        // resolve_mut matches a boot spec by id OR name (a boot spec
+        // "also answers to its file-stem name"); remove must refuse the
+        // same set of keys, or DELETE by name would 404 a spec that is
+        // still very much loaded and answerable by that same name.
+        let mut s = store(&["boot"], 4);
+        assert!(
+            matches!(s.remove("boot-name"), RemoveOutcome::Boot),
+            "a boot spec's name must also be refused as Boot, not treated as unknown"
+        );
+        assert!(s.resolve_mut(Some("boot")).is_some(), "refusing by name must not remove it");
     }
 
     #[test]
@@ -2981,5 +3074,264 @@ mod prompt_cache_tests {
             cache.prepare(&model, &a, true, &|| Err(Failure::Deadline)),
             Err(Failure::Deadline)
         ));
+    }
+}
+
+/// Whether the live `Handle.menu` a caller reads stays in step with the
+/// worker's own `specs` — the property "MENU CAN FALL BEHIND THE WORKER"
+/// named. A job whose caller is ALREADY gone before the worker even looks
+/// at it is correctly refused up front (`check()`'s pre-check, unchanged —
+/// see `no_work_happens_for_a_caller_that_was_already_gone_before_the_worker_looked`
+/// below, which pins that this stays true) and is not what these tests
+/// are about. The bug (and the fix) is about a caller that disconnects
+/// AFTER the worker has already started mutating the store: the mutation
+/// must complete and be published regardless.
+#[cfg(test)]
+mod handle_menu_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn info() -> PrefixInfo {
+        PrefixInfo {
+            model_id: "fixture".into(),
+            weight_hash: "hash".into(),
+            tokenizer_hash: "tok".into(),
+            template_version: "test".into(),
+            snapshot_id: "snapshot".into(),
+            prefix_tokens: 7,
+            input_cache_capacity: 1,
+            context_limit: 128,
+            backend: "cpu".into(),
+            dtype: "f32".into(),
+            sampling: "greedy".into(),
+            weight_dtypes: vec!["F32".into()],
+        }
+    }
+    fn prompt(system: &str) -> PromptSpec {
+        serde_json::from_value(serde_json::json!({"system": system})).unwrap()
+    }
+    fn body_of(p: &PromptSpec) -> Vec<u8> {
+        serde_json::to_vec(p).unwrap()
+    }
+
+    /// A generator whose `register`/`unregister` are real enough to build a
+    /// menu entry from the id/prompt it's handed, count calls, and — when
+    /// `delay` is set — sleep (on this worker OS thread, `check()` is never
+    /// polled during it, same as the real `LoadedSpec::load`'s prefill
+    /// loop) AFTER counting the call but BEFORE mutating `registered`. That
+    /// window is where a test aborts the caller: the abort is guaranteed to
+    /// land while the "load" is in flight and strictly before the mutation,
+    /// so the mutation the test later observes published genuinely
+    /// happened after the caller was already gone.
+    struct CountingRegistrar {
+        calls: Arc<AtomicUsize>,
+        unregister_calls: Arc<AtomicUsize>,
+        /// Accumulated, exactly like the real `Adjudicator`'s `menu()`
+        /// (boot + uploaded) — NOT a fresh single-entry vec each call. The
+        /// tests using this depend on `RegisterOutcome::menu` and
+        /// `UnregisterOutcome::Deleted { menu, .. }` being the FULL current
+        /// menu, since that's what the worker publishes wholesale.
+        registered: Vec<crate::opinion_api::SpecMenuEntry>,
+        delay: Option<Duration>,
+    }
+    impl Generator for CountingRegistrar {
+        fn generate(
+            &mut self,
+            _: &AdjudicateRequest,
+            _: &dyn Fn() -> Result<(), Failure>,
+        ) -> Result<AdjudicateResponse, Failure> {
+            Err(Failure::Internal("not exercised here".into()))
+        }
+        fn opine(
+            &mut self,
+            _: &crate::opinion_api::OpinionRequest,
+            _: &[crate::opinion_api::ResolvedQuestion],
+            _: &dyn Fn() -> Result<(), Failure>,
+        ) -> Result<crate::opinion_api::OpinionResponse, Failure> {
+            Err(Failure::Internal("not exercised here".into()))
+        }
+        fn register(
+            &mut self,
+            id: String,
+            prompt: PromptSpec,
+            _: &dyn Fn() -> Result<(), Failure>,
+        ) -> Result<RegisterOutcome, Failure> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(delay) = self.delay {
+                std::thread::sleep(delay);
+            }
+            let entry = crate::opinion_api::SpecMenuEntry::from_prompt(&id, &id, &prompt, "snap", 16)
+                .expect("test fixture spec is always a valid menu entry");
+            self.registered.retain(|e| e.id != entry.id);
+            self.registered.push(entry.clone());
+            Ok(RegisterOutcome {
+                entry,
+                newly_loaded: true,
+                evicted: None,
+                load_ms: 0.,
+                menu: self.registered.clone(),
+            })
+        }
+        fn unregister(&mut self, id: &str) -> UnregisterOutcome {
+            self.unregister_calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(delay) = self.delay {
+                std::thread::sleep(delay);
+            }
+            match self.registered.iter().position(|e| e.id == id) {
+                Some(pos) => {
+                    let entry = self.registered.remove(pos);
+                    UnregisterOutcome::Deleted { entry, menu: self.registered.clone() }
+                }
+                None => UnregisterOutcome::NotFound,
+            }
+        }
+    }
+
+    /// Not a regression test for the bug — a control, pinning the behavior
+    /// the fix must NOT change: a caller whose reply receiver is already
+    /// gone before the worker ever looks at the job is refused up front by
+    /// `check()`'s pre-check, and the generator is never even called. If
+    /// this stopped being true (e.g. someone "fixed" the bug by dropping
+    /// the pre-check entirely), unrelated already-abandoned work would
+    /// start silently consuming worker time forever.
+    #[tokio::test]
+    async fn no_work_happens_for_a_caller_that_was_already_gone_before_the_worker_looked() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handle = Handle::spawn(
+            CountingRegistrar {
+                calls: calls.clone(),
+                unregister_calls: Arc::new(AtomicUsize::new(0)),
+                registered: Vec::new(),
+                delay: None,
+            },
+            info(),
+        );
+        let (reply, rx) = oneshot::channel();
+        drop(rx);
+        handle
+            .tx
+            .send(Work {
+                job: Job::Register("id1".into(), prompt("one")),
+                reply,
+                enqueued: Instant::now(),
+                span: tracing::info_span!("test"),
+            })
+            .unwrap();
+        // Serialize on a second, normal registration so the first has
+        // certainly been dequeued (the worker is single-threaded, FIFO)
+        // before asserting. `calls` counts BOTH jobs if job 1 wrongly
+        // reaches the generator, so 1 (not 0) is the "job 1 was skipped"
+        // reading — this registration's own call is the one that's there.
+        let (status, _) = handle.register(body_of(&prompt("two"))).await.unwrap();
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "an already-abandoned job must never reach the generator (only job 2's own call should count)"
+        );
+        assert_eq!(handle.menu().len(), 1, "only the second registration is on the menu");
+    }
+
+    /// The actual regression test: the caller aborts WHILE the worker is
+    /// in the middle of the (simulated, slow) load — after `check()`'s
+    /// pre-check already passed, so the generator's `register` was called
+    /// and is in flight — but before the store mutation happens. Under the
+    /// old shape, `Adjudicator::register` ran `check()` again right after
+    /// the mutation and turned the now-cancelled caller into a lost
+    /// `Failure::Cancelled`, and `Handle::register`'s `replace_menu` call
+    /// (gated on receiving a successful reply) never ran because there was
+    /// no live task left to receive it. The fix: no `check()` after a
+    /// mutation, and the WORKER publishes synchronously as part of
+    /// processing the job — so this must pass regardless.
+    #[tokio::test]
+    async fn the_worker_publishes_a_registration_whose_caller_disconnects_mid_flight() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handle = Handle::spawn(
+            CountingRegistrar {
+                calls: calls.clone(),
+                unregister_calls: Arc::new(AtomicUsize::new(0)),
+                registered: Vec::new(),
+                delay: Some(Duration::from_millis(80)),
+            },
+            info(),
+        );
+        let bytes = body_of(&prompt("mid-flight"));
+        let id = sha256_hex_bytes(&bytes);
+        let task = {
+            let handle = handle.clone();
+            tokio::spawn(async move { handle.register(bytes).await })
+        };
+        // Wait until the worker has actually entered `register` (so the
+        // pre-check already passed) before severing the caller.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while calls.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the generator must start processing");
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled(), "the caller task was actually aborted");
+
+        // The worker is still asleep inside `register`'s simulated load,
+        // with no caller left. Poll for the publish rather than guessing a
+        // sleep long enough to outlast it.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if handle.menu().iter().any(|e| e.id == id) {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the worker must publish the registration even though its caller disconnected mid-flight");
+    }
+
+    /// The delete side of the same property.
+    #[tokio::test]
+    async fn the_worker_publishes_a_deletion_whose_caller_disconnects_mid_flight() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let unregister_calls = Arc::new(AtomicUsize::new(0));
+        let handle = Handle::spawn(
+            CountingRegistrar {
+                calls: calls.clone(),
+                unregister_calls: unregister_calls.clone(),
+                registered: Vec::new(),
+                delay: Some(Duration::from_millis(80)),
+            },
+            info(),
+        );
+        // Register normally first (awaited to completion, not aborted —
+        // this one just pays the 80ms delay), so it's on the menu.
+        let (status, entry) = handle.register(body_of(&prompt("to-delete"))).await.unwrap();
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(handle.menu().iter().any(|e| e.id == entry.id));
+
+        let id = entry.id.clone();
+        let task = {
+            let handle = handle.clone();
+            tokio::spawn(async move { handle.unregister(id).await })
+        };
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while unregister_calls.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the generator must start processing the deletion");
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if !handle.menu().iter().any(|e| e.id == entry.id) {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the worker must publish the deletion even though its caller disconnected mid-flight");
     }
 }
