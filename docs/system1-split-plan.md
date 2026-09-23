@@ -83,6 +83,46 @@ the snapshot_id, the load time and the source address.
 unsure, and always after a `404`. It records `id` and `snapshot_id` beside
 every decision.
 
+## Tokenize and probe endpoints (proposed 2026-09-23)
+
+Amy: "if we don't still have a tokenizing endpoint on lfm2d I think we should
+still have that. might add a general inference endpoint too so we can use it
+to probe the model consistently."
+
+Neither exists today. The nearest things are `/v1/adjudicate`
+`distributions` (top-k per generated step, but only under a spec) and the
+`lfm25-examine` binary (a cold reader, and not what the daemon runs).
+
+**`POST /v1/tokenize`**: `{model, text, context?}` → `ids`, each token's
+string and byte span, and `tokenizer_hash`. `model` is an id from
+`/v1/models`, the adjudicator or an encoder head, since they are separate
+tokenizers. With `context`, it also returns the tokens `text` takes up
+*after* the context, and whether they are stable as a suffix. That is the
+same check the spec loader runs on options (see memory
+verdict-words-tokenize-in-string-context). It runs on the handler; the
+tokenizer is cloned out of the worker, so tokenizing never waits in the
+model queue.
+
+**`POST /v1/probe`**: raw inference over exact text, on the daemon's own
+stack.
+- Input: `text` (exact bytes), or `messages` rendered through the chat
+  template with the rendered text returned. Optional `continuations`, each
+  teacher-forced and scored the way the opinion read scores options, and
+  optional `generate: n` greedy steps.
+- Output: top-k at the last position and at each generated step,
+  continuation logprobs with raw mass, `cached_tokens`, and an identity
+  block (weight/tokenizer hash, backend, dtype, sha256 of the rendered
+  input).
+- `use_cache: false` for a cold read, because cold and warm schedules
+  disagree by about 0.15 nats (memory cold-and-cached-schedules-disagree).
+  The response always says which one ran.
+- Later: `lens: [layers]` and `routing: true`, moving the examiner's
+  instruments into the daemon so probes and production share one stack.
+- It is an instrument, not a judgement API: it has no calibration contract,
+  and invariants 8–10 do not apply to it. It takes request text by design,
+  so it is a separate route from opinion (whose questions come only from
+  the menu) and can be turned off with a flag.
+
 ## Inventory and disposition (proposed; Amy to rule per row)
 
 "stays" means it stays in lfm2d. "→ kaijutsu" and "→ ktd" (kaish-training-data)
@@ -129,6 +169,8 @@ are (`~/.local/share/lfm2-training-data/`); they never lived in a repo.
    `build_facts`, the hook, and the shell evals. Repoint `gate.toml`.
 5. **Remove shell material from lfm2d**: code, tests, prompts, docs.
    Rewrite the READMEs, CLAUDE.md and AGENTS.md.
+5b. **Tokenize + probe endpoints**, after registration merges (both touch
+   `Handle`).
 6. **Delete this doc.** The kaiseki rename can ride here; see the memory
    note about copying the memory dir first.
 
