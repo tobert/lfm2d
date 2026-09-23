@@ -196,7 +196,11 @@ impl Generator for Fake {
     }
     fn unregister(&mut self, id: &str) -> UnregisterOutcome {
         let mut inner = self.0.lock().unwrap();
-        if inner.boot.iter().any(|e| e.id == id) {
+        // A boot spec's id OR name is refused, matching the two keys a
+        // lookup answers a boot spec to -- DELETE by a boot spec's
+        // file-stem name must also be 403, not a 404 that reads as
+        // "nothing by that name was ever loaded".
+        if inner.boot.iter().any(|e| e.id == id || e.spec == id) {
             return UnregisterOutcome::BootSpec;
         }
         match inner.uploaded.iter().position(|e| e.id == id) {
@@ -223,7 +227,12 @@ async fn post_bytes(router: &axum::Router, path: &str, body: &str) -> (u16, serd
     let value = if bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&bytes).unwrap()
+        // A body-limit rejection (413) is axum's own, plain-text, not this
+        // crate's `{"error": {...}}` JSON shape -- fall back to the raw
+        // text rather than panicking, so a caller asserting only on
+        // `status` doesn't have to care.
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned()))
     };
     (status, value)
 }
@@ -245,7 +254,12 @@ async fn post_json(router: &axum::Router, path: &str, body: &str) -> (u16, serde
     let value = if bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&bytes).unwrap()
+        // A body-limit rejection (413) is axum's own, plain-text, not this
+        // crate's `{"error": {...}}` JSON shape -- fall back to the raw
+        // text rather than panicking, so a caller asserting only on
+        // `status` doesn't have to care.
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned()))
     };
     (status, value)
 }
@@ -336,6 +350,16 @@ async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again
     assert_eq!(status, 201, "{v}");
     let id = v["id"].as_str().unwrap().to_string();
 
+    // The menu itself reflects the upload -- not just that a subsequent
+    // /v1/opinion by id happens to work, which a stale-but-lucky menu
+    // could also produce.
+    let (status, menu) = get(&router, "/v1/opinion/specs").await;
+    assert_eq!(status, 200);
+    assert!(
+        menu.as_array().unwrap().iter().any(|e| e["id"] == id),
+        "the menu must list the upload right after registration: {menu}"
+    );
+
     let ask = format!(
         r#"{{"spec":"{id}","state":{{"command":"cargo clean"}},"questions":[{{"field":"verdict"}}]}}"#
     );
@@ -345,6 +369,15 @@ async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again
 
     let status = delete(&router, &format!("/v1/opinion/specs/{id}")).await;
     assert_eq!(status, 204);
+
+    // The menu drops it too -- distinguishes "the worker refuses it" from
+    // "the menu just happens to be stale but nothing asked it yet".
+    let (status, menu) = get(&router, "/v1/opinion/specs").await;
+    assert_eq!(status, 200);
+    assert!(
+        !menu.as_array().unwrap().iter().any(|e| e["id"] == id),
+        "the menu must drop the id right after delete: {menu}"
+    );
 
     let (status, v) = post_json(&router, "/v1/opinion", &ask).await;
     assert_eq!(status, 404, "a deleted spec's id is a clean miss afterward: {v}");
@@ -367,6 +400,20 @@ async fn deleting_a_boot_spec_is_refused_and_it_stays_loaded() {
     let (status, menu) = get(&router, "/v1/opinion/specs").await;
     assert_eq!(status, 200);
     assert!(menu.as_array().unwrap().iter().any(|e| e["id"] == "boot-id"), "{menu}");
+}
+
+#[tokio::test]
+async fn deleting_a_boot_spec_by_its_name_is_also_refused_not_404() {
+    // resolve_mut answers a boot spec to its id OR its file-stem name, so
+    // DELETE must refuse the same two keys -- a 404 by name would read as
+    // "nothing named that was ever loaded", which is false: it's loaded,
+    // just not deletable at runtime.
+    let boot_entry = SpecMenuEntry::from_prompt("boot-id-2", "boot-name-2", &prompt("boot"), "snap", 16).unwrap();
+    let engine = Fake::new(vec![boot_entry.clone()], 8);
+    let handle = Handle::spawn(engine, info()).with_menu(vec![boot_entry]);
+    let router = lfm2d::adjudicator::router(handle);
+    let status = delete(&router, "/v1/opinion/specs/boot-name-2").await;
+    assert_eq!(status, 403, "a boot spec's NAME must also be refused, not treated as unknown");
 }
 
 #[tokio::test]
@@ -418,16 +465,64 @@ async fn a_load_refusal_is_422_with_the_reason_text() {
 #[tokio::test]
 async fn an_unparseable_body_is_400_and_never_reaches_the_engine() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine, info());
+    let handle = Handle::spawn(engine.clone(), info());
     let router = lfm2d::adjudicator::router(handle);
-    for body in ["not json at all", r#"{"system": "no schema key problem"}"#, "{}"] {
+    // Every body here must be bad -- unlike an earlier version of this
+    // test, which included a body that actually parses fine (`system`
+    // alone, `output_schema` being optional) and asserted nothing about
+    // it. That undermined the "never reaches the engine" claim: a body
+    // this test doesn't assert on could silently start reaching the
+    // engine without the test ever noticing.
+    for (why, body) in [
+        ("not json at all", "not json at all"),
+        ("empty object, missing required `system`", "{}"),
+        ("valid JSON, still missing required `system`", r#"{"tools": []}"#),
+        ("system is the wrong type", r#"{"system": 5}"#),
+        ("an unknown top-level field (deny_unknown_fields)", r#"{"system": "x", "nope": 1}"#),
+    ] {
         let (status, v) = post_bytes(&router, "/v1/opinion/specs", body).await;
-        // "{"system": "..."}" alone actually parses fine (output_schema is
-        // optional) — only genuinely malformed bodies are 400 here.
-        if body == "not json at all" || body == "{}" {
-            assert_eq!(status, 400, "{body:?}: {v}");
-        }
+        assert_eq!(status, 400, "{why} ({body:?}): {v}");
     }
+    assert_eq!(
+        engine.0.lock().unwrap().load_calls,
+        0,
+        "not one of these malformed bodies may reach the engine's register/load path"
+    );
+}
+
+/// `MAX_SPEC_BYTES` in `lfm2d::adjudicator` is 1 MiB (`1_048_576`), private
+/// to that module -- mirrored here rather than exported, since the wire
+/// contract this test pins is "over the limit is 413", not the exact
+/// number (documented in `docs/lfm25-adjudicator.md`). Before the
+/// `DefaultBodyLimit` layer was added to the registration route, a body
+/// over this size but under axum's own 2 MiB built-in default reached the
+/// handler and got a 400 from a manual length check there, while a body
+/// over 2 MiB never reached the handler at all and got axum's own 413 —
+/// two different status codes for "too big," depending on how much too
+/// big. Both are 413 now.
+#[tokio::test]
+async fn a_body_over_the_spec_size_limit_is_413_and_never_reaches_the_engine() {
+    const MAX_SPEC_BYTES: usize = 1_048_576;
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine.clone(), info());
+    let router = lfm2d::adjudicator::router(handle);
+
+    // Just over the limit -- exercises the boundary, not just "very big".
+    let over = "a".repeat(MAX_SPEC_BYTES + 1);
+    let (status, _) = post_bytes(&router, "/v1/opinion/specs", &over).await;
+    assert_eq!(status, 413, "a body 1 byte over the limit must be refused");
+
+    // Comfortably over both the old per-handler check's threshold and
+    // axum's own former 2 MiB default -- must land on the SAME status.
+    let way_over = "a".repeat(MAX_SPEC_BYTES * 3);
+    let (status, _) = post_bytes(&router, "/v1/opinion/specs", &way_over).await;
+    assert_eq!(status, 413, "a much larger oversized body must get the identical status");
+
+    assert_eq!(
+        engine.0.lock().unwrap().load_calls,
+        0,
+        "an oversized body must never reach the engine's register/load path"
+    );
 }
 
 #[tokio::test]
