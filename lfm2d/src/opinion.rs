@@ -176,19 +176,37 @@ impl Observer for LastResidual {
     }
 }
 
+/// One continuation's teacher-forced read: the RAW logprob of every one of
+/// its tokens, in order, and their sum. `token_logprobs.len() ==
+/// continuation.len()` always; `sequence_logprob == token_logprobs.iter().sum()`
+/// (up to float summation order — [`score_continuations`] takes the summed
+/// value straight from here rather than re-adding, so there is no second
+/// rounding to disagree with this one).
+pub struct ContinuationScore {
+    pub token_logprobs: Vec<f32>,
+    pub sequence_logprob: f32,
+}
+
 /// Raw logprob of each continuation, teacher-forced from `state`, whose
 /// next-token logits are `logits` (`(1, vocab)`). `state` is not advanced.
 ///
 /// The first token of every continuation is read from `logits`; the rest from
 /// one forward over the continuation minus its last token, projected at every
 /// position through the model's own final norm and output head.
-pub fn score_continuations(
+///
+/// This is the one forward-pass loop every teacher-forced read in this
+/// crate shares: `/v1/opinion`'s options ([`score_continuations`] below) and
+/// `/v1/probe`'s `continuations` (`crate::probe_api`, which wants the
+/// PER-TOKEN logprobs this returns and `score_continuations` throws away)
+/// are the same computation asked for two different levels of detail, not
+/// two computations.
+pub fn score_continuations_verbose(
     model: &Model,
     state: &State,
     logits: &Tensor,
     continuations: &[Vec<u32>],
     check: &dyn Fn() -> Result<()>,
-) -> Result<Vec<f32>> {
+) -> Result<Vec<ContinuationScore>> {
     let first = log_softmax_rows(logits)?;
     let first = first
         .first()
@@ -200,7 +218,8 @@ pub fn score_continuations(
         let (&head, rest) = cont
             .split_first()
             .ok_or_else(|| candle_core::Error::Msg("empty continuation".into()))?;
-        let mut total = first[head as usize];
+        let mut token_logprobs = Vec::with_capacity(cont.len());
+        token_logprobs.push(first[head as usize]);
         if !rest.is_empty() {
             let mut branch = state.clone();
             let mut tap = LastResidual {
@@ -220,9 +239,10 @@ pub fn score_continuations(
                 )));
             }
             for (row, &next) in rows.iter().zip(rest) {
-                total += row[next as usize];
+                token_logprobs.push(row[next as usize]);
             }
         }
+        let total: f32 = token_logprobs.iter().sum();
         // A non-finite score would flow through logsumexp and the renormalized
         // probabilities as a number that looks like an answer. Crash instead,
         // as `step_distribution` does for its logits.
@@ -231,9 +251,25 @@ pub fn score_continuations(
                 "non-finite sequence logprob {total} for continuation {cont:?}"
             )));
         }
-        scores.push(total);
+        scores.push(ContinuationScore { token_logprobs, sequence_logprob: total });
     }
     Ok(scores)
+}
+
+/// [`score_continuations_verbose`], keeping only each continuation's summed
+/// sequence logprob — what `/v1/opinion` and `/v1/adjudicate`'s `opinion:
+/// true` read.
+pub fn score_continuations(
+    model: &Model,
+    state: &State,
+    logits: &Tensor,
+    continuations: &[Vec<u32>],
+    check: &dyn Fn() -> Result<()>,
+) -> Result<Vec<f32>> {
+    Ok(score_continuations_verbose(model, state, logits, continuations, check)?
+        .into_iter()
+        .map(|c| c.sequence_logprob)
+        .collect())
 }
 
 pub fn logsumexp(values: &[f32]) -> f32 {
@@ -298,6 +334,42 @@ mod tests {
                 (got - want).abs() < 1e-3,
                 "cont {cont:?}: batched {got} vs stepwise {want}"
             );
+        }
+    }
+
+    /// `score_continuations` must be reading `sequence_logprob` off
+    /// `score_continuations_verbose`, not recomputing it independently — a
+    /// mutation that made the two disagree (e.g. the wrapper re-summing a
+    /// stale copy) would pass every other test here and still be wrong.
+    /// Also pins the per-token breakdown itself against the same
+    /// step-by-step decode `batched_score_matches_token_by_token_decode`
+    /// checks the sequence total against.
+    #[test]
+    fn verbose_per_token_logprobs_sum_to_the_sequence_logprob_and_match_score_continuations() {
+        let model = fixture();
+        let mut state = model.new_state();
+        let logits = model.forward(&[1, 2, 3], &mut state).unwrap();
+        let conts = vec![vec![4, 5, 6], vec![7], vec![4, 9]];
+        let verbose = score_continuations_verbose(&model, &state, &logits, &conts, &ok).unwrap();
+        let terse = score_continuations(&model, &state, &logits, &conts, &ok).unwrap();
+        assert_eq!(verbose.len(), conts.len());
+        for ((cont, v), t) in conts.iter().zip(&verbose).zip(&terse) {
+            assert_eq!(v.token_logprobs.len(), cont.len(), "cont {cont:?}");
+            let summed: f32 = v.token_logprobs.iter().sum();
+            assert!((summed - v.sequence_logprob).abs() < 1e-6, "cont {cont:?}");
+            assert_eq!(v.sequence_logprob, *t, "the wrapper must read this exact value, not re-derive it");
+
+            let mut s = state.clone();
+            let mut l = logits.clone();
+            for (i, &tok) in cont.iter().enumerate() {
+                let want = log_softmax_rows(&l).unwrap()[0][tok as usize];
+                assert!(
+                    (v.token_logprobs[i] - want).abs() < 1e-3,
+                    "cont {cont:?} token {i}: batched {} vs stepwise {want}",
+                    v.token_logprobs[i]
+                );
+                l = model.forward(&[tok], &mut s).unwrap();
+            }
         }
     }
 
