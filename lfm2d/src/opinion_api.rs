@@ -143,7 +143,7 @@ pub enum FieldKind {
     Boolean,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldInfo {
     pub field: String,
     pub kind: FieldKind,
@@ -156,6 +156,15 @@ pub struct FieldInfo {
 /// runtime; never hard-code a field name or an option.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpecMenuEntry {
+    /// Lowercase hex sha256 of the exact bytes this spec was loaded from —
+    /// kaibo's CAS digest and `lfm2d::hash::sha256_hex_bytes`. Identity for
+    /// every spec, boot or uploaded; `POST /v1/opinion` and
+    /// `POST /v1/adjudicate` accept it wherever they accept `spec`. See
+    /// `docs/system1-split-plan.md` "Runtime spec registration".
+    pub id: String,
+    /// A boot-time spec's file stem (`--adjudicator-prompt`/
+    /// `--opinion-spec` are named this way and answer to it as well as to
+    /// `id`). An uploaded spec has no file, so this equals `id`.
     pub spec: String,
     pub snapshot_id: String,
     /// How many described states the daemon keeps for this spec.
@@ -193,8 +202,11 @@ impl ResolvedQuestion {
 
 impl SpecMenuEntry {
     /// Read the menu entry off a spec. A spec without an output schema lists
-    /// no fields and can answer no question.
+    /// no fields and can answer no question. `id` is the content hash
+    /// (`lfm2d::hash::sha256_hex_bytes` of the exact uploaded/loaded bytes);
+    /// `name` is the boot-time file stem, or `id` again for an upload.
     pub fn from_prompt(
+        id: &str,
         name: &str,
         prompt: &PromptSpec,
         snapshot_id: &str,
@@ -246,6 +258,7 @@ impl SpecMenuEntry {
             }
         }
         Ok(Self {
+            id: id.to_string(),
             spec: name.to_string(),
             snapshot_id: snapshot_id.to_string(),
             described_cache_capacity,
@@ -428,6 +441,7 @@ mod tests {
             options: o.iter().map(|s| s.to_string()).collect(),
         };
         SpecMenuEntry {
+            id: "id-s".into(),
             spec: "s".into(),
             snapshot_id: "x".into(),
             described_cache_capacity: 16,

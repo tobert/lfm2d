@@ -228,6 +228,15 @@ pub struct AdjudicateRequest {
     /// every option scored, nothing decoded. See [`crate::opinion`].
     #[serde(default)]
     pub opinion: bool,
+    /// Which loaded spec to use: an id (`POST /v1/opinion/specs`'s content
+    /// hash) or a boot-time spec's file-stem name. Absent (the default)
+    /// serves the `--adjudicator-prompt` spec, exactly as before this field
+    /// existed. An escalation from `POST /v1/opinion` resumes from that
+    /// spec's described cache only when `spec` names the SAME spec the
+    /// opinion read used — see `docs/system1-split-plan.md` "Runtime spec
+    /// registration".
+    #[serde(default)]
+    pub spec: Option<String>,
 }
 fn default_max_tokens() -> usize {
     2048
@@ -255,6 +264,9 @@ impl AdjudicateRequest {
         }
         if self.opinion && self.distributions.is_some() {
             return Err("an opinion read decodes nothing, so distributions do not apply".into());
+        }
+        if self.spec.as_deref().is_some_and(str::is_empty) {
+            return Err("spec must name a loaded prompt spec, or be omitted".into());
         }
         Ok(())
     }
@@ -318,6 +330,21 @@ pub struct AdjudicateResponse {
 #[derive(Debug)]
 pub enum Failure {
     BadRequest(String),
+    /// A `spec` names nothing loaded — boot or uploaded, never (this
+    /// checkpoint or an evicted upload). The client's cue: upload it (or
+    /// re-upload) via `POST /v1/opinion/specs` and retry. Distinct from
+    /// `BadRequest` so a caller can tell "malformed request" from "right
+    /// shape, wrong/missing spec" without parsing the message.
+    NotFound(String),
+    /// A spec's bytes parsed but could not be served: the load-time
+    /// refusals `LoadedSpec::load` runs (grammar compile, tokenization,
+    /// opinion block split) — the same checks a boot spec passes before it
+    /// ever reaches a request, now surfaced to the uploader instead of
+    /// exiting the process.
+    Unprocessable(String),
+    /// A boot-time spec cannot be deleted — `DELETE /v1/opinion/specs/{id}`
+    /// against `--adjudicator-prompt`/`--opinion-spec`.
+    Forbidden(String),
     Internal(String),
     Cancelled,
     Deadline,
@@ -331,6 +358,9 @@ impl IntoResponse for Failure {
     fn into_response(self) -> Response {
         let (status, kind, msg) = match self {
             Self::BadRequest(s) => (StatusCode::BAD_REQUEST, "bad_request", s),
+            Self::NotFound(s) => (StatusCode::NOT_FOUND, "not_found", s),
+            Self::Unprocessable(s) => (StatusCode::UNPROCESSABLE_ENTITY, "unprocessable", s),
+            Self::Forbidden(s) => (StatusCode::FORBIDDEN, "forbidden", s),
             Self::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", s),
             Self::Cancelled => (
                 StatusCode::REQUEST_TIMEOUT,
@@ -366,6 +396,49 @@ pub trait Generator: Send + 'static {
         questions: &[crate::opinion_api::ResolvedQuestion],
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<crate::opinion_api::OpinionResponse, Failure>;
+    /// Register a spec by its exact uploaded bytes: `id` is already the
+    /// content hash of those bytes (computed once, centrally, by the
+    /// handler — see `Handle::register`), `prompt` is them parsed. Already
+    /// loaded (boot or uploaded) is a no-op that still counts as use; a
+    /// genuine miss loads it, possibly evicting the least recently used
+    /// upload. See [`RegisterOutcome`].
+    fn register(
+        &mut self,
+        id: String,
+        prompt: PromptSpec,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<RegisterOutcome, Failure>;
+    /// Unload an uploaded spec by id. Never fails: unknown and boot-spec
+    /// are both outcomes, not errors — see [`UnregisterOutcome`].
+    fn unregister(&mut self, id: &str) -> UnregisterOutcome;
+}
+
+/// `POST /v1/opinion/specs`'s result: the spec's own menu entry, whether
+/// this call actually loaded it (`false` for an idempotent re-registration
+/// of the same id — `200`, not `201`), the id of an upload evicted to make
+/// room (if any), how long THIS call took, and the fresh full menu so the
+/// handler's cached view (`Handle`'s) never drifts from the worker's.
+pub struct RegisterOutcome {
+    pub entry: crate::opinion_api::SpecMenuEntry,
+    pub newly_loaded: bool,
+    pub evicted: Option<String>,
+    pub load_ms: f64,
+    pub menu: Vec<crate::opinion_api::SpecMenuEntry>,
+}
+
+/// `DELETE /v1/opinion/specs/{id}`'s result.
+pub enum UnregisterOutcome {
+    /// The upload was removed. Carries its former menu entry (for the log
+    /// line) and the fresh full menu.
+    Deleted {
+        entry: crate::opinion_api::SpecMenuEntry,
+        menu: Vec<crate::opinion_api::SpecMenuEntry>,
+    },
+    /// `id` names a boot-time spec (`--adjudicator-prompt`/
+    /// `--opinion-spec`), which cannot be deleted at runtime — `403`.
+    BootSpec,
+    /// `id` names nothing loaded — `404`.
+    NotFound,
 }
 
 // One exact-input checkpoint in addition to the fixed system prefix. This is
@@ -620,11 +693,47 @@ impl DescribedCache {
     }
 }
 
+/// A borrowed view of a [`Checkpoint`]'s pieces, so [`LoadedSpec::load`] can
+/// run either against an owned `Checkpoint` (boot load) or against an
+/// `Adjudicator`'s own fields (runtime registration, where the `Checkpoint`
+/// was destructured into the adjudicator long ago) without duplicating any
+/// of them.
+#[derive(Clone, Copy)]
+struct CheckpointView<'a> {
+    model: &'a Model,
+    tokenizer: &'a tokenizers::Tokenizer,
+    model_id: &'a str,
+    weight_hash: &'a str,
+    tokenizer_hash: &'a str,
+    weight_dtypes: &'a [String],
+    execution: &'a crate::device::ExecutionDevice,
+}
+impl<'a> From<&'a Checkpoint> for CheckpointView<'a> {
+    fn from(c: &'a Checkpoint) -> Self {
+        Self {
+            model: &c.model,
+            tokenizer: &c.tokenizer,
+            model_id: &c.model_id,
+            weight_hash: &c.weight_hash,
+            tokenizer_hash: &c.tokenizer_hash,
+            weight_dtypes: &c.weight_dtypes,
+            execution: &c.execution,
+        }
+    }
+}
+
 /// One loaded prompt spec: its rendered prefix resident as model state, its
 /// grammar compiled once, its identity, and the caches that hang off it.
-/// `Adjudicator::specs[0]` is the `--adjudicator-prompt` spec, which
-/// `/v1/adjudicate` serves; every loaded spec is on the `/v1/opinion` menu.
+/// `Adjudicator::specs`'s boot spec at index 0 is the `--adjudicator-prompt`
+/// spec, which `/v1/adjudicate` serves by default; every loaded spec (boot
+/// or uploaded) is on the `/v1/opinion` menu.
 struct LoadedSpec {
+    /// Lowercase hex sha256 of the exact bytes this spec was loaded from.
+    /// Content-addressed identity — see [`crate::hash::sha256_hex_bytes`]
+    /// and `docs/system1-split-plan.md` "Runtime spec registration".
+    id: String,
+    /// A boot spec's file stem; an uploaded spec has no file, so this
+    /// equals `id`. `/v1/opinion` and `/v1/adjudicate` accept either.
     name: String,
     /// The spec as loaded: it renders every user turn, so the reasoning mode
     /// and the schema cannot drift apart from what the prefix was built from.
@@ -638,8 +747,15 @@ struct LoadedSpec {
     menu: crate::opinion_api::SpecMenuEntry,
 }
 impl LoadedSpec {
-    fn load(name: String, prompt: PromptSpec, checkpoint: &Checkpoint, cli: &Cli) -> Result<Self, String> {
-        let Checkpoint {
+    fn load(
+        id: String,
+        name: String,
+        prompt: PromptSpec,
+        view: &CheckpointView,
+        context_limit: usize,
+        repeat_penalty: f32,
+    ) -> Result<Self, String> {
+        let CheckpointView {
             model,
             tokenizer,
             model_id,
@@ -647,7 +763,7 @@ impl LoadedSpec {
             tokenizer_hash,
             weight_dtypes,
             execution,
-        } = checkpoint;
+        } = *view;
         let prefix_text = prompt.render_prefix()?;
         if let Some(opinion) = &prompt.opinion {
             opinion.validate()?;
@@ -674,7 +790,7 @@ impl LoadedSpec {
         if !boundary_probe.get_ids().starts_with(&prefix_ids) {
             return Err("tokenizer changes the system prefix at the user-message boundary".into());
         }
-        if prefix_ids.is_empty() || prefix_ids.len() + 1 >= cli.adjudicator_context {
+        if prefix_ids.is_empty() || prefix_ids.len() + 1 >= context_limit {
             return Err("adjudicator prefix leaves no context for input/output".into());
         }
         // The option split depends on the tokenizer and the spec, not on the
@@ -701,7 +817,7 @@ impl LoadedSpec {
             prefix_ids,
             execution.backend.as_str(),
             "f32",
-            cli.adjudicator_repeat_penalty
+            repeat_penalty
         ]);
         // The opinion question is part of what this daemon answers, so it is
         // part of its identity. Appended only when present: specs without one
@@ -715,23 +831,23 @@ impl LoadedSpec {
         let snapshot_id =
             sha256_hex_bytes(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
         let info = PrefixInfo {
-            model_id: model_id.clone(),
-            weight_hash: weight_hash.clone(),
-            tokenizer_hash: tokenizer_hash.clone(),
+            model_id: model_id.to_string(),
+            weight_hash: weight_hash.to_string(),
+            tokenizer_hash: tokenizer_hash.to_string(),
             template_version: template_version.into(),
             snapshot_id,
             prefix_tokens: prefix_ids.len(),
             input_cache_capacity: 1,
-            context_limit: cli.adjudicator_context,
+            context_limit,
             backend: execution.backend.as_str().into(),
             dtype: "f32".into(),
             sampling: format!(
-                "greedy; repetition_penalty={}; history=full",
-                cli.adjudicator_repeat_penalty
+                "greedy; repetition_penalty={repeat_penalty}; history=full"
             ),
-            weight_dtypes: weight_dtypes.clone(),
+            weight_dtypes: weight_dtypes.to_vec(),
         };
         let menu = crate::opinion_api::SpecMenuEntry::from_prompt(
+            &id,
             &name,
             &prompt,
             &info.snapshot_id,
@@ -765,6 +881,7 @@ impl LoadedSpec {
             }
         }
         Ok(Self {
+            id,
             name,
             prompt,
             prefix_text,
@@ -789,13 +906,156 @@ fn encode_ids(tokenizer: &tokenizers::Tokenizer, text: &str) -> Result<Vec<u32>,
         .to_vec())
 }
 
+/// What [`SpecStore`] needs to identify an entry: its content-hash id and
+/// its lookup name (boot: file stem; uploaded: the id again).
+trait SpecIdentity {
+    fn id(&self) -> &str;
+    fn name(&self) -> &str;
+}
+impl SpecIdentity for LoadedSpec {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// Content-addressed spec bookkeeping: the fixed boot specs (never evicted,
+/// `boot[0]` is the `--adjudicator-prompt`/default spec) plus a bounded,
+/// least-recently-used cache of runtime-uploaded specs
+/// (`POST /v1/opinion/specs`). Pure data structure — no model access, no I/O
+/// — so the dedup/eviction rules "Runtime spec registration" rules on
+/// (`docs/system1-split-plan.md`) are unit-tested below without a
+/// checkpoint. [`Adjudicator`] is the only production user; `T` is
+/// [`LoadedSpec`] there.
+struct SpecStore<T> {
+    boot: Vec<T>,
+    /// Front = least recently used, back = most recently used. A hit from
+    /// [`SpecStore::resolve_mut`] or [`SpecStore::register_or_load`] both
+    /// touch an entry to the back — "use" is registered-or-served, per the
+    /// ruling.
+    uploaded: std::collections::VecDeque<T>,
+    capacity: usize,
+}
+enum RemoveOutcome<T> {
+    Removed(T),
+    Boot,
+    NotFound,
+}
+impl<T: SpecIdentity> SpecStore<T> {
+    fn new(boot: Vec<T>, capacity: usize) -> Self {
+        Self { boot, uploaded: std::collections::VecDeque::new(), capacity }
+    }
+    fn capacity(&self) -> usize {
+        self.capacity
+    }
+    /// Whether `id` already names a loaded spec, boot or uploaded, without
+    /// touching LRU order — used to let a re-registration of an existing id
+    /// through even when `capacity` is 0 (which refuses every GENUINE load;
+    /// see [`SpecStore::register_or_load`]'s doc on why that precondition
+    /// is the caller's job, not this method's).
+    fn contains(&self, id: &str) -> bool {
+        self.boot.iter().any(|s| s.id() == id) || self.uploaded.iter().any(|s| s.id() == id)
+    }
+    /// Every loaded spec, boot first, in the order `/v1/opinion/specs`
+    /// lists them.
+    fn iter(&self) -> impl Iterator<Item = &T> {
+        self.boot.iter().chain(self.uploaded.iter())
+    }
+    /// The spec `key` names: `None` is the default (`boot[0]`); otherwise a
+    /// boot spec's id or name, else an uploaded spec's id, touched to the
+    /// back on a hit. `None` on an unknown key — never a fallback to the
+    /// default spec, so a stale caller gets a clean miss rather than a
+    /// silently wrong spec.
+    fn resolve_mut(&mut self, key: Option<&str>) -> Option<&mut T> {
+        let key = match key {
+            None => return self.boot.first_mut(),
+            Some(k) => k,
+        };
+        if let Some(pos) = self.boot.iter().position(|s| s.id() == key || s.name() == key) {
+            return Some(&mut self.boot[pos]);
+        }
+        if let Some(pos) = self.uploaded.iter().position(|s| s.id() == key) {
+            let spec = self.uploaded.remove(pos).expect("position just found");
+            self.uploaded.push_back(spec);
+            return self.uploaded.back_mut();
+        }
+        None
+    }
+    /// The registration decision, in one place: already a boot spec (no
+    /// work), already an uploaded spec (touched to the back, no work), or a
+    /// genuine miss — `load` runs, at most once, only then, evicting the
+    /// least recently used upload first if this would exceed capacity. This
+    /// is what makes registering the same bytes twice free the second time:
+    /// `(spec, newly_loaded, evicted_id)`.
+    ///
+    /// Requires `capacity >= 1` for a genuine miss to make sense at all —
+    /// the caller's job ([`SpecStore::contains`] before this, or refuse the
+    /// upload outright), not this method's: it evicts-then-inserts, which
+    /// keeps the uploaded count at exactly `capacity` for `capacity >= 1`
+    /// but cannot honour `capacity == 0` (there is no entry left to hand
+    /// back a reference to after evicting the one just inserted).
+    fn register_or_load<E>(
+        &mut self,
+        id: &str,
+        load: impl FnOnce() -> Result<T, E>,
+    ) -> Result<(&T, bool, Option<String>), E> {
+        if let Some(pos) = self.boot.iter().position(|s| s.id() == id) {
+            return Ok((&self.boot[pos], false, None));
+        }
+        if let Some(pos) = self.uploaded.iter().position(|s| s.id() == id) {
+            let spec = self.uploaded.remove(pos).expect("position just found");
+            self.uploaded.push_back(spec);
+            return Ok((self.uploaded.back().expect("just touched"), false, None));
+        }
+        let spec = load()?;
+        let evicted = if self.uploaded.len() >= self.capacity {
+            self.uploaded.pop_front().map(|s| s.id().to_string())
+        } else {
+            None
+        };
+        self.uploaded.push_back(spec);
+        Ok((self.uploaded.back().expect("just inserted"), true, evicted))
+    }
+    /// Unload an uploaded spec by id. A boot spec's id/name is never
+    /// removable — [`RemoveOutcome::Boot`] — and an uploaded spec's id also
+    /// answers only to itself here, matching [`SpecStore::resolve_mut`].
+    fn remove(&mut self, id: &str) -> RemoveOutcome<T> {
+        if self.boot.iter().any(|s| s.id() == id) {
+            return RemoveOutcome::Boot;
+        }
+        match self.uploaded.iter().position(|s| s.id() == id) {
+            Some(pos) => RemoveOutcome::Removed(self.uploaded.remove(pos).expect("position just found")),
+            None => RemoveOutcome::NotFound,
+        }
+    }
+}
+
+/// A `spec` naming nothing loaded: 404, the client's cue to upload it (or
+/// re-upload, if it was evicted) and retry. Never a fallback to the default
+/// spec — a stale menu view must fail loudly here, not silently serve the
+/// wrong prefix. `None` names the default (`boot[0]`), which cannot itself
+/// be unknown; this only fires for `Some`.
+fn unknown_spec(key: Option<&str>) -> Failure {
+    Failure::NotFound(format!(
+        "no loaded spec {key:?}; POST /v1/opinion/specs to upload it, or GET /v1/opinion/specs \
+         to list what's loaded"
+    ))
+}
+
 pub struct Adjudicator {
     model: Model,
     tokenizer: tokenizers::Tokenizer,
     eos: u32,
     repeat_penalty: f32,
-    /// `[0]` is the adjudicate spec; the rest come from `--opinion-spec`.
-    specs: Vec<LoadedSpec>,
+    model_id: String,
+    weight_hash: String,
+    tokenizer_hash: String,
+    weight_dtypes: Vec<String>,
+    execution: crate::device::ExecutionDevice,
+    context_limit: usize,
+    specs: SpecStore<LoadedSpec>,
 }
 impl Adjudicator {
     pub fn load(cli: &Cli) -> Result<Self, String> {
@@ -815,28 +1075,39 @@ impl Adjudicator {
         if cli.adjudicator_context > checkpoint.model.context_length() {
             return Err("adjudicator context exceeds model context".into());
         }
-        let mut specs = Vec::new();
+        let mut boot_specs = Vec::new();
         let mut names = std::collections::BTreeSet::new();
-        for spec_path in std::iter::once(prompt_path).chain(&cli.opinion_specs) {
-            let name = spec_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| format!("prompt spec path {} has no name", spec_path.display()))?
-                .to_string();
-            if !names.insert(name.clone()) {
-                return Err(format!("prompt spec name {name:?} repeats; names come from file stems"));
+        {
+            let view = CheckpointView::from(&checkpoint);
+            for spec_path in std::iter::once(prompt_path).chain(&cli.opinion_specs) {
+                let name = spec_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| format!("prompt spec path {} has no name", spec_path.display()))?
+                    .to_string();
+                if !names.insert(name.clone()) {
+                    return Err(format!("prompt spec name {name:?} repeats; names come from file stems"));
+                }
+                let bytes =
+                    std::fs::read(spec_path).map_err(|e| format!("{}: {e}", spec_path.display()))?;
+                let id = sha256_hex_bytes(&bytes);
+                let prompt: PromptSpec = serde_json::from_slice(&bytes)
+                    .map_err(|e| format!("{}: {e}", spec_path.display()))?;
+                boot_specs.push(LoadedSpec::load(
+                    id,
+                    name,
+                    prompt,
+                    &view,
+                    cli.adjudicator_context,
+                    cli.adjudicator_repeat_penalty,
+                )?);
             }
-            let prompt: PromptSpec = serde_json::from_slice(
-                &std::fs::read(spec_path).map_err(|e| format!("{}: {e}", spec_path.display()))?,
-            )
-            .map_err(|e| format!("{}: {e}", spec_path.display()))?;
-            specs.push(LoadedSpec::load(name, prompt, &checkpoint, cli)?);
         }
         // Compile/warm device selection kernels before announcing readiness.
         let _ = GreedySampler::new(
             &checkpoint.execution.device,
             checkpoint.model.vocab_size(),
-            &specs[0].cache.prefix_ids,
+            &boot_specs[0].cache.prefix_ids,
             cli.adjudicator_repeat_penalty,
         )
         .map_err(|e| e.to_string())?;
@@ -846,30 +1117,44 @@ impl Adjudicator {
             .synchronize()
             .map_err(|e| e.to_string())?;
         let Checkpoint {
-            model, tokenizer, ..
+            model,
+            tokenizer,
+            model_id,
+            weight_hash,
+            tokenizer_hash,
+            weight_dtypes,
+            execution,
         } = checkpoint;
         Ok(Self {
             model,
             tokenizer,
             eos: EOS,
             repeat_penalty: cli.adjudicator_repeat_penalty,
-            specs,
+            model_id,
+            weight_hash,
+            tokenizer_hash,
+            weight_dtypes,
+            execution,
+            context_limit: cli.adjudicator_context,
+            specs: SpecStore::new(boot_specs, cli.opinion_spec_capacity),
         })
     }
-    /// The adjudicate spec's identity.
+    /// The adjudicate spec's identity (`boot[0]`, the `--adjudicator-prompt`
+    /// spec).
     pub fn info(&self) -> PrefixInfo {
-        self.specs[0].info.clone()
+        self.specs.boot[0].info.clone()
     }
     pub fn model_info(&self) -> ModelInfo {
         ModelInfo {
-            id: self.specs[0].info.model_id.clone(),
+            id: self.specs.boot[0].info.model_id.clone(),
             kind: ModelKind::Adjudicator,
-            weight_hash: self.specs[0].info.weight_hash.clone(),
+            weight_hash: self.specs.boot[0].info.weight_hash.clone(),
             labels: None,
             hidden_size: self.model.hidden_size(),
         }
     }
-    /// Every loaded spec, as `/v1/opinion/specs` lists it.
+    /// Every loaded spec, boot then uploaded, as `/v1/opinion/specs` lists
+    /// it.
     pub fn menu(&self) -> Vec<crate::opinion_api::SpecMenuEntry> {
         self.specs.iter().map(|s| s.menu.clone()).collect()
     }
@@ -884,7 +1169,10 @@ impl Generator for Adjudicator {
         if request.opinion {
             return self.opinion(request, check);
         }
-        let spec = &mut self.specs[0];
+        let spec = self
+            .specs
+            .resolve_mut(request.spec.as_deref())
+            .ok_or_else(|| unknown_spec(request.spec.as_deref()))?;
         if let Some(d) = &request.distributions {
             d.validate_vocab(self.model.vocab_size())
                 .map_err(Failure::BadRequest)?;
@@ -1042,6 +1330,75 @@ impl Generator for Adjudicator {
         request.validate().map_err(Failure::BadRequest)?;
         self.describe_then_read(request, questions, check)
     }
+
+    fn register(
+        &mut self,
+        id: String,
+        prompt: PromptSpec,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<RegisterOutcome, Failure> {
+        check()?;
+        let begin = Instant::now();
+        if self.specs.capacity() == 0 && !self.specs.contains(&id) {
+            // A genuine load into a zero-capacity store has nothing to
+            // evict its way into — see `SpecStore::register_or_load`'s doc.
+            // `Cli::validate` refuses `--opinion-spec-capacity 0` in
+            // production; this only fires for a test double or a future
+            // caller that skips that check.
+            return Err(Failure::Unprocessable(
+                "opinion spec capacity is 0; no uploads can be held".into(),
+            ));
+        }
+        // Built from individual field borrows (not `self.checkpoint_view()`,
+        // a method call the borrow checker would treat as borrowing all of
+        // `self`) so this coexists with the `&mut self.specs` borrow below —
+        // disjoint fields, both live at once.
+        let view = CheckpointView {
+            model: &self.model,
+            tokenizer: &self.tokenizer,
+            model_id: &self.model_id,
+            weight_hash: &self.weight_hash,
+            tokenizer_hash: &self.tokenizer_hash,
+            weight_dtypes: &self.weight_dtypes,
+            execution: &self.execution,
+        };
+        let context_limit = self.context_limit;
+        let repeat_penalty = self.repeat_penalty;
+        let id_for_load = id.clone();
+        let (entry, newly_loaded, evicted) = self
+            .specs
+            .register_or_load(&id, move || {
+                LoadedSpec::load(
+                    id_for_load.clone(),
+                    id_for_load,
+                    prompt,
+                    &view,
+                    context_limit,
+                    repeat_penalty,
+                )
+            })
+            .map(|(spec, newly_loaded, evicted)| (spec.menu.clone(), newly_loaded, evicted))
+            .map_err(Failure::Unprocessable)?;
+        check()?;
+        Ok(RegisterOutcome {
+            entry,
+            newly_loaded,
+            evicted,
+            load_ms: begin.elapsed().as_secs_f64() * 1000.,
+            menu: self.menu(),
+        })
+    }
+
+    fn unregister(&mut self, id: &str) -> UnregisterOutcome {
+        match self.specs.remove(id) {
+            RemoveOutcome::Removed(spec) => {
+                let entry = spec.menu.clone();
+                UnregisterOutcome::Deleted { entry, menu: self.menu() }
+            }
+            RemoveOutcome::Boot => UnregisterOutcome::BootSpec,
+            RemoveOutcome::NotFound => UnregisterOutcome::NotFound,
+        }
+    }
 }
 
 impl Adjudicator {
@@ -1052,7 +1409,10 @@ impl Adjudicator {
         request: &AdjudicateRequest,
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<AdjudicateResponse, Failure> {
-        let spec_slot = &mut self.specs[0];
+        let spec_slot = self
+            .specs
+            .resolve_mut(request.spec.as_deref())
+            .ok_or_else(|| unknown_spec(request.spec.as_deref()))?;
         let spec = spec_slot.prompt.opinion.clone().ok_or_else(|| {
             Failure::BadRequest("this adjudicator's prompt spec asks no opinion question".into())
         })?;
@@ -1156,12 +1516,13 @@ impl Adjudicator {
                 "questions reached the engine out of emission order".into(),
             ));
         }
-        let index = self
+        // Authoritative, regardless of what the handler's menu snapshot
+        // believed: a spec evicted since that snapshot was taken is a clean
+        // 404 here, never a silent fall-through to a different spec.
+        let spec = self
             .specs
-            .iter()
-            .position(|s| s.name == request.spec)
-            .ok_or_else(|| Failure::BadRequest(format!("no loaded spec {:?}", request.spec)))?;
-        let spec = &mut self.specs[index];
+            .resolve_mut(Some(request.spec.as_str()))
+            .ok_or_else(|| unknown_spec(Some(request.spec.as_str())))?;
         let grammar = spec.grammar.clone().ok_or_else(|| {
             Failure::BadRequest(format!(
                 "spec {:?} has no output schema, so there is nothing to describe or ask",
@@ -1707,30 +2068,48 @@ pub fn validate_report(
 /// One unit of work for the single generation worker: a generation or an
 /// opinion read. Both share the queue, the deadline and the cancellation
 /// path; only the generator call differs.
+/// Neither registration nor deletion carries a client-chosen timeout (the
+/// upload body is raw spec bytes, no request envelope) — this bounds both.
+/// Generous for registration: a genuine load runs the prefix through the
+/// model, like startup does; deletion is a map removal and returns long
+/// before this ever matters.
+const SPEC_ADMIN_TIMEOUT_MS: u64 = 60_000;
+/// A spec's system prompt, tools and schema are text a person writes and a
+/// daemon renders once at load, not a checkpoint — this is generous headroom
+/// over any shipped spec, not a tuned limit.
+const MAX_SPEC_BYTES: usize = 1_048_576;
+
 enum Job {
     Adjudicate(AdjudicateRequest),
     Opinion(
         crate::opinion_api::OpinionRequest,
         Vec<crate::opinion_api::ResolvedQuestion>,
     ),
+    Register(String, PromptSpec),
+    Unregister(String),
 }
 impl Job {
     fn timeout_ms(&self) -> u64 {
         match self {
             Job::Adjudicate(r) => r.timeout_ms,
             Job::Opinion(r, _) => r.timeout_ms,
+            Job::Register(..) | Job::Unregister(_) => SPEC_ADMIN_TIMEOUT_MS,
         }
     }
     fn operation(&self) -> &'static str {
         match self {
             Job::Adjudicate(_) => "adjudicate",
             Job::Opinion(..) => "opinion",
+            Job::Register(..) => "register",
+            Job::Unregister(_) => "unregister",
         }
     }
 }
 enum Reply {
     Adjudicate(AdjudicateResponse),
     Opinion(crate::opinion_api::OpinionResponse),
+    Register(RegisterOutcome),
+    Unregister(UnregisterOutcome),
 }
 struct Work {
     job: Job,
@@ -1743,8 +2122,15 @@ pub struct Handle {
     tx: mpsc::SyncSender<Work>,
     info: PrefixInfo,
     /// What `/v1/opinion` may be asked: read off the loaded specs, so a
-    /// question is refused at the handler and never queued.
-    menu: Arc<Vec<crate::opinion_api::SpecMenuEntry>>,
+    /// question is refused at the handler and never queued. A `RwLock`
+    /// (not a bare `Arc<Vec<..>>`) because registration and eviction update
+    /// it live — every `Handle` clone shares this lock, so a redeploy of
+    /// this daemon's live menu is never needed to see an upload. The
+    /// WORKER stays authoritative regardless: this is a fast pre-check
+    /// only, and a request that slips past a stale view still gets a clean
+    /// 404 from the worker rather than a wrong spec (see `describe_then_read`
+    /// and `Adjudicator::opinion`'s own lookups).
+    menu: Arc<std::sync::RwLock<Vec<crate::opinion_api::SpecMenuEntry>>>,
     exit: WorkerExit,
     stopping: Arc<AtomicBool>,
 }
@@ -1812,10 +2198,51 @@ impl Handle {
                                 );
                                 Reply::Opinion(r)
                             }),
+                        Job::Register(id, prompt) => check()
+                            .and_then(|()| generator.register(id.clone(), prompt.clone(), &check))
+                            .map(|r| {
+                                tracing::info!(
+                                    id = %r.entry.id,
+                                    snapshot_id = %r.entry.snapshot_id,
+                                    newly_loaded = r.newly_loaded,
+                                    evicted = ?r.evicted,
+                                    load_ms = r.load_ms,
+                                    "opinion spec registered"
+                                );
+                                Reply::Register(r)
+                            }),
+                        Job::Unregister(id) => check().map(|()| {
+                            let outcome = generator.unregister(id);
+                            match &outcome {
+                                UnregisterOutcome::Deleted { entry, .. } => {
+                                    tracing::info!(
+                                        id = %entry.id,
+                                        snapshot_id = %entry.snapshot_id,
+                                        "opinion spec deleted"
+                                    );
+                                }
+                                UnregisterOutcome::BootSpec => {
+                                    tracing::warn!(
+                                        id = %id,
+                                        "refused to delete a boot-time opinion spec"
+                                    );
+                                }
+                                UnregisterOutcome::NotFound => {
+                                    tracing::info!(
+                                        id = %id,
+                                        "delete requested for an unknown opinion spec"
+                                    );
+                                }
+                            }
+                            Reply::Unregister(outcome)
+                        }),
                     };
                     if let Err(e) = &result {
                         let kind = match e {
                             Failure::BadRequest(_) => "bad_request",
+                            Failure::NotFound(_) => "not_found",
+                            Failure::Unprocessable(_) => "unprocessable",
+                            Failure::Forbidden(_) => "forbidden",
                             Failure::Internal(_) => "internal",
                             Failure::Cancelled => "cancelled",
                             Failure::Deadline => "deadline",
@@ -1838,19 +2265,28 @@ impl Handle {
         Self {
             tx,
             info,
-            menu: Arc::new(Vec::new()),
+            menu: Arc::new(std::sync::RwLock::new(Vec::new())),
             exit,
             stopping,
         }
     }
-    /// The specs `/v1/opinion` serves. Without this, every opinion request
-    /// is refused as naming an unknown spec.
-    pub fn with_menu(mut self, menu: Vec<crate::opinion_api::SpecMenuEntry>) -> Self {
-        self.menu = Arc::new(menu);
+    /// The specs `/v1/opinion` serves at boot. Without this, every opinion
+    /// request is refused as naming an unknown spec. Registration and
+    /// deletion keep this current afterward — see [`Handle::replace_menu`].
+    pub fn with_menu(self, menu: Vec<crate::opinion_api::SpecMenuEntry>) -> Self {
+        self.replace_menu(menu);
         self
     }
     pub fn menu(&self) -> Vec<crate::opinion_api::SpecMenuEntry> {
-        self.menu.as_ref().clone()
+        self.menu.read().expect("menu lock poisoned").clone()
+    }
+    /// Overwrite the live menu wholesale — called after every registration
+    /// or deletion with the fresh full list the worker just computed, so
+    /// every `Handle` clone (one canonical instance shared through the
+    /// `Arc`/`RwLock`, no matter how many `State<Handle>` extractions axum
+    /// makes per request) sees the same menu the worker's `specs` now holds.
+    fn replace_menu(&self, menu: Vec<crate::opinion_api::SpecMenuEntry>) {
+        *self.menu.write().expect("menu lock poisoned") = menu;
     }
     pub fn stop_signal(&self) -> Arc<AtomicBool> {
         self.stopping.clone()
@@ -1895,10 +2331,10 @@ impl Handle {
             .map_err(|e| Failure::BadRequest(e).into_response())?;
         match self.submit(Job::Adjudicate(request), "adjudicate").await? {
             Reply::Adjudicate(r) => Ok(r),
-            Reply::Opinion(_) => {
-                Err(Failure::Internal("worker answered a generation with an opinion".into())
-                    .into_response())
-            }
+            _ => Err(
+                Failure::Internal("worker answered a generation with something else".into())
+                    .into_response(),
+            ),
         }
     }
     /// Validate against the menu here, so a question the daemon cannot ask
@@ -1911,26 +2347,83 @@ impl Handle {
         request
             .validate()
             .map_err(|e| Failure::BadRequest(e).into_response())?;
-        let entry = self
-            .menu
-            .iter()
-            .find(|e| e.spec == request.spec)
-            .ok_or_else(|| {
-                Failure::BadRequest(format!(
-                    "no loaded spec {:?}; GET /v1/opinion/specs lists them",
-                    request.spec
-                ))
-                .into_response()
-            })?;
-        let questions = entry
-            .resolve_all(&request.questions)
-            .map_err(|e| Failure::BadRequest(e).into_response())?;
+        // A fast pre-check against this Handle's menu snapshot, matching
+        // either id or name — not authoritative (see the field doc on
+        // `menu`): the worker re-resolves `request.spec` itself and is the
+        // one that actually refuses an evicted or unknown spec.
+        let questions = {
+            let menu = self.menu.read().expect("menu lock poisoned");
+            let entry = menu
+                .iter()
+                .find(|e| e.id == request.spec || e.spec == request.spec)
+                .ok_or_else(|| unknown_spec(Some(request.spec.as_str())).into_response())?;
+            entry
+                .resolve_all(&request.questions)
+                .map_err(|e| Failure::BadRequest(e).into_response())?
+        };
         match self.submit(Job::Opinion(request, questions), "opinion").await? {
             Reply::Opinion(r) => Ok(r),
-            Reply::Adjudicate(_) => {
-                Err(Failure::Internal("worker answered an opinion with a generation".into())
-                    .into_response())
+            _ => Err(
+                Failure::Internal("worker answered an opinion with something else".into())
+                    .into_response(),
+            ),
+        }
+    }
+    /// `POST /v1/opinion/specs`: `bytes` is the exact uploaded body. The id
+    /// is computed here, once, centrally — never inside a `Generator`, so
+    /// it is the same content hash regardless of which engine is running
+    /// (production `Adjudicator` or a test double) and cannot drift between
+    /// them. Returns `201` for a genuine load, `200` for an already-loaded
+    /// id (boot or upload) — no work done either way past this point.
+    #[allow(clippy::result_large_err)]
+    pub async fn register(
+        &self,
+        bytes: Vec<u8>,
+    ) -> Result<(StatusCode, crate::opinion_api::SpecMenuEntry), Response> {
+        if bytes.len() > MAX_SPEC_BYTES {
+            return Err(Failure::BadRequest(format!(
+                "spec exceeds {MAX_SPEC_BYTES} bytes"
+            ))
+            .into_response());
+        }
+        let id = crate::hash::sha256_hex_bytes(&bytes);
+        let prompt: PromptSpec = serde_json::from_slice(&bytes).map_err(|e| {
+            Failure::BadRequest(format!("spec is not a valid prompt spec: {e}")).into_response()
+        })?;
+        match self.submit(Job::Register(id, prompt), "register").await? {
+            Reply::Register(outcome) => {
+                self.replace_menu(outcome.menu);
+                let status = if outcome.newly_loaded { StatusCode::CREATED } else { StatusCode::OK };
+                Ok((status, outcome.entry))
             }
+            _ => Err(Failure::Internal(
+                "worker answered a registration with something else".into(),
+            )
+            .into_response()),
+        }
+    }
+    /// `DELETE /v1/opinion/specs/{id}`: `204` on deletion, `403` for a
+    /// boot-time spec's id (refused, never deleted), `404` for an unknown
+    /// id — already gone, or never loaded.
+    #[allow(clippy::result_large_err)]
+    pub async fn unregister(&self, id: String) -> Result<StatusCode, Response> {
+        match self.submit(Job::Unregister(id.clone()), "unregister").await? {
+            Reply::Unregister(UnregisterOutcome::Deleted { menu, .. }) => {
+                self.replace_menu(menu);
+                Ok(StatusCode::NO_CONTENT)
+            }
+            Reply::Unregister(UnregisterOutcome::BootSpec) => Err(Failure::Forbidden(format!(
+                "{id:?} is a boot-time spec (--adjudicator-prompt/--opinion-spec) and cannot be \
+                 deleted at runtime"
+            ))
+            .into_response()),
+            Reply::Unregister(UnregisterOutcome::NotFound) => {
+                Err(unknown_spec(Some(&id)).into_response())
+            }
+            _ => Err(Failure::Internal(
+                "worker answered a deletion with something else".into(),
+            )
+            .into_response()),
         }
     }
 }
@@ -1939,7 +2432,11 @@ pub fn router(handle: Handle) -> Router {
         .route("/v1/adjudicator", get(info))
         .route("/v1/adjudicate", post(adjudicate))
         .route("/v1/opinion", post(opine))
-        .route("/v1/opinion/specs", get(specs))
+        .route(
+            "/v1/opinion/specs",
+            get(specs).post(register_spec),
+        )
+        .route("/v1/opinion/specs/{id}", axum::routing::delete(delete_spec))
         .with_state(handle)
         .layer(axum::middleware::from_fn(
             crate::server::telemetry_middleware,
@@ -1964,6 +2461,179 @@ async fn opine(
     crate::server::ValidJson(request): crate::server::ValidJson<crate::opinion_api::OpinionRequest>,
 ) -> Result<Json<crate::opinion_api::OpinionResponse>, Response> {
     h.opine(request).await.map(Json)
+}
+/// `POST /v1/opinion/specs`: the body IS the spec's bytes (no envelope, no
+/// content-type requirement — a caller posts the file it would otherwise
+/// pass via `--opinion-spec`). `201` newly loaded, `200` already loaded
+/// (boot or upload, no work done), `400` unparseable, `422` a load-time
+/// refusal (grammar compile, tokenization, opinion block split — the same
+/// checks a boot spec passes before it ever answers a request).
+#[allow(clippy::result_large_err)]
+async fn register_spec(
+    State(h): State<Handle>,
+    bytes: axum::body::Bytes,
+) -> Result<Response, Response> {
+    let (status, entry) = h.register(bytes.to_vec()).await?;
+    Ok((status, Json(entry)).into_response())
+}
+/// `DELETE /v1/opinion/specs/{id}`: `204` deleted, `403` `id` names a
+/// boot-time spec (refused, not deleted), `404` unknown.
+#[allow(clippy::result_large_err)]
+async fn delete_spec(
+    State(h): State<Handle>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Response, Response> {
+    let status = h.unregister(id).await?;
+    Ok(status.into_response())
+}
+
+/// `SpecStore`'s dedup/LRU/eviction rules, model-free: `Fixture` carries no
+/// tokenizer, no grammar, no model state — just an id and a name — so these
+/// pin the exact bookkeeping `Adjudicator::register`/`unregister` delegate
+/// to, without a checkpoint. A mutation to the "already loaded" check here
+/// (e.g. always calling `load`) is caught by
+/// `registering_the_same_id_twice_does_no_second_load` below; see the
+/// worktree's final report for the mutation round these were written for.
+#[cfg(test)]
+mod spec_store_tests {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Fixture {
+        id: String,
+        name: String,
+    }
+    impl SpecIdentity for Fixture {
+        fn id(&self) -> &str {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.name
+        }
+    }
+    fn f(id: &str) -> Fixture {
+        Fixture { id: id.into(), name: format!("{id}-name") }
+    }
+    fn store(boot: &[&str], capacity: usize) -> SpecStore<Fixture> {
+        SpecStore::new(boot.iter().map(|id| f(id)).collect(), capacity)
+    }
+
+    #[test]
+    fn resolve_mut_defaults_to_boot_zero_and_matches_boot_id_or_name() {
+        let mut s = store(&["a", "b"], 4);
+        assert_eq!(s.resolve_mut(None).unwrap().id, "a");
+        assert_eq!(s.resolve_mut(Some("a")).unwrap().id, "a");
+        assert_eq!(s.resolve_mut(Some("a-name")).unwrap().id, "a");
+        assert_eq!(s.resolve_mut(Some("b")).unwrap().id, "b");
+        assert!(s.resolve_mut(Some("nope")).is_none(), "an unknown key is a clean miss, never a fallback to boot[0]");
+    }
+
+    #[test]
+    fn resolve_mut_matches_an_uploaded_spec_by_id_only_and_touches_it_to_mru() {
+        let mut s = store(&["boot"], 4);
+        s.register_or_load("up1", || Ok::<_, ()>(f("up1"))).unwrap();
+        s.register_or_load("up2", || Ok::<_, ()>(f("up2"))).unwrap();
+        // An uploaded spec does NOT answer to its "name" (which equals its
+        // id here, but resolve_mut's uploaded branch only checks `id()`).
+        assert!(s.resolve_mut(Some("up1-name")).is_none());
+        assert_eq!(s.resolve_mut(Some("up1")).unwrap().id, "up1");
+        // Serving up1 touched it to the back; up2 is now the LRU one.
+        assert_eq!(s.uploaded.front().unwrap().id, "up2");
+        assert_eq!(s.uploaded.back().unwrap().id, "up1");
+    }
+
+    #[test]
+    fn registering_the_same_id_twice_does_no_second_load() {
+        let mut s = store(&["boot"], 4);
+        let loads = std::cell::Cell::new(0);
+        let load = || {
+            loads.set(loads.get() + 1);
+            Ok::<_, ()>(f("up1"))
+        };
+        let (e1, new1, ev1) = s.register_or_load("up1", load).unwrap();
+        assert_eq!(e1.id, "up1");
+        assert!(new1);
+        assert!(ev1.is_none());
+        assert_eq!(loads.get(), 1);
+        let (e2, new2, ev2) = s.register_or_load("up1", load).unwrap();
+        assert_eq!(e2.id, "up1");
+        assert!(!new2, "a re-registration of an already-loaded id must not load again");
+        assert!(ev2.is_none());
+        assert_eq!(
+            loads.get(),
+            1,
+            "second registration of the same id must not call the loader a second time"
+        );
+    }
+
+    #[test]
+    fn registering_a_boot_specs_id_is_also_a_free_no_op() {
+        let mut s = store(&["boot"], 4);
+        let loads = std::cell::Cell::new(0);
+        let (entry, newly_loaded, evicted) = s
+            .register_or_load("boot", || {
+                loads.set(loads.get() + 1);
+                Ok::<_, ()>(f("boot"))
+            })
+            .unwrap();
+        assert_eq!(entry.id, "boot");
+        assert!(!newly_loaded);
+        assert!(evicted.is_none());
+        assert_eq!(loads.get(), 0, "the boot spec's own id never reaches the loader");
+        assert_eq!(s.uploaded.len(), 0, "it stays a boot spec, never duplicated into uploads");
+    }
+
+    #[test]
+    fn capacity_plus_one_uploads_evicts_the_least_recently_used() {
+        let mut s = store(&["boot"], 2);
+        s.register_or_load("a", || Ok::<_, ()>(f("a"))).unwrap();
+        s.register_or_load("b", || Ok::<_, ()>(f("b"))).unwrap();
+        // Touch `a` so `b` becomes the LRU one.
+        assert!(s.resolve_mut(Some("a")).is_some());
+        let (entry, newly_loaded, evicted) = s.register_or_load("c", || Ok::<_, ()>(f("c"))).unwrap();
+        assert_eq!(entry.id, "c");
+        assert!(newly_loaded);
+        assert_eq!(evicted.as_deref(), Some("b"), "the least recently used upload is evicted, not `a`");
+        assert!(s.resolve_mut(Some("b")).is_none(), "an evicted spec is a clean miss afterward");
+        assert!(s.resolve_mut(Some("a")).is_some(), "a recently-used upload survives the eviction");
+        assert!(s.resolve_mut(Some("c")).is_some());
+        assert_eq!(s.uploaded.len(), 2, "capacity is never exceeded");
+    }
+
+    #[test]
+    fn boot_specs_are_never_evicted_however_many_uploads_arrive() {
+        let mut s = store(&["boot"], 1);
+        for id in ["a", "b", "c", "d"] {
+            s.register_or_load(id, || Ok::<_, ()>(f(id))).unwrap();
+        }
+        assert_eq!(s.boot.len(), 1);
+        assert_eq!(s.resolve_mut(None).unwrap().id, "boot");
+        assert_eq!(s.uploaded.len(), 1, "capacity 1 holds exactly the most recent upload");
+        assert_eq!(s.resolve_mut(Some("d")).unwrap().id, "d");
+    }
+
+    #[test]
+    fn remove_distinguishes_deleted_boot_and_not_found() {
+        let mut s = store(&["boot"], 4);
+        s.register_or_load("up1", || Ok::<_, ()>(f("up1"))).unwrap();
+        assert!(matches!(s.remove("boot"), RemoveOutcome::Boot));
+        assert!(s.resolve_mut(Some("boot")).is_some(), "refusing a boot delete must not remove it");
+        match s.remove("up1") {
+            RemoveOutcome::Removed(spec) => assert_eq!(spec.id, "up1"),
+            _ => panic!("up1 was loaded and must be removable"),
+        }
+        assert!(s.resolve_mut(Some("up1")).is_none(), "404 after delete");
+        assert!(matches!(s.remove("up1"), RemoveOutcome::NotFound), "deleting twice is a clean not-found");
+        assert!(matches!(s.remove("never-loaded"), RemoveOutcome::NotFound));
+    }
+
+    #[test]
+    fn iter_lists_boot_before_uploaded() {
+        let mut s = store(&["boot1", "boot2"], 4);
+        s.register_or_load("up1", || Ok::<_, ()>(f("up1"))).unwrap();
+        let ids: Vec<&str> = s.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, ["boot1", "boot2", "up1"]);
+    }
 }
 
 #[cfg(test)]
