@@ -83,7 +83,7 @@ the snapshot_id, the load time and the source address.
 unsure, and always after a `404`. It records `id` and `snapshot_id` beside
 every decision.
 
-## Tokenize and probe endpoints (proposed 2026-09-23)
+## Tokenize and probe endpoints (ruled 2026-09-23)
 
 Amy: "if we don't still have a tokenizing endpoint on lfm2d I think we should
 still have that. might add a general inference endpoint too so we can use it
@@ -121,7 +121,24 @@ stack.
 - It is an instrument, not a judgement API: it has no calibration contract,
   and invariants 8–10 do not apply to it. It takes request text by design,
   so it is a separate route from opinion (whose questions come only from
-  the menu) and can be turned off with a flag.
+  the menu). Amy: "/v1/probe"; "it can be on by default" (a flag turns
+  it off).
+
+## Verdict vocabulary sweep (after registration + probe land)
+
+The discovery pass comes first: `/v1/probe` with a free-string slot, reading
+the model's own top-k over about 20 benign and severe commands. Then the
+scored arms, each one an uploaded spec, all scored on F9 (AUC, recall at 4
+FA, raw mass). The winner is confirmed on a fresh split.
+
+| arm | key | options |
+|---|---|---|
+| control | `verdict` | allow / ask |
+| harness action | `verdict` | allow / block |
+| **risk** (Amy: "goes in") | `risk` | low / medium / high; scored as P(low) or an expected value, never a sum of top rungs |
+| question in the key | `safe_to_run` | yes / no |
+| boolean | `needs_confirmation` | true / false, unquoted (first check that the opinion read supports a non-string choice) |
+| traffic light | `status` | green / yellow / red |
 
 ## Inventory and disposition (proposed; Amy to rule per row)
 
