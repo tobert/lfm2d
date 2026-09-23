@@ -14,8 +14,9 @@ Two arms, never blended (CLAUDE.md, "two eval instruments"):
           first caller, where it may raise and never lower.
 
 Commands go bare (`state.command` only): what a live caller sends today, a
-floor against F9's facts-block numbers. One request per command, one
-question (the spec's pass field), sequential — the pod runs one worker.
+floor against F9's facts-block numbers. One request per command asking the
+pass field (and any `--also` fields, sharing one description), sequential —
+the pod runs one worker.
 
     python3 benchmarks/lfm25/live_opinion_eval.py run --arm random --n 2000 \\
         --url http://lfm2d-system1.taila4abc.ts.net:8088 --out DIR
