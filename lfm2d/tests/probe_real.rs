@@ -1,0 +1,286 @@
+//! `/v1/probe` against the real LFM2.5-8B-A1B: the key parity certification
+//! (bit-identical per-option logprobs against a same-shape read) plus the
+//! cold-vs-warm and probe-vs-`/v1/opinion` drift this endpoint exists to
+//! let a caller measure directly.
+//!
+//! **Which read `/v1/probe`'s warm resume can actually reproduce
+//! bit-identically, and why it is NOT `/v1/opinion`.** `/v1/probe`'s warm
+//! resume clones a spec's RESIDENT PREFIX state and bulk-forwards the rest
+//! of the given text in `CHUNK`-sized pieces
+//! (`crate::adjudicator::forward_chunks` — the same function
+//! `PromptCache::prepare`'s cache-miss branch uses). It has no notion of
+//! "spec fields," so it always does ONE bulk forward of everything after
+//! the resident prefix.
+//!
+//! `/v1/opinion`'s `describe_then_read` does NOT compute its slot state
+//! that way even for a spec with nothing to describe: after bulk-prefilling
+//! the user turn, it still writes the JSON object's own opening (`{"verdict":
+//! "` — several tokens) through a GREEDY DECODE LOOP, one token at a time
+//! (`model.forward(&[token], &mut state)` per step), because that text is
+//! GENERATED under the grammar, not given. A bulk forward of N tokens and N
+//! single-token forwards are the same computation in exact arithmetic, but
+//! not on this backend: quantized ROCm kernels differ by batch size
+//! (`docs/lfm25-chunk-kernels.md`'s "block size picks the kernel"), so the
+//! two schedules' numbers disagree even with ZERO fields preceding the
+//! asked one. Measured below (never asserted): `command-verdict-opinion-v1`
+//! (verdict is the ONLY field) still disagrees with `/v1/probe` by ~1 nat
+//! at the first-token slot on `cargo clean`, because those last ~5-8
+//! structural tokens are decoded one at a time in production and bulk-forwarded
+//! together with the user turn in `/v1/probe`. `command-verdict-enum-v1`
+//! (three fields precede `verdict`) disagrees more (up to ~0.3 nats on the
+//! options measured), for the same reason plus three whole fields' worth of
+//! single-token decode.
+//!
+//! `POST /v1/adjudicate {"opinion": true}` — the OTHER System-1 read
+//! primitive (`Adjudicator::opinion`, `docs/lfm25-adjudicator.md`'s
+//! "Opinion reads") — IS architecturally the same shape `/v1/probe` uses:
+//! its `rendered` text (prefix + user turn + the spec's FIXED prefill
+//! string) is bulk-prefilled in ONE call via `PromptCache::prepare`, with NO
+//! decode loop at all. That is the read this file certifies bit-identical
+//! parity against.
+//!
+//! Ignored by default: it hashes and loads a 6 GB GGUF. Device is `auto`, so
+//! build with `--features rocm` on a GPU host; the CPU path is a reference,
+//! not a fallback.
+//!
+//!   LFM2D_ADJUDICATOR_MODEL=... LFM2D_ADJUDICATOR_TOKENIZER=... \
+//!   cargo test -p lfm2d --release --features rocm --test probe_real -- --ignored --nocapture
+use clap::Parser as _;
+use lfm2d::adjudicator::{AdjudicateRequest, Adjudicator, Generator, PromptSpec};
+use lfm2d::config::Cli;
+use lfm2d::opinion_api::{OpinionRequest, SpecMenuEntry};
+use lfm2d::probe_api::ProbeRequest;
+
+fn cli() -> Cli {
+    let model = std::env::var("LFM2D_ADJUDICATOR_MODEL").unwrap_or_else(|_| {
+        "/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf".into()
+    });
+    // A worktree has no `.models`; `LFM2_MODELS_DIR` points at main's, as
+    // the other real-model tests expect.
+    let tokenizer = std::env::var("LFM2D_ADJUDICATOR_TOKENIZER").unwrap_or_else(|_| {
+        let models = std::env::var("LFM2_MODELS_DIR").unwrap_or_else(|_| {
+            format!("{}/.models", env!("CARGO_MANIFEST_DIR").trim_end_matches("/lfm2d"))
+        });
+        format!("{models}/LFM2.5-8B-A1B/tokenizer.json")
+    });
+    Cli::parse_from([
+        "lfm2d",
+        "--bind-addr",
+        "127.0.0.1:0",
+        "--adjudicator-model",
+        &model,
+        "--adjudicator-tokenizer",
+        &tokenizer,
+        "--adjudicator-prompt",
+        &format!("{}/prompts/command-verdict-opinion-v1.json", env!("CARGO_MANIFEST_DIR")),
+        // Loaded ONLY to measure (never assert) the `/v1/opinion` drift
+        // when fields precede the asked one.
+        "--opinion-spec",
+        &format!("{}/prompts/command-verdict-enum-v1.json", env!("CARGO_MANIFEST_DIR")),
+        "--adjudicator-context",
+        "4096",
+    ])
+}
+
+fn spec_path(name: &str) -> String {
+    format!("{}/prompts/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+/// THE key real-model test: `POST /v1/adjudicate {"opinion": true}`'s own
+/// F8 read at the verdict slot — the architecturally-matched comparison
+/// (see the module docs) — reproduced by `/v1/probe` fed the exact same
+/// rendered text plus the same options as continuations. Warm
+/// (`use_cache: true`) is bit-identical — same token ids, same raw
+/// logprobs — and `cached_tokens` equals the spec's resident prefix length.
+/// Cold (`use_cache: false`) is measured and reported, never asserted
+/// equal. The `/v1/opinion` comparison alongside it is ALSO measured, never
+/// asserted, for both a zero-preceding-fields spec and a three-preceding-
+/// fields one — see the module docs for why.
+#[test]
+#[ignore = "loads and hashes the 6 GB LFM2.5-8B-A1B GGUF; minutes on a GPU host, hours on CPU"]
+fn probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm() {
+    let cli = cli();
+    let mut adjudicator = Adjudicator::load(&cli).expect("load the adjudicator");
+    let prefix_tokens = adjudicator.info().prefix_tokens;
+    let menu = adjudicator.menu();
+    let entry: &SpecMenuEntry =
+        menu.iter().find(|e| e.spec == "command-verdict-opinion-v1").expect("spec on the menu");
+    let spec_id = entry.id.clone();
+    let enum_entry: &SpecMenuEntry =
+        menu.iter().find(|e| e.spec == "command-verdict-enum-v1").expect("spec on the menu");
+    let ok = || Ok(());
+
+    // Loaded independently by this test (not through the daemon) purely to
+    // reconstruct the EXACT bytes `Adjudicator::opinion` rendered — that
+    // method's response carries only `rendered_sha256`, never the text
+    // itself (`docs/lfm25-adjudicator.md`'s "Opinion reads": "nothing in
+    // the daemon knows a verdict word" applies to what it LOGS too). Both
+    // renderer calls are the exact same public functions the daemon uses
+    // (`PromptSpec::render_prefix`/`render_user_turn_with_prefill`), so
+    // this reconstructs the daemon's own bytes, not a second implementation
+    // of them; the sha256 check below proves it.
+    let verdict_only_prompt: PromptSpec =
+        serde_json::from_slice(&std::fs::read(spec_path("command-verdict-opinion-v1.json")).unwrap())
+            .unwrap();
+    let opinion_spec = verdict_only_prompt.opinion.clone().expect("has an opinion block");
+
+    for command in ["cargo clean", "git push --force origin main"] {
+        // ---- F8 read (/v1/adjudicate, opinion: true): bit-identical certification ----
+        let f8_req: AdjudicateRequest = serde_json::from_value(serde_json::json!({
+            "input": command,
+            "opinion": true
+        }))
+        .unwrap();
+        let f8 = adjudicator.generate(&f8_req, &ok).expect("F8 opinion read");
+        let f8_read = f8.opinion.clone().expect("opinion: true always carries an OpinionRead");
+
+        let rendered = format!(
+            "{}{}",
+            verdict_only_prompt.render_prefix().unwrap(),
+            verdict_only_prompt.render_user_turn_with_prefill(command, &opinion_spec.prefill).unwrap()
+        );
+        assert_eq!(
+            lfm2d::hash::sha256_hex_bytes(rendered.as_bytes()),
+            f8_read.rendered_sha256,
+            "{command}: reconstructed bytes must match what the daemon actually rendered"
+        );
+        assert!(rendered.ends_with("{\"verdict\": \""), "{command}: {rendered:?}");
+
+        let continuations: Vec<String> = opinion_spec
+            .options
+            .iter()
+            .map(|o| format!("{o}{}", opinion_spec.close))
+            .collect();
+
+        let warm_req: ProbeRequest = serde_json::from_value(serde_json::json!({
+            "text": rendered,
+            "continuations": continuations,
+            "use_cache": true
+        }))
+        .unwrap();
+        let warm = adjudicator.probe(&warm_req, &ok).expect("warm probe");
+        assert!(warm.cache.used_cache, "{command}");
+        assert_eq!(warm.cache.resumed_spec.as_deref(), Some(spec_id.as_str()), "{command}");
+        assert_eq!(
+            warm.cache.cached_tokens, prefix_tokens,
+            "{command}: cached_tokens must equal the spec's resident prefix length"
+        );
+        let warm_options = warm.continuations.as_ref().expect("continuations were asked");
+        for (f8_option, probe_option) in f8_read.options.iter().zip(&warm_options.options) {
+            assert!(probe_option.canonical, "{command}: {:?}", f8_option.option);
+            assert_eq!(
+                f8_option.tokens, probe_option.tokens,
+                "{command}: {:?} token identity",
+                f8_option.option
+            );
+            assert_eq!(
+                f8_option.first_logprob, probe_option.first_logprob,
+                "{command}: {:?} first-token logprob must be BIT-IDENTICAL to the F8 read",
+                f8_option.option
+            );
+            assert_eq!(
+                f8_option.logprob, probe_option.sequence_logprob,
+                "{command}: {:?} sequence logprob must be BIT-IDENTICAL to the F8 read",
+                f8_option.option
+            );
+            let summed: f32 = probe_option.token_logprobs.iter().sum();
+            assert!(
+                (summed - probe_option.sequence_logprob).abs() < 1e-5,
+                "{command}: {:?} per-token logprobs must sum to the sequence logprob",
+                f8_option.option
+            );
+        }
+
+        // ---- cold: measured and reported, never asserted equal ----
+        let cold_req: ProbeRequest = serde_json::from_value(serde_json::json!({
+            "text": rendered,
+            "continuations": continuations,
+            "use_cache": false
+        }))
+        .unwrap();
+        let cold = adjudicator.probe(&cold_req, &ok).expect("cold probe");
+        assert!(!cold.cache.used_cache, "{command}");
+        assert_eq!(cold.cache.cached_tokens, 0, "{command}");
+        let cold_options = cold.continuations.as_ref().expect("continuations were asked");
+        for (warm_option, cold_option) in warm_options.options.iter().zip(&cold_options.options) {
+            let drift = (warm_option.sequence_logprob - cold_option.sequence_logprob).abs();
+            eprintln!(
+                "{command:30} cold-vs-warm probe {:>8} warm {:.6} cold {:.6} drift {:.6} nats",
+                warm_option.text, warm_option.sequence_logprob, cold_option.sequence_logprob, drift
+            );
+        }
+
+        // ---- /v1/opinion, both specs: measured against warm probe, never asserted ----
+        for (label, spec_name, entry_ref) in
+            [("0 fields precede verdict", "command-verdict-opinion-v1", entry), ("3 fields precede verdict", "command-verdict-enum-v1", enum_entry)]
+        {
+            let opinion_req: OpinionRequest = serde_json::from_value(serde_json::json!({
+                "spec": spec_name,
+                "state": {"command": command},
+                "questions": [{"field": "verdict"}],
+                "rendered": true
+            }))
+            .unwrap();
+            let question = entry_ref.resolve(&opinion_req.questions[0]).unwrap();
+            let opinion_resp = adjudicator
+                .opine(&opinion_req, std::slice::from_ref(&question), &ok)
+                .expect("opine");
+            for (opinion_option, probe_option) in
+                opinion_resp.answers[0].read.options.iter().zip(&warm_options.options)
+            {
+                let drift = (opinion_option.first_logprob - probe_option.first_logprob).abs();
+                eprintln!(
+                    "{command:30} probe-vs-/v1/opinion [{label}] {:>8} opinion {:.6} probe {:.6} \
+                     drift {:.6} nats (NOT asserted equal — see module docs)",
+                    opinion_option.option, opinion_option.first_logprob, probe_option.first_logprob, drift
+                );
+            }
+        }
+    }
+}
+
+/// `generate` and `top_k` under the SAME sampling policy production uses,
+/// smoke-checked against a real forward pass: the model actually produces
+/// legal-vocabulary tokens and a report of what it would write next.
+#[test]
+#[ignore = "loads and hashes the 6 GB LFM2.5-8B-A1B GGUF; minutes on a GPU host, hours on CPU"]
+fn probe_generate_and_top_k_smoke_test_on_real_weights() {
+    let cli = cli();
+    let mut adjudicator = Adjudicator::load(&cli).expect("load the adjudicator");
+    let ok = || Ok(());
+    let req: ProbeRequest = serde_json::from_value(serde_json::json!({
+        "text": "The capital of France is",
+        "top_k": 5,
+        "generate": 4,
+        "use_cache": true
+    }))
+    .unwrap();
+    let resp = adjudicator.probe(&req, &ok).expect("probe");
+    assert!(!resp.cache.used_cache, "no loaded spec's prefix matches this text");
+    assert_eq!(resp.top_logprobs.len(), 5);
+    assert!(resp.top_logprobs.windows(2).all(|w| w[0].logprob >= w[1].logprob), "descending");
+    assert!(resp.generated.len() <= 4);
+    assert!(!resp.generated.is_empty(), "greedy continuation from a real prompt should write something");
+    for step in &resp.generated {
+        assert!(step.logprob <= 0.0);
+        assert_eq!(step.top_logprobs.len(), 5);
+    }
+    eprintln!(
+        "generated: {:?}",
+        resp.generated.iter().map(|s| s.text.as_str()).collect::<Vec<_>>()
+    );
+
+    // A `check` that already reports the deadline blown propagates as a
+    // clean `Failure::Deadline`, never a panic — same contract every other
+    // engine method (`generate`/`opine`) gives the worker's `check`
+    // closure.
+    let deadline: ProbeRequest = serde_json::from_value(serde_json::json!({
+        "text": "hello",
+        "generate": 256,
+        "timeout_ms": 1
+    }))
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let err = adjudicator.probe(&deadline, &|| Err(lfm2d::adjudicator::Failure::Deadline)).unwrap_err();
+    assert!(matches!(err, lfm2d::adjudicator::Failure::Deadline));
+}
