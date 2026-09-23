@@ -493,16 +493,21 @@ DELETE /v1/opinion/specs/{id}
   file-stem name (as they always have) — `id` and name both work
   wherever `spec` is accepted.
 - **`POST /v1/opinion/specs`** — the body IS the spec's bytes (any
-  content type; the daemon parses it as JSON regardless). `201` when it
-  was genuinely loaded now, `200` when that id was already loaded (boot
-  or a previous upload) — no load runs the second time, which is what
-  makes "upload any time you're not sure" free. `400` when the body
-  doesn't parse as a spec. `422` with the load-time refusal text when it
-  parses but cannot be served — the same checks a boot spec passes before
-  it ever answers a request: the output schema doesn't compile to a
-  grammar, an option or a field name doesn't tokenize the way the slot
-  detector needs, the opinion block's options don't split cleanly. The
-  response body is the registered spec's menu entry (`id` and
+  content type; the daemon parses it as JSON regardless), capped at 1 MiB
+  (`MAX_SPEC_BYTES`) by a `DefaultBodyLimit` layer on this route — a spec's
+  system prompt, tools and schema are text, never a checkpoint, so this is
+  generous headroom, not a tuned limit. `413` for anything over that,
+  uniformly (never a `400` for a body just over the cap but under axum's
+  own larger built-in default). `201` when it was genuinely loaded now,
+  `200` when that id was already loaded (boot or a previous upload) — no
+  load runs the second time, which is what makes "upload any time you're
+  not sure" free. `400` when the body doesn't parse as a spec. `422` with
+  the load-time refusal text when it parses but cannot be served — the
+  same checks a boot spec passes before it ever answers a request: the
+  output schema doesn't compile to a grammar, an option or a field name
+  doesn't tokenize the way the slot detector needs, the opinion block's
+  options don't split cleanly. The response body is the registered spec's
+  menu entry (`id` and
   `snapshot_id` included).
 - **Memory only, bounded.** Uploaded specs live in memory, under
   `--opinion-spec-capacity` (env `LFM2D_OPINION_SPEC_CAPACITY`, default
