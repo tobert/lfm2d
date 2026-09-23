@@ -834,4 +834,12 @@ impl ApiError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self { error: ApiErrorBody { message: message.into(), kind: "internal".to_string() } }
     }
+
+    /// `POST /v1/tokenize`'s "unknown `model`" refusal — a 404, not a 400:
+    /// the request shape is fine, it just names a model this instance never
+    /// loaded. Same distinction `adjudicator::Failure::NotFound` draws for
+    /// an unknown `spec`.
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self { error: ApiErrorBody { message: message.into(), kind: "not_found".to_string() } }
+    }
 }

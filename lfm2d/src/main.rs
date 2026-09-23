@@ -121,6 +121,7 @@ async fn main() {
         cascade_routes = ?cli.cascade_routes,
         cascade_severe_labels = ?cli.cascade_severe_labels,
         log_input_hash = cli.log_input_hash,
+        probe = cli.probe,
         socket_path = ?cli.socket_path,
         bind_addr = ?cli.bind_addr,
         threads,
@@ -192,12 +193,25 @@ async fn main() {
         "lfm2d: startup observability"
     );
 
+    // Every loaded model's tokenizer, cloned out BEFORE its owning engine
+    // moves into a worker thread — this is the whole reason
+    // `POST /v1/tokenize` never waits behind either job queue. The encoder
+    // heads' clones come out of `engine` here, just before
+    // `WorkerHandle::spawn_crash_on_panic` takes ownership of it; the
+    // adjudicator's own clone comes out inside the `.map()` below, just
+    // before `Handle::spawn` does the same to `model`.
+    let mut tokenizers = lfm2d::tokenize_api::TokenizerRegistry::new();
+    for (id, tokenizer, tokenizer_hash) in engine.tokenizers() {
+        tokenizers.insert(id, tokenizer, tokenizer_hash);
+    }
+
     let worker = WorkerHandle::spawn_crash_on_panic(engine).with_log_input_hash(cli.log_input_hash);
     let mut worker_exits = vec![worker.exit_signal()];
     let mut adjudicator_stop = None;
     let adjudicator = adjudicator.map(|model| {
         let info = model.info();
         let menu = model.menu();
+        tokenizers.insert(info.model_id.clone(), model.tokenizer_clone(), info.tokenizer_hash.clone());
         tracing::info!(prefix_tokens=info.prefix_tokens, snapshot_id=%info.snapshot_id, backend=%info.backend, specs=menu.len(), "lfm2d: adjudicator prefix ready");
         let handle = lfm2d::adjudicator::Handle::spawn(model, info).with_menu(menu);
         worker_exits.push(handle.exit_signal());
@@ -205,6 +219,7 @@ async fn main() {
         handle
     });
     let _queue_depth_gauge = lfm2d::telemetry::register_queue_depth_gauge(worker.queue_depth_handle());
+    tracing::info!(models = tokenizers.len(), "lfm2d: tokenizer registry ready (POST /v1/tokenize)");
 
     // Loading (above) is synchronous and already complete by the time we
     // get here, so this starts `true` — see `AppState::ready`'s doc comment
@@ -214,8 +229,9 @@ async fn main() {
     // into the router/state that `build_router` has already consumed.
     let ready = Arc::new(AtomicBool::new(true));
     let mut router = build_router(AppState { worker, ready: ready.clone() });
+    router = router.merge(lfm2d::tokenize_api::router(Arc::new(tokenizers)));
     if let Some(handle) = adjudicator {
-        router = router.merge(lfm2d::adjudicator::router(handle));
+        router = router.merge(lfm2d::adjudicator::router(handle, cli.probe));
     }
 
     let (shutdown_handle, shutdown_signal) = shutdown::channel();

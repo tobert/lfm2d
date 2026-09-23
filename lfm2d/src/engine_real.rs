@@ -36,6 +36,11 @@ use crate::worker::{EmbedOutcome, InferenceEngine, PredictOutcome, SpansOutcome,
 struct ModelMeta {
     id: String,
     weight_hash: String,
+    /// sha256 of this head's own `tokenizer.json`, hex — feeds
+    /// `POST /v1/tokenize`'s `tokenizer_hash` field
+    /// (`crate::tokenize_api::TokenizerRegistry`), same convention as
+    /// `weight_hash`.
+    tokenizer_hash: String,
     hidden_size: usize,
 }
 
@@ -65,7 +70,15 @@ fn load_meta(dir: &Path) -> Result<ModelMeta, String> {
     let weights = dir.join("model.safetensors");
     let weight_hash = sha256_hex_file(&weights)
         .map_err(|e| format!("hashing weights at {}: {e}", weights.display()))?;
-    Ok(ModelMeta { id: model_id_from_dir(dir), weight_hash, hidden_size: read_hidden_size(dir)? })
+    let tokenizer_path = dir.join("tokenizer.json");
+    let tokenizer_hash = sha256_hex_file(&tokenizer_path)
+        .map_err(|e| format!("hashing tokenizer at {}: {e}", tokenizer_path.display()))?;
+    Ok(ModelMeta {
+        id: model_id_from_dir(dir),
+        weight_hash,
+        tokenizer_hash,
+        hidden_size: read_hidden_size(dir)?,
+    })
 }
 
 pub struct RealEngine {
@@ -231,6 +244,35 @@ impl RealEngine {
 
     pub fn execution_metadata(&self) -> crate::telemetry::ExecutionMetadata {
         self.execution.metadata(self.dtype)
+    }
+
+    /// Every loaded head's own tokenizer, cloned out for
+    /// `POST /v1/tokenize` (`crate::tokenize_api::TokenizerRegistry`):
+    /// `(id, tokenizer, tokenizer_hash)`, keyed the SAME way
+    /// [`InferenceEngine::list_models`] keys its `ModelInfo::id` — so a
+    /// consumer that read a model's id off `GET /v1/models` can use it here
+    /// unchanged. `main.rs` calls this BEFORE handing `self` to
+    /// [`crate::worker::WorkerHandle::spawn_crash_on_panic`], which moves
+    /// it into the encoder worker thread — same reason
+    /// `Adjudicator::tokenizer_clone` is called before `Handle::spawn`. The
+    /// shadow `--candidate-classifier-dir` head is deliberately excluded —
+    /// it is never listed in `/v1/models` either (see that field's doc
+    /// comment), and this endpoint answers to the same id space.
+    pub fn tokenizers(&self) -> Vec<(String, tokenizers::Tokenizer, String)> {
+        let mut out = Vec::new();
+        if let Some((model, meta)) = &self.embedder {
+            out.push((meta.id.clone(), model.tokenizer().clone(), meta.tokenizer_hash.clone()));
+        }
+        if let Some((model, meta)) = &self.classifier {
+            out.push((meta.id.clone(), model.tokenizer().clone(), meta.tokenizer_hash.clone()));
+        }
+        if let Some((model, meta)) = &self.router {
+            out.push((meta.id.clone(), model.tokenizer().clone(), meta.tokenizer_hash.clone()));
+        }
+        for (model, meta) in &self.token_classifiers {
+            out.push((meta.id.clone(), model.tokenizer().clone(), meta.tokenizer_hash.clone()));
+        }
+        out
     }
 
     pub fn device_selection_reasons(&self) -> &[String] {

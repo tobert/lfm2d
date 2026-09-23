@@ -35,7 +35,7 @@ pub(crate) const CHUNK: usize = 128;
 /// puts it anywhere else.
 const EOS: u32 = 124900;
 const MAX_NEW: usize = 2048;
-const MAX_INPUT_BYTES: usize = 65536;
+pub(crate) const MAX_INPUT_BYTES: usize = 65536;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -411,6 +411,13 @@ pub trait Generator: Send + 'static {
     /// Unload an uploaded spec by id. Never fails: unknown and boot-spec
     /// are both outcomes, not errors — see [`UnregisterOutcome`].
     fn unregister(&mut self, id: &str) -> UnregisterOutcome;
+    /// `POST /v1/probe`: raw inference over exact text, an instrument with
+    /// no calibration contract — see [`crate::probe_api`].
+    fn probe(
+        &mut self,
+        request: &crate::probe_api::ProbeRequest,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<crate::probe_api::ProbeResponse, Failure>;
 }
 
 /// `POST /v1/opinion/specs`'s result: the spec's own menu entry, whether
@@ -453,6 +460,31 @@ struct PreparedEvaluation {
     logits: Tensor,
     cached_tokens: usize,
 }
+
+/// Forward `ids` through `state` in `CHUNK`-sized pieces, returning the last
+/// chunk's logits. Every path that must forward a suffix onto SOME resident
+/// prefix goes through this one function rather than its own copy of the
+/// loop: [`PromptCache::prepare`]'s cache-miss branch and `/v1/probe`'s
+/// warm-prefix resume (`crate::probe_api`) need to produce bit-identical
+/// numerics for the same suffix on the same prefix (the chunk boundaries
+/// this loop picks are themselves part of what makes cold and warm
+/// schedules disagree by ~0.15 nats — `docs/lfm25-chunk-kernels.md`), so a
+/// second hand-written copy is exactly the kind of drift that check exists
+/// to catch.
+fn forward_chunks(
+    model: &Model,
+    state: &mut ModelState,
+    ids: &[u32],
+    check: &dyn Fn() -> Result<(), Failure>,
+) -> Result<Tensor, Failure> {
+    let mut logits = None;
+    for chunk in ids.chunks(CHUNK) {
+        check()?;
+        logits = Some(model.forward(chunk, state)?);
+    }
+    logits.ok_or_else(|| Failure::Internal("no suffix tokens".into()))
+}
+
 struct PromptCache {
     prefix: ModelState,
     prefix_ids: Vec<u32>,
@@ -492,12 +524,7 @@ impl PromptCache {
         } else {
             (model.new_state(), 0)
         };
-        let mut logits = None;
-        for chunk in full[start..].chunks(CHUNK) {
-            check()?;
-            logits = Some(model.forward(chunk, &mut state)?);
-        }
-        let logits = logits.ok_or_else(|| Failure::Internal("no suffix tokens".into()))?;
+        let logits = forward_chunks(model, &mut state, &full[start..], check)?;
         // Publish only complete prefill. A failed/cancelled preparation retains
         // the previous entry; later decode never mutates the saved state/logits.
         logits.device().synchronize()?;
@@ -868,9 +895,9 @@ impl LoadedSpec {
                     serde_json::to_string(&field.field).map_err(|e| e.to_string())?
                 );
                 for option in &field.options {
-                    let alone = encode_ids(tokenizer, &format!("{option}{close}"))?;
-                    let whole = encode_ids(tokenizer, &format!("{prefix_text}{slot}{option}{close}"))?;
-                    if alone.is_empty() || !whole.ends_with(&alone) {
+                    let (_, stable) =
+                        suffix_is_stable(tokenizer, &format!("{prefix_text}{slot}"), &format!("{option}{close}"))?;
+                    if !stable {
                         return Err(format!(
                             "prompt spec {name:?}: option {option:?} of {:?} does not tokenize on \
                              its own after the slot; it cannot be read",
@@ -904,6 +931,109 @@ fn encode_ids(tokenizer: &tokenizers::Tokenizer, text: &str) -> Result<Vec<u32>,
         .map_err(|e| e.to_string())?
         .get_ids()
         .to_vec())
+}
+
+/// The readability check every teacher-forced continuation must pass before
+/// it can be trusted: `suffix`, tokenized ALONE, must be exactly the tail of
+/// `prefix` and `suffix` tokenized TOGETHER. A BPE merge across the
+/// prefix/suffix boundary can otherwise put `suffix`'s canonical tokens on a
+/// path the model would never write from `prefix` — scoring `alone`'s tokens
+/// there would then be scoring gibberish, not the continuation.
+///
+/// Three call sites share this: [`LoadedSpec::load`]'s pretokenization probe
+/// over every opinion option, [`Adjudicator::describe_then_read`]'s
+/// per-question option check, and `POST /v1/tokenize`'s `context`
+/// suffix-stability report (`crate::tokenize_api`) — the same fact asked for
+/// three different reasons (refuse at load, refuse at request time, report
+/// as data), so it is one function, not three copies that could drift.
+///
+/// Returns `suffix`'s own encoding (a caller that goes on to teacher-force
+/// it, or to report it, doesn't need to re-tokenize) alongside whether it is
+/// stable. `suffix` encoding to nothing is never stable (there would be
+/// nothing left to force or to report as "the tokens after context").
+pub(crate) fn suffix_is_stable(
+    tokenizer: &tokenizers::Tokenizer,
+    prefix: &str,
+    suffix: &str,
+) -> Result<(Vec<u32>, bool), String> {
+    let alone = encode_ids(tokenizer, suffix)?;
+    let whole = encode_ids(tokenizer, &format!("{prefix}{suffix}"))?;
+    let stable = !alone.is_empty() && whole.ends_with(&alone);
+    Ok((alone, stable))
+}
+
+/// Real-tokenizer facts pinned against the actual LFM2.5-8B-A1B
+/// `tokenizer.json` — no GGUF, no candle model, so this stays a plain
+/// `#[test]` rather than an `#[ignore]`d real-model one (same "Tier 1b"
+/// convention `tests/constrained_decoding.rs` uses for its
+/// `real_vocabulary_*` tests). Verify against the fixture, not a
+/// description of it: a prior version of this comment claimed `"allow"`
+/// takes 1 token from memory alone, which is exactly the kind of claim
+/// this module exists to pin instead of assert from recollection.
+#[cfg(test)]
+mod suffix_is_stable_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn models_dir() -> PathBuf {
+        std::env::var_os("LFM2_MODELS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".models")
+            })
+    }
+
+    fn real_tokenizer() -> tokenizers::Tokenizer {
+        let path = std::env::var_os("LFM2D_ADJUDICATOR_TOKENIZER")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| models_dir().join("LFM2.5-8B-A1B/tokenizer.json"));
+        assert!(
+            path.is_file(),
+            "missing tokenizer at {}\n\n  (hf download LiquidAI/LFM2.5-8B-A1B tokenizer.json \
+             --local-dir .models/LFM2.5-8B-A1B, or point LFM2D_ADJUDICATOR_TOKENIZER at it; \
+             LFM2_MODELS_DIR overrides the .models root)\n",
+            path.display()
+        );
+        tokenizers::Tokenizer::from_file(&path).unwrap()
+    }
+
+    /// The verdict slot's own prefix: no trailing space before the option,
+    /// the shape every shipped opinion spec uses. `allow` is one token
+    /// here; `deny` is two (`memory verdict-words-tokenize-in-string-context`).
+    /// Both are stable: the pretokenizer never merges across the closing
+    /// quote.
+    #[test]
+    fn allow_is_one_token_and_deny_is_two_at_the_verdict_slot_and_both_are_stable() {
+        let tok = real_tokenizer();
+        let prefix = "{\"verdict\": \"";
+        let (allow_ids, allow_stable) = suffix_is_stable(&tok, prefix, "allow").unwrap();
+        assert_eq!(allow_ids, vec![13537], "allow's token id moved; re-pin or re-check the fixture");
+        assert!(allow_stable);
+        let (deny_ids, deny_stable) = suffix_is_stable(&tok, prefix, "deny").unwrap();
+        assert_eq!(deny_ids.len(), 2, "deny's token count moved: {deny_ids:?}");
+        assert!(deny_stable);
+    }
+
+    /// The hazard the check exists to catch: a prefix that ends in a SPACE
+    /// (unlike every real opinion prefill, which ends in `"`) merges the
+    /// space into the option's first token, so the option's own alone
+    /// encoding is no longer a tail of the combined encoding at all —
+    /// `suffix_is_stable` must say so rather than silently reporting it
+    /// readable.
+    #[test]
+    fn a_prefix_ending_in_a_space_makes_the_option_unstable() {
+        let tok = real_tokenizer();
+        let (_, stable) = suffix_is_stable(&tok, "the verdict is ", "allow").unwrap();
+        assert!(!stable, "a leading-space BPE merge must be caught, not missed");
+    }
+
+    #[test]
+    fn an_empty_suffix_is_never_stable() {
+        let tok = real_tokenizer();
+        let (ids, stable) = suffix_is_stable(&tok, "hello ", "").unwrap();
+        assert!(ids.is_empty());
+        assert!(!stable, "nothing was left to force or to report");
+    }
 }
 
 /// What [`SpecStore`] needs to identify an entry: its content-hash id and
@@ -1159,6 +1289,17 @@ impl Adjudicator {
     pub fn menu(&self) -> Vec<crate::opinion_api::SpecMenuEntry> {
         self.specs.iter().map(|s| s.menu.clone()).collect()
     }
+    /// A clone of this adjudicator's own tokenizer, for `POST /v1/tokenize`
+    /// (`crate::tokenize_api`). `main.rs` calls this BEFORE handing `self`
+    /// to [`Handle::spawn`], which moves it into the worker thread — the
+    /// whole point of cloning here is that tokenizing never waits behind
+    /// the worker's model queue (`docs/system1-split-plan.md` "Tokenize
+    /// and probe endpoints"). `tokenizers::Tokenizer` clones cheaply (its
+    /// heavy pieces — the vocabulary, the merge table — are reference
+    /// counted internally), so this is not a second copy of the vocabulary.
+    pub fn tokenizer_clone(&self) -> tokenizers::Tokenizer {
+        self.tokenizer.clone()
+    }
 }
 impl Generator for Adjudicator {
     fn generate(
@@ -1408,6 +1549,15 @@ impl Generator for Adjudicator {
             RemoveOutcome::Boot => UnregisterOutcome::BootSpec,
             RemoveOutcome::NotFound => UnregisterOutcome::NotFound,
         }
+    }
+
+    fn probe(
+        &mut self,
+        request: &crate::probe_api::ProbeRequest,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<crate::probe_api::ProbeResponse, Failure> {
+        request.validate().map_err(Failure::BadRequest)?;
+        self.probe_impl(request, check)
     }
 }
 
@@ -1691,14 +1841,13 @@ impl Adjudicator {
             // slot: checked at load on a probe, held to here.
             let mut continuations = Vec::with_capacity(question.options.len());
             for option in &question.options {
-                let alone = encode_ids(&self.tokenizer, &format!("{option}{}", question.close))
-                    .map_err(Failure::Internal)?;
-                let whole = encode_ids(
+                let (alone, stable) = suffix_is_stable(
                     &self.tokenizer,
-                    &format!("{prompt_text}{text}{option}{}", question.close),
+                    &format!("{prompt_text}{text}"),
+                    &format!("{option}{}", question.close),
                 )
                 .map_err(Failure::Internal)?;
-                if alone.is_empty() || !whole.ends_with(&alone) {
+                if !stable {
                     return Err(Failure::Internal(format!(
                         "option {option:?} does not tokenize on its own after the {:?} slot",
                         question.field
@@ -1747,6 +1896,194 @@ impl Adjudicator {
             prefill_ms,
             describe_ms,
             read_ms,
+        })
+    }
+
+    /// `POST /v1/probe`: raw inference over exact text, not bound to any
+    /// spec. See `crate::probe_api`'s module docs for the contract; this is
+    /// the engine.
+    fn probe_impl(
+        &mut self,
+        request: &crate::probe_api::ProbeRequest,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<crate::probe_api::ProbeResponse, Failure> {
+        use crate::probe_api::{ProbeCache, ProbeContinuationScore, ProbeContinuations, ProbeGeneratedStep, ProbeIdentity, ProbeResponse};
+        check()?;
+        let rendered = request.render();
+        let rendered_sha256 = sha256_hex_bytes(rendered.as_bytes());
+        let full_ids = self
+            .tokenizer
+            .encode(rendered.as_str(), false)
+            .map_err(|e| Failure::Internal(e.to_string()))?
+            .get_ids()
+            .to_vec();
+        if full_ids.is_empty() {
+            return Err(Failure::BadRequest("rendered input tokenizes to nothing".into()));
+        }
+        if full_ids.len() > self.context_limit {
+            return Err(Failure::BadRequest("input tokens exceed the adjudicator context".into()));
+        }
+        if full_ids.len().checked_add(request.generate).is_none_or(|n| n > self.context_limit) {
+            return Err(Failure::BadRequest(
+                "input tokens plus generate exceeds the adjudicator context".into(),
+            ));
+        }
+
+        // Warm-prefix resume: scan every loaded spec (boot and uploaded) for
+        // one whose resident prefix is a token-id prefix of the rendered
+        // input, exactly the condition `PromptCache::prepare` itself checks.
+        // Cloned out of the found spec immediately so this borrows only
+        // `self.specs`, not all of `self` — `self.model` is a disjoint
+        // field borrowed right after (same pattern `register`'s
+        // `CheckpointView` construction uses, see its comment).
+        let resumed = if request.use_cache {
+            self.specs.iter().find_map(|s| {
+                (full_ids.len() > s.cache.prefix_ids.len() && full_ids.starts_with(&s.cache.prefix_ids))
+                    .then(|| (s.id.clone(), s.cache.prefix.clone(), s.cache.prefix_ids.len()))
+            })
+        } else {
+            None
+        };
+        let prefill_begin = Instant::now();
+        let (mut state, cached_tokens, resumed_spec) = match resumed {
+            Some((id, prefix_state, prefix_len)) => (prefix_state, prefix_len, Some(id)),
+            None => (self.model.new_state(), 0, None),
+        };
+        let logits = forward_chunks(&self.model, &mut state, &full_ids[cached_tokens..], check)?;
+        logits.device().synchronize()?;
+        let prefill_ms = prefill_begin.elapsed().as_secs_f64() * 1000.;
+
+        let score_begin = Instant::now();
+        let candle_check = || check().map_err(|_| candle_core::Error::Msg("cancelled".into()));
+
+        // Continuations, scored against the state/logits at the END of the
+        // rendered input — this never advances `state` (see
+        // `opinion::score_continuations_verbose`'s doc and test), so it can
+        // run before the generate loop below without disturbing it.
+        let continuations = if request.continuations.is_empty() {
+            None
+        } else {
+            let mut ids = Vec::with_capacity(request.continuations.len());
+            let mut canonical = Vec::with_capacity(request.continuations.len());
+            for text in &request.continuations {
+                let (alone, stable) =
+                    suffix_is_stable(&self.tokenizer, &rendered, text).map_err(Failure::Internal)?;
+                if alone.is_empty() {
+                    return Err(Failure::BadRequest(format!(
+                        "continuation {text:?} tokenizes to nothing"
+                    )));
+                }
+                ids.push(alone);
+                canonical.push(stable);
+            }
+            let longest = ids.iter().map(Vec::len).max().unwrap_or(0);
+            if full_ids.len().checked_add(longest).is_none_or(|n| n > self.context_limit) {
+                return Err(Failure::BadRequest(
+                    "input plus the longest continuation exceeds the adjudicator context".into(),
+                ));
+            }
+            let scores = crate::opinion::score_continuations_verbose(&self.model, &state, &logits, &ids, &candle_check)
+                .map_err(|e| check().err().unwrap_or(Failure::Internal(e.to_string())))?;
+            logits.device().synchronize()?;
+            let sequence_mass =
+                crate::opinion::logsumexp(&scores.iter().map(|s| s.sequence_logprob).collect::<Vec<_>>());
+            let prob: Vec<f32> =
+                scores.iter().map(|s| (s.sequence_logprob - sequence_mass).exp()).collect();
+            let options = request
+                .continuations
+                .iter()
+                .cloned()
+                .zip(ids)
+                .zip(scores)
+                .zip(canonical)
+                .map(|(((text, tokens), score), canonical)| ProbeContinuationScore {
+                    text,
+                    tokens,
+                    first_logprob: *score
+                        .token_logprobs
+                        .first()
+                        .expect("a stable, non-empty continuation encodes to at least one token"),
+                    token_logprobs: score.token_logprobs,
+                    sequence_logprob: score.sequence_logprob,
+                    canonical,
+                })
+                .collect();
+            Some(ProbeContinuations { options, sequence_mass, prob })
+        };
+
+        // Top-k at the last input position, and `generate` greedy steps
+        // under the SAME sampling policy production uses (repetition
+        // penalty over `full_ids`, no grammar). Step 0's distribution IS
+        // "top-k at the last input position" — no extra forward pass is
+        // spent computing it separately, since it is read straight off
+        // `logits` the same way `generate`'s first step would be.
+        let mut top_logprobs = Vec::new();
+        let mut generated = Vec::new();
+        if request.top_k > 0 || request.generate > 0 {
+            let requested_steps = request.generate.max(1);
+            let distreq = crate::types::DistributionRequest {
+                top_k: request.top_k,
+                token_sets: Default::default(),
+                constrained: false,
+            };
+            let mut decoder = crate::constrain::Decoder::new(
+                None,
+                &self.execution.device,
+                self.model.vocab_size(),
+                &full_ids,
+                self.repeat_penalty,
+            )?;
+            let mut cur_logits = logits.clone();
+            for i in 0..requested_steps {
+                check()?;
+                let (token, dist) =
+                    decoder.step(&cur_logits, Some(&distreq), |id| self.tokenizer.id_to_token(id))?;
+                let dist = dist.expect("Some(&distreq) was passed, so Decoder::step always returns Some");
+                if i == 0 {
+                    top_logprobs = dist.top_logprobs.clone();
+                }
+                let is_eos = token == self.eos;
+                if i < request.generate {
+                    generated.push(ProbeGeneratedStep {
+                        token,
+                        text: dist.text.clone(),
+                        logprob: dist.logprob,
+                        top_logprobs: dist.top_logprobs,
+                    });
+                }
+                if is_eos {
+                    break;
+                }
+                if i + 1 < requested_steps {
+                    cur_logits = self.model.forward(&[token], &mut state)?;
+                }
+            }
+        }
+        let score_ms = score_begin.elapsed().as_secs_f64() * 1000.;
+
+        Ok(ProbeResponse {
+            identity: ProbeIdentity {
+                model_id: self.model_id.clone(),
+                weight_hash: self.weight_hash.clone(),
+                tokenizer_hash: self.tokenizer_hash.clone(),
+                backend: self.execution.backend.as_str().into(),
+                dtype: "f32".into(),
+                sampling: format!("greedy; repetition_penalty={}; history=full", self.repeat_penalty),
+            },
+            rendered: request.messages.is_some().then(|| rendered.clone()),
+            rendered_sha256,
+            input_tokens: full_ids.len(),
+            cache: ProbeCache {
+                used_cache: cached_tokens > 0,
+                resumed_spec,
+                cached_tokens,
+            },
+            top_logprobs,
+            continuations,
+            generated,
+            queue_ms: 0.,
+            prefill_ms,
+            score_ms,
         })
     }
 }
@@ -2097,6 +2434,7 @@ enum Job {
     ),
     Register(String, PromptSpec),
     Unregister(String),
+    Probe(crate::probe_api::ProbeRequest),
 }
 impl Job {
     fn timeout_ms(&self) -> u64 {
@@ -2104,6 +2442,7 @@ impl Job {
             Job::Adjudicate(r) => r.timeout_ms,
             Job::Opinion(r, _) => r.timeout_ms,
             Job::Register(..) | Job::Unregister(_) => SPEC_ADMIN_TIMEOUT_MS,
+            Job::Probe(r) => r.timeout_ms,
         }
     }
     fn operation(&self) -> &'static str {
@@ -2112,6 +2451,7 @@ impl Job {
             Job::Opinion(..) => "opinion",
             Job::Register(..) => "register",
             Job::Unregister(_) => "unregister",
+            Job::Probe(_) => "probe",
         }
     }
 }
@@ -2120,6 +2460,7 @@ enum Reply {
     Opinion(crate::opinion_api::OpinionResponse),
     Register(RegisterOutcome),
     Unregister(UnregisterOutcome),
+    Probe(crate::probe_api::ProbeResponse),
 }
 struct Work {
     job: Job,
@@ -2274,6 +2615,22 @@ impl Handle {
                             }
                             Reply::Unregister(outcome)
                         }),
+                        Job::Probe(request) => check()
+                            .and_then(|()| generator.probe(request, &check))
+                            .map(|mut r| {
+                                r.queue_ms = queue_ms;
+                                tracing::info!(
+                                    input_tokens = r.input_tokens,
+                                    used_cache = r.cache.used_cache,
+                                    cached_tokens = r.cache.cached_tokens,
+                                    continuations = r.continuations.as_ref().map(|c| c.options.len()).unwrap_or(0),
+                                    generated = r.generated.len(),
+                                    prefill_ms = r.prefill_ms,
+                                    score_ms = r.score_ms,
+                                    "probe complete"
+                                );
+                                Reply::Probe(r)
+                            }),
                     };
                     if let Err(e) = &result {
                         let kind = match e {
@@ -2405,6 +2762,26 @@ impl Handle {
             ),
         }
     }
+    /// `POST /v1/probe`. Unlike [`Self::opine`] there is no spec/menu
+    /// pre-check to run here — a probe names no spec, so shape validation
+    /// (`ProbeRequest::validate`) is everything the handler can refuse
+    /// before the worker.
+    #[allow(clippy::result_large_err)]
+    pub async fn probe(
+        &self,
+        request: crate::probe_api::ProbeRequest,
+    ) -> Result<crate::probe_api::ProbeResponse, Response> {
+        request
+            .validate()
+            .map_err(|e| Failure::BadRequest(e).into_response())?;
+        match self.submit(Job::Probe(request), "probe").await? {
+            Reply::Probe(r) => Ok(r),
+            _ => Err(
+                Failure::Internal("worker answered a probe with something else".into())
+                    .into_response(),
+            ),
+        }
+    }
     /// `POST /v1/opinion/specs`: `bytes` is the exact uploaded body — already
     /// bounded to `MAX_SPEC_BYTES` by the route's `DefaultBodyLimit` layer
     /// (`router`, below); anything over that never reaches here at all
@@ -2458,8 +2835,16 @@ impl Handle {
         }
     }
 }
-pub fn router(handle: Handle) -> Router {
-    Router::new()
+/// Builds the adjudicator's router. `probe_enabled` (`--no-probe`/
+/// `LFM2D_PROBE`, `config.rs`) decides whether `/v1/probe` is even ADDED to
+/// the route table: with it `false`, the route is entirely absent, so a
+/// request against it gets axum's plain unmatched-route 404 — never a
+/// present-but-403 route, which would leak "this feature exists but is
+/// turned off" to an unauthenticated prober. `/v1/tokenize` is a SEPARATE
+/// router (`crate::tokenize_api::router`), merged by `main.rs` — it shares
+/// no state and no toggle with this one; see that module's docs for why.
+pub fn router(handle: Handle, probe_enabled: bool) -> Router {
+    let mut router = Router::new()
         .route("/v1/adjudicator", get(info))
         .route("/v1/adjudicate", post(adjudicate))
         .route("/v1/opinion", post(opine))
@@ -2475,7 +2860,11 @@ pub fn router(handle: Handle) -> Router {
                 // sit behind for 1-2 MiB bodies, and never saw beyond it).
                 .layer(DefaultBodyLimit::max(MAX_SPEC_BYTES)),
         )
-        .route("/v1/opinion/specs/{id}", axum::routing::delete(delete_spec))
+        .route("/v1/opinion/specs/{id}", axum::routing::delete(delete_spec));
+    if probe_enabled {
+        router = router.route("/v1/probe", post(probe));
+    }
+    router
         .with_state(handle)
         .layer(axum::middleware::from_fn(
             crate::server::telemetry_middleware,
@@ -2500,6 +2889,13 @@ async fn opine(
     crate::server::ValidJson(request): crate::server::ValidJson<crate::opinion_api::OpinionRequest>,
 ) -> Result<Json<crate::opinion_api::OpinionResponse>, Response> {
     h.opine(request).await.map(Json)
+}
+#[allow(clippy::result_large_err)]
+async fn probe(
+    State(h): State<Handle>,
+    crate::server::ValidJson(request): crate::server::ValidJson<crate::probe_api::ProbeRequest>,
+) -> Result<Json<crate::probe_api::ProbeResponse>, Response> {
+    h.probe(request).await.map(Json)
 }
 /// `POST /v1/opinion/specs`: the body IS the spec's bytes (no envelope, no
 /// content-type requirement — a caller posts the file it would otherwise
@@ -3184,6 +3580,13 @@ mod handle_menu_tests {
                 }
                 None => UnregisterOutcome::NotFound,
             }
+        }
+        fn probe(
+            &mut self,
+            _: &crate::probe_api::ProbeRequest,
+            _: &dyn Fn() -> Result<(), Failure>,
+        ) -> Result<crate::probe_api::ProbeResponse, Failure> {
+            Err(Failure::Internal("not exercised here".into()))
         }
     }
 

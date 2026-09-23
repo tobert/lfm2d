@@ -169,6 +169,13 @@ impl Generator for Fake {
     fn unregister(&mut self, _: &str) -> lfm2d::adjudicator::UnregisterOutcome {
         lfm2d::adjudicator::UnregisterOutcome::NotFound
     }
+    fn probe(
+        &mut self,
+        _: &lfm2d::probe_api::ProbeRequest,
+        _: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<lfm2d::probe_api::ProbeResponse, Failure> {
+        Err(Failure::Internal("this fake does not probe".into()))
+    }
 }
 
 fn spawn() -> (Handle, Arc<Mutex<Seen>>) {
@@ -223,7 +230,7 @@ const GOOD: &str = r#"{"spec":"command-verdict-enum-v1","state":{"command":"carg
 #[tokio::test]
 async fn refused_opinion_requests_never_enter_the_generator() {
     let (handle, seen) = spawn();
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     // An unknown spec is its own case, 404 not 400: it's the client's cue
     // to upload the spec (`POST /v1/opinion/specs`) and retry, not "this
     // request is malformed" — see `docs/system1-split-plan.md` "Runtime
@@ -314,7 +321,7 @@ async fn refused_opinion_requests_never_enter_the_generator() {
 #[tokio::test]
 async fn a_read_carries_the_description_the_distribution_and_no_winner() {
     let (handle, seen) = spawn();
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     let (status, v) = post(&router, "/v1/opinion", GOOD).await;
     assert_eq!(status, 200, "{v}");
     assert_eq!(seen.lock().unwrap().opine_calls, 1);
@@ -379,7 +386,7 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
 #[tokio::test]
 async fn several_questions_share_one_generator_call_in_emission_order() {
     let (handle, seen) = spawn();
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     let body = r#"{"spec":"command-verdict-enum-v1","state":{"command":"git clean -fdx"},
       "questions":[{"field":"verdict"},{"field":"scope","options":["project","home"]},{"field":"undo"}]}"#;
     let (status, v) = post(&router, "/v1/opinion", body).await;
@@ -401,7 +408,7 @@ async fn several_questions_share_one_generator_call_in_emission_order() {
 #[tokio::test]
 async fn the_rendered_prompt_is_returned_only_when_asked() {
     let (handle, _) = spawn();
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     // Default: the hash is the only evidence of the prompt, and the key is
     // absent rather than null so an old consumer's payload is unchanged.
     let (status, v) = post(&router, "/v1/opinion", GOOD).await;
@@ -419,7 +426,7 @@ async fn the_rendered_prompt_is_returned_only_when_asked() {
 #[tokio::test]
 async fn the_question_reaches_the_generator_resolved_against_the_spec() {
     let (handle, seen) = spawn();
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     // No options named: the whole enum, in spec order, and every field
     // before the question is described.
     let (status, _) = post(&router, "/v1/opinion", GOOD).await;
@@ -454,7 +461,7 @@ async fn the_last_field_closes_the_object() {
     let mut menu = menu();
     menu[0].fields.pop(); // drop `reason`: verdict is now last
     let handle = handle.with_menu(menu);
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     let (status, _) = post(&router, "/v1/opinion", GOOD).await;
     assert_eq!(status, 200);
     assert_eq!(
@@ -484,7 +491,7 @@ async fn the_state_renders_facts_before_the_command() {
 #[tokio::test]
 async fn the_menu_is_served_and_names_every_choice_field() {
     let (handle, _) = spawn();
-    let router = lfm2d::adjudicator::router(handle);
+    let router = lfm2d::adjudicator::router(handle, true);
     let (status, v) = get(&router, "/v1/opinion/specs").await;
     assert_eq!(status, 200);
     let specs = v.as_array().unwrap();
