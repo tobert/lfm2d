@@ -41,12 +41,25 @@ impl TokenizerRegistry {
     pub fn new() -> Self {
         Self::default()
     }
+    /// `tokenizer` is cleared of truncation AND padding before it's stored
+    /// — never the caller's own responsibility. Some heads' tokenizers
+    /// (`Lfm2Embedding`'s, `MAX_SEQ_LEN` = 512) carry truncation set for
+    /// THEIR OWN inference path, where a silently shortened embedding is
+    /// the intended behavior; a clone of that same tokenizer handed to
+    /// `POST /v1/tokenize` must not inherit it, or a >512-token request
+    /// would silently report only the first 512 tokens as if that were
+    /// the whole input — the same class of hazard `Checkpoint::load`
+    /// already guards against for the adjudicator's own tokenizer.
     pub fn insert(
         &mut self,
         model_id: impl Into<String>,
-        tokenizer: tokenizers::Tokenizer,
+        mut tokenizer: tokenizers::Tokenizer,
         tokenizer_hash: impl Into<String>,
     ) {
+        tokenizer.with_padding(None);
+        tokenizer
+            .with_truncation(None)
+            .expect("clearing truncation (None) never fails validation");
         self.entries
             .insert(model_id.into(), TokenizerEntry { tokenizer, tokenizer_hash: tokenizer_hash.into() });
     }
@@ -296,6 +309,53 @@ mod tests {
         assert_eq!(reg.len(), 1);
         assert!(reg.get("LFM2.5-8B-A1B").is_some());
         assert!(reg.get("nope").is_none());
+    }
+
+    /// F1 (kaibo review, 2026-09-23): `Lfm2Embedding` loads its tokenizer
+    /// with 512-token truncation set FOR ITS OWN inference path
+    /// (`MAX_SEQ_LEN`, `src/embedding.rs`) — a clone handed to this
+    /// registry must not inherit it, or a >512-token `/v1/tokenize`
+    /// request would silently report only the first 512 tokens as if that
+    /// were the whole input. Reproduces the exact tokenizer setup
+    /// `Lfm2Embedding::from_dir_with` runs (real embedder checkpoint,
+    /// same `TruncationParams`), so this is the actual hazard, not a
+    /// stand-in for it — only `Lfm2Embedding`'s own model loading is
+    /// skipped, since nothing here depends on its weights.
+    #[test]
+    fn tokenize_never_inherits_an_embedder_style_truncation() {
+        let tok_path = models_dir().join("LFM2.5-Embedding-350M/tokenizer.json");
+        assert!(
+            tok_path.is_file(),
+            "missing embedder tokenizer at {}; set LFM2_MODELS_DIR",
+            tok_path.display()
+        );
+        let mut tokenizer = tokenizers::Tokenizer::from_file(&tok_path).unwrap();
+        // The exact call `Lfm2Embedding::from_dir_with` makes (`src/embedding.rs`).
+        tokenizer
+            .with_truncation(Some(tokenizers::TruncationParams { max_length: 512, ..Default::default() }))
+            .unwrap();
+
+        let mut reg = TokenizerRegistry::new();
+        reg.insert("LFM2.5-Embedding-350M", tokenizer, "deadbeef");
+        let entry = reg.get("LFM2.5-Embedding-350M").unwrap();
+
+        // A word-repeated text that is comfortably over 512 tokens under
+        // this tokenizer, so a silent 512-token truncation would be
+        // visible as a wrong `ids.len()`, not just a suspiciously round one.
+        let text = "hello world ".repeat(600);
+        let (ids, tokens) = tokenize_text(&entry.tokenizer, &text).unwrap();
+        assert!(ids.len() > 512, "got only {} tokens; truncation is still active", ids.len());
+        assert_eq!(ids.len(), tokens.len());
+
+        // Spans are contiguous and cover the text end to end: token i's
+        // end offset is token i+1's start, the first starts at 0, and the
+        // last ends at text.len() — proving nothing was silently dropped
+        // at either end, not just that the count looks right.
+        assert_eq!(tokens.first().unwrap().start, 0);
+        for pair in tokens.windows(2) {
+            assert_eq!(pair[0].end, pair[1].start, "a gap or overlap between adjacent tokens");
+        }
+        assert_eq!(tokens.last().unwrap().end, text.len(), "the last token must reach the end of the text");
     }
 
     #[test]
