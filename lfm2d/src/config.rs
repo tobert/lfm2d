@@ -222,6 +222,25 @@ pub struct Cli {
     /// why this daemon's deploy guidance is "requests without limits."
     #[arg(long, env = "LFM2D_THREADS")]
     pub threads: Option<usize>,
+
+    /// `POST /v1/probe` is on by default whenever the adjudicator is
+    /// loaded — `--no-probe` (or `LFM2D_PROBE=0`/`false`) turns it off,
+    /// which removes the ROUTE entirely rather than leaving it present and
+    /// answering 403: an unauthenticated prober should not be able to tell
+    /// "this feature exists but is disabled" from "this daemon never had
+    /// it." It is an instrument with no calibration contract
+    /// (`docs/lfm25-adjudicator.md` "Probe and tokenize"), which is exactly
+    /// why it can be switched off without affecting `/v1/opinion` or
+    /// `/v1/adjudicate` at all. No effect when the adjudicator itself is
+    /// not configured — there is no route to add either way.
+    #[arg(
+        long = "no-probe",
+        env = "LFM2D_PROBE",
+        action = clap::ArgAction::SetFalse,
+        value_parser = clap::builder::BoolishValueParser::new(),
+        default_value_t = true,
+    )]
+    pub probe: bool,
 }
 
 impl Cli {
@@ -274,6 +293,22 @@ impl Cli {
             return Err("--opinion-spec-capacity must be at least 1".into());
         }
         Ok(())
+    }
+
+    /// Whether `POST /v1/probe` should be routed at all — the exact value
+    /// `main.rs` passes as `adjudicator::router`'s `probe_enabled`
+    /// argument (`router.merge(lfm2d::adjudicator::router(handle,
+    /// cli.probe_route_enabled()))`). Factored out so the
+    /// `--no-probe`/`LFM2D_PROBE`-flag-to-router-argument wiring is
+    /// itself unit-testable via `Cli::parse_from` (real clap parsing,
+    /// same as `Cli::parse` in production) without needing to load a
+    /// model or bind a socket — `main.rs`'s own line is then a trivial,
+    /// visibly-correct pass-through with no conditional logic of its own
+    /// left untested (kaibo review, 2026-09-23). No effect when the
+    /// adjudicator itself is not configured; there is no route to add
+    /// either way.
+    pub fn probe_route_enabled(&self) -> bool {
+        self.probe
     }
 }
 
@@ -365,6 +400,7 @@ mod tests {
             device: crate::device::DeviceArg::Cpu,
             device_index: 0,
             threads: None,
+            probe: true,
         }
     }
 
@@ -416,6 +452,7 @@ mod tests {
             device: crate::device::DeviceArg::Cpu,
             device_index: 0,
             threads: Some(4),
+            probe: false,
         };
         cli.validate().expect("fully specified config is valid");
     }
@@ -585,5 +622,73 @@ mod tests {
         assert!(cli.log_input_hash);
         let cli = Cli::parse_from(["lfm2d"]);
         assert!(!cli.log_input_hash, "must default to false when unset");
+    }
+
+    // ------------------------------------------------------------- --no-probe
+    //
+    // `probe` defaults true and only the bare `--no-probe` flag (or a
+    // falsy `LFM2D_PROBE`) turns it off — the opposite shape from
+    // `--log-input-hash`'s "explicit value required" rule above, and worth
+    // pinning explicitly since a clap `ArgAction`/env mixup here would
+    // silently leave `/v1/probe` on, or off, regardless of the flag.
+
+    /// `std::env::set_var`/`remove_var` mutate real process state, which
+    /// every `#[test]` in this binary shares — a `--no-probe`/default test
+    /// that never touches the env var can still observe a STALE
+    /// `LFM2D_PROBE` a concurrently-running test set a moment ago, since
+    /// `cargo test` runs tests in parallel by default. So every test that
+    /// cares what `probe` resolves to (env-driven or not) takes this one
+    /// lock and leaves the var unset on exit — that is the only way any of
+    /// them gets a clean environment to parse against. (Rust 2024 makes
+    /// `set_var`/`remove_var` themselves `unsafe`: no other thread may read
+    /// the environment while they run, which this lock is what guarantees.)
+    static PROBE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn probe_defaults_on_and_the_bare_flag_turns_it_off() {
+        let _guard = PROBE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: guarded by PROBE_ENV_LOCK; no other thread reads or
+        // writes LFM2D_PROBE while this lock is held.
+        unsafe {
+            std::env::remove_var("LFM2D_PROBE");
+        }
+        let cli = Cli::parse_from(["lfm2d"]);
+        assert!(cli.probe, "on by default");
+        let cli = Cli::parse_from(["lfm2d", "--no-probe"]);
+        assert!(!cli.probe, "the bare flag needs no value");
+    }
+
+    /// The actual value `main.rs` hands to `adjudicator::router`'s
+    /// `probe_enabled` argument, exercised through real clap parsing —
+    /// see `probe_route_enabled`'s doc comment for why this exists as its
+    /// own test rather than folding into the one above.
+    #[test]
+    fn probe_route_enabled_matches_the_no_probe_flag() {
+        let _guard = PROBE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: guarded by PROBE_ENV_LOCK.
+        unsafe {
+            std::env::remove_var("LFM2D_PROBE");
+        }
+        assert!(Cli::parse_from(["lfm2d"]).probe_route_enabled());
+        assert!(!Cli::parse_from(["lfm2d", "--no-probe"]).probe_route_enabled());
+    }
+
+    #[test]
+    fn probe_env_var_accepts_boolish_spellings() {
+        let _guard = PROBE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for (value, want) in [("0", false), ("false", false), ("1", true), ("true", true)] {
+            // SAFETY: guarded by PROBE_ENV_LOCK above.
+            unsafe {
+                std::env::set_var("LFM2D_PROBE", value);
+            }
+            let cli = Cli::parse_from(["lfm2d"]);
+            assert_eq!(cli.probe, want, "LFM2D_PROBE={value:?}");
+        }
+        // SAFETY: same guard; leave the environment clean for every other
+        // test in this file that parses a `Cli` and assumes `LFM2D_PROBE`
+        // is unset.
+        unsafe {
+            std::env::remove_var("LFM2D_PROBE");
+        }
     }
 }

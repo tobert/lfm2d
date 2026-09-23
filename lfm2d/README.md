@@ -146,6 +146,8 @@ POST /v1/route                {"input": str, "routes": [str]}  -> RAW cosines
 POST /v1/cascade              {"clauses": [str]}
 POST /v1/spans                {"inputs": str|[str], "model"?: str}
 POST /v1/spans/credentials    same shape; credential.* entities only
+POST /v1/tokenize             {"model": str, "text": str, "context"?: str}
+POST /v1/probe                {"text": str} | {"messages": [...]}  -- adjudicator only, on by default
 ```
 
 The input field is `inputs` (TEI's spelling), not `texts`. `/v1/route`
@@ -247,11 +249,41 @@ takes singular `input` because it scores one text against many routes.
   side filtered (via `Lfm2TokenClassifier::credentials`) to only the
   `credential.*` entity family. A separate endpoint, not a query flag on
   `/v1/spans` — AWS's precedent of shipping "contains PII" as its own API.
+- `POST /v1/tokenize` — `{"model": str, "text": str, "context"?: str}` →
+  `{"model", "tokenizer_hash", "ids", "tokens": [{"id","token","start","end"}],
+  "context"?: {"ids","tokens","suffix_stable"}}`. `model` is any id
+  `GET /v1/models` lists, OR the adjudicator's own id
+  (`GET /v1/adjudicator`) — each has its own tokenizer. `start`/`end` are
+  UTF-8 BYTE offsets into `text` (same convention as `/v1/spans`); `token`
+  is the tokenizer's own byte-level BPE piece spelling, not a decoded
+  string (a leading space reads as `"Ġ..."`). Unknown `model` is `404`.
+  With `context`: the `context` block reports the tokens `text` occupies
+  once `context` precedes it, and `suffix_stable` — whether `text`,
+  tokenized alone, is exactly the tail of `context + text`'s tokenization.
+  `false` means a BPE merge crossed the boundary, which is exactly the
+  hazard that makes teacher-forcing arbitrary text at a slot unsafe (see
+  `docs/lfm25-adjudicator.md` "The opinion API"). Answered on the request
+  handler over a tokenizer CLONED out at startup — it shares no queue with
+  either worker, so it answers even while the adjudicator or an encoder
+  head is mid-job.
+- `POST /v1/probe` — adjudicator only (absent, not present-but-403, unless
+  `--adjudicator-model` is configured), on by default; `--no-probe` (or
+  `LFM2D_PROBE=0`/`false`) removes the route. Raw inference over exact
+  text on the daemon's own stack — full details, response shape, and its
+  bit-identical/drift certification are in
+  [the adjudicator guide](../docs/lfm25-adjudicator.md)'s "Probe and
+  tokenize" section. **It is an instrument, not a judgement API**: no
+  calibration contract, and `docs/integration.md` invariants 8–11 do not
+  apply to it.
 
 Errors: `{"error": {"message", "type"}}`. `type` is `"bad_request"` (400 —
 malformed/empty input, or a call against a head this instance never
-loaded) or `"internal"` (500 — a loaded model's forward pass failed, or the
-worker thread itself died). Never a silently-wrong `200`.
+loaded), `"not_found"` (404 — `/v1/tokenize`'s unknown `model`, or
+`/v1/opinion`'s unknown `spec`; `/v1/probe` names no spec at all, so it
+never 404s that way — with `--no-probe` set, the whole route is simply
+absent, its own plain unmatched-route 404), or `"internal"` (500 — a
+loaded model's forward pass failed, or the worker thread itself died).
+Never a silently-wrong `200`.
 
 ## Calling lfm2d from another program (non-normative)
 
@@ -703,3 +735,21 @@ content hash of the exact bytes, so re-uploading the same spec is free; an
 unknown or evicted `spec` is `404`, the cue to upload and retry. See the
 guide's "Runtime spec registration" and `docs/integration.md` invariant
 12.
+
+Two more routes are answered without ever entering a spec's judgement
+contract: `POST /v1/tokenize` (any loaded model, encoder head or
+adjudicator, over a cloned tokenizer — never queues behind either worker;
+every clone has truncation/padding cleared, so a >512-token request
+through an embedder-style tokenizer never silently reports a truncated
+count) and `POST /v1/probe` (raw inference over exact text — or exact
+token `ids` — on the adjudicator's own stack: top-k logprobs,
+teacher-forced continuations, greedy `generate`, and an explicit warm/cold
+resume report that always picks the LONGEST matching resident prefix,
+never just the first one checked. An optional `decode_from` byte offset
+(or, with `ids`, `decode_from_token`) replays part of the schedule one
+token at a time — the daemon's own decode-loop forward call, reused — so
+a caller can reproduce `/v1/opinion`'s exact schedule, not just the
+bulk-prefill one; prefer the `ids` form when replaying a generation, since
+`text`/`decode_from` re-tokenizes fresh and BPE is not injective in that
+direction). Both are instruments for inspecting the daemon's own numbers,
+not decision APIs; see the guide's "Probe and tokenize" section.

@@ -234,6 +234,12 @@ impl Lfm2TokenClassifier {
         &self.trunk
     }
 
+    /// This checkpoint's own tokenizer, for a caller that needs to inspect
+    /// tokenization directly (e.g. `lfm2d`'s `POST /v1/tokenize`).
+    pub fn tokenizer(&self) -> &Tokenizer {
+        &self.tokenizer
+    }
+
     /// Number of classes (161 for the PII detector).
     pub fn num_labels(&self) -> usize {
         self.id2label.len()

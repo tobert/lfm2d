@@ -347,7 +347,18 @@ POST /v1/opinion
   answer against the prefix ending at `"<its field>": "` — for a single
   question, the whole string. Off by default, and the
   key is absent rather than null: the hash is the audit trail, and the text
-  repeats the whole spec prefix on every request.
+  repeats the whole spec prefix on every request. Under the SAME
+  condition, `rendered_token_ids` carries the model's own token ids for
+  that exact text — prefix + user turn (plain tokenization: never
+  generated, so unambiguous) followed by every field the model actually
+  sampled before the last slot, never a re-tokenization of the decoded
+  `rendered` string. Added 2026-09-23 (kaibo review, F3) specifically to
+  close `POST /v1/probe`'s replay loop: `rendered` alone is not safe to
+  feed back through `/v1/probe`'s `text`/`decode_from` (BPE is not
+  injective — a caller re-encoding generated text can silently land on a
+  different token path than the model took), but `rendered_token_ids` fed
+  through `/v1/probe`'s `ids`/`decode_from_token` is exact by
+  construction. See "Probe and tokenize" below.
 
 The daemon renders the prompt, generates every field before the question
 under the output grammar (greedy, the repetition penalty, exactly the
@@ -547,6 +558,292 @@ DELETE /v1/opinion/specs/{id}
   `snapshot_id`, how long the call took, and whether it evicted anything
   — `newly_loaded`/`evicted` in the response's telemetry, not the wire
   body.
+
+## Probe and tokenize
+
+Ruled 2026-09-23, `docs/system1-split-plan.md` "Tokenize and probe
+endpoints". Amy: "if we don't still have a tokenizing endpoint on lfm2d I
+think we should still have that... might add a general inference endpoint
+too so we can use it to probe the model consistently." Neither `/v1/opinion`
+nor `/v1/adjudicate` fit: both take questions only from a loaded spec's
+menu, never request text, on purpose (framing words move label tokens by
+an order of magnitude — "The opinion API" above). These two routes are
+the escape hatch: raw text in, raw numbers out, no menu, no judgement
+contract.
+
+### `POST /v1/tokenize`
+
+```json
+{"model": "command-verdict-enum-v1-adjudicator-or-any-loaded-id",
+ "text": "cargo clean", "context": null}
+```
+
+- `model` is any id `GET /v1/models` lists (an encoder head), or the
+  adjudicator's own id (`GET /v1/adjudicator`'s `model_id`) — each is a
+  separate tokenizer, read from a `TokenizerRegistry`
+  (`lfm2d/src/tokenize_api.rs`) built once at startup from every loaded
+  model's own tokenizer, cloned out BEFORE that model's owning engine
+  moves into its worker thread (`RealEngine::tokenizers`,
+  `Adjudicator::tokenizer_clone`, both called from `main.rs` ahead of
+  `WorkerHandle::spawn_crash_on_panic`/`adjudicator::Handle::spawn`). The
+  shadow `--candidate-classifier-dir` head is excluded, matching its
+  absence from `/v1/models`. Unknown `model` is `404`. **Every clone the
+  registry stores has truncation and padding explicitly cleared**
+  (`TokenizerRegistry::insert`), regardless of what the source checkpoint
+  set them to for its OWN inference path — `Lfm2Embedding` loads its
+  tokenizer with 512-token truncation (`MAX_SEQ_LEN`), which is correct
+  for embedding but would otherwise make `/v1/tokenize` silently report
+  only the first 512 tokens of a longer input as if that were the whole
+  thing (fixed 2026-09-23, kaibo review; same class of hazard
+  `Checkpoint::load` already guards against for the adjudicator's own
+  tokenizer).
+- **Answered entirely on the request handler, over the cloned tokenizer —
+  it shares no queue with either worker.** `lfm2d/tests/tokenize_api.rs`
+  proves this directly: a `Generator` double that never returns still lets
+  `/v1/tokenize` answer in milliseconds.
+- Response: `ids` (vocabulary ids), `tokens` (`{id, token, start, end}` per
+  token — `start`/`end` are UTF-8 BYTE offsets into `text`, same
+  convention as `/v1/spans`; `token` is the tokenizer's own byte-level BPE
+  piece, e.g. a leading space reads as `"Ġ..."`, NOT a decoded string),
+  and `tokenizer_hash` (sha256 of that model's `tokenizer.json`, same
+  convention as `weight_hash`).
+- With `context`: a `context` block — the tokens `text` occupies once
+  `context` precedes it (found by stripping the longest common prefix
+  `context`'s own encoding shares with `context + text`'s), and
+  `suffix_stable`: whether `text`, tokenized ALONE, is exactly the tail of
+  `context + text`'s tokenization. This is the SAME readability check
+  `LoadedSpec::load` runs on every opinion option before trusting it can
+  be taught-forced at a slot, and `describe_then_read` re-runs per request
+  (`suffix_is_stable`, `lfm2d/src/adjudicator.rs`) — factored into one
+  function all three call, so `/v1/tokenize` reports exactly the fact
+  those paths enforce, never a second implementation of it that could
+  drift. `false` means a BPE merge crossed the `context`/`text` boundary
+  (the classic case: `context` ends in a space, so the option's first
+  token picks up a leading-space variant it would not have alone) — the
+  same hazard that makes teacher-forcing arbitrary text at an arbitrary
+  slot unsafe without this check.
+
+### `POST /v1/probe`
+
+Raw inference over exact text, on the adjudicator's own stack. **An
+instrument, not a judgement API: no calibration contract, and
+`docs/integration.md` invariants 8–11 do not apply to it.** It takes
+request text by design — unlike `/v1/opinion`, whose questions come only
+from a spec's menu — which is exactly why it is a separate route with a
+separate, weaker contract.
+
+On by default whenever the adjudicator is configured; `--no-probe` (or
+`LFM2D_PROBE=0`/`false`) removes the route entirely (`404`, never
+present-but-`403` — an unauthenticated prober should not learn "this
+feature exists but is off" from "this daemon never had it"). Runs as a
+worker `Job` like `/v1/opinion`, sharing the adjudicator's bounded queue
+and deadline handling.
+
+```json
+{"text": "cargo clean", "top_k": 5, "continuations": ["allow\"}", "ask\"}"],
+ "generate": 0, "use_cache": true, "timeout_ms": 30000}
+```
+
+or, in place of `text`:
+
+```json
+{"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "cargo clean"}],
+ "assistant_prefill": "{\"verdict\": \""}
+```
+
+or, the exact-ids form:
+
+```json
+{"ids": [124894, 124899, ...], "decode_from_token": 238, "continuations": ["allow\"}", "ask\"}"]}
+```
+
+- **Input**: exactly one of `text`, `messages`, or `ids`.
+  - `text`: exact bytes, fed as-is — no template, and none of
+    `validate_text`'s literal-control-token refusal that every other
+    prompt path in this crate enforces, because the whole point is
+    inspecting what the model does with bytes those paths would refuse to
+    render.
+  - `messages`: rendered `<|startoftext|>` then one
+    `<|im_start|>{role}\n{content}<|im_end|>\n` per message, then an
+    opened, unclosed assistant turn, optionally continued by
+    `assistant_prefill` — the SAME renderer
+    `PromptSpec::render_prefix`/`render_user_turn` use for a spec's own
+    turns, reused rather than reimplemented. `role` must be
+    `system`/`user`/`assistant`; message `content` and `assistant_prefill`
+    DO go through `validate_text` (they sit inside the templated
+    structure, so a literal control token in them would corrupt it, same
+    reasoning as every spec-driven path).
+  - `ids`: exact token ids, teacher-forced VERBATIM — no tokenization at
+    all. **`text`/`messages` are re-tokenized fresh by this endpoint,
+    which is exact for bytes a caller wrote itself but NOT for bytes
+    containing a model's own generated output**: BPE is not injective in
+    the decode-then-re-encode direction, so a caller replaying generated
+    text can silently land on a different token path than the model
+    actually sampled (the same "leaving the canonical path" hazard
+    `describe_then_read` already guards against on its own decode). Use
+    `ids` whenever the bytes being replayed came out of a generation —
+    `/v1/opinion`'s `rendered_token_ids` (below) is built for exactly
+    this. `ids` needs its own schedule split, `decode_from_token` (a
+    TOKEN INDEX, not a byte offset — trivially exact, bounds-checked at
+    request-validation time, `0..=ids.len()`), in place of `decode_from`.
+  - The response echoes `rendered` when `messages` OR `ids` was used (a
+    `text` request already has its own bytes in the request body; an
+    `ids` request gets a DECODED string back for a human to read, used
+    for nothing else) and always carries `rendered_sha256`.
+- `top_k` (0–20, default 5, `crate::types::MAX_DISTRIBUTION_TOP_K` — the
+  same cap `/v1/adjudicate`'s `distributions.top_k` uses): full-vocabulary
+  top-k logprobs at the last input position, RAW (no repetition penalty,
+  no renormalization) — same convention as every other distribution this
+  daemon reports.
+- `continuations` (0–32 strings, each non-empty): each is teacher-forced
+  after the input and scored via
+  `crate::opinion::score_continuations_verbose` — the SAME forward-pass
+  loop `/v1/opinion` and `/v1/adjudicate`'s `opinion: true` share, now
+  also returning the PER-TOKEN logprobs those endpoints throw away.
+  Per option: `tokens` (the continuation's own canonical encoding),
+  `token_logprobs`, `sequence_logprob` (their sum), `first_logprob`
+  (`token_logprobs[0]`, the F9 slot-score number), and `canonical` —
+  whether this continuation's tokens, encoded alone, are exactly the tail
+  of the rendered input with this text appended
+  (`suffix_is_stable` again). `canonical: false` is reported, never
+  refused: this is an inspection tool, and a non-canonical continuation is
+  still real data. The block also carries `sequence_mass`
+  (`logsumexp` of the options' sequence logprobs) and the ONE renormalized
+  number this endpoint allows, `prob` over the continuations — read it
+  beside `sequence_mass`, same "low mass means unasked, not wrong"
+  convention as everywhere else in this crate.
+- `generate` (0–256): greedy steps under the EXACT SAME deterministic
+  policy production uses (sign-aware repetition penalty over `full_ids`,
+  no grammar — `crate::constrain::Decoder::new(None, ...)`), stopping
+  early at end-of-text. Each step carries its own `top_k` via
+  `crate::types::step_distribution_under`, the same machinery
+  `/v1/adjudicate`'s `distributions` uses. Step 0's distribution IS
+  "`top_k` at the last input position" — computed once, not twice.
+- `use_cache` (default true): the daemon picks the LONGEST loaded spec
+  (boot or uploaded) whose resident prefix is a STRICT token-id prefix of
+  the input up to `decode_from`/`decode_from_token` (or the whole input,
+  when neither is given) — `best_prefix_match`/`SpecStore::
+  resolve_best_prefix_mut`, deterministic regardless of iteration or LRU
+  order (a first-match search used to make the resumed spec depend on
+  which spec happened to be checked first — fixed 2026-09-23, kaibo
+  review). "STRICT" matters: a prefix EQUAL to the bulk-phase ids is not a
+  candidate (nothing would be left to bulk-forward), so that case resumes
+  a SHORTER match or runs the bulk phase cold, never an error — a
+  reported choice, not a refusal (also fixed 2026-09-23; it used to be a
+  `400 nothing to forward`). A hit on an UPLOADED spec touches it to the
+  back of the LRU, same as naming it by id would ("served-or-registered =
+  use," `docs/system1-split-plan.md` "Runtime spec registration" — also
+  fixed 2026-09-23; a probe resuming an upload used to leave its LRU
+  position untouched). Once found, the daemon clones that spec's prefix
+  state and bulk-forwards only the suffix up to `decode_from`
+  (`forward_chunks`, `CHUNK`-sized pieces — the SAME function
+  `PromptCache::prepare`'s cache-miss branch uses, so the two schedules
+  cannot silently diverge into two implementations of "forward a suffix
+  onto a resident prefix"). `false` always runs the bulk phase cold from
+  zero. The response's `cache` block always states which happened:
+  `used_cache`, `resumed_spec` (the matched spec's id, if any),
+  `cached_tokens`, and the schedule split (`prefill_tokens`,
+  `stepwise_tokens` — see `decode_from`). **Never mutates any spec's own
+  request-serving cache** (`PromptCache::prepare`'s `ready` slot) — a
+  probe against arbitrary text must not silently evict a spec's warm
+  production cache as a side effect; measured directly in
+  `lfm2d/tests/probe_real.rs` (a `/v1/opinion` read taken after a probe
+  that warm-resumed the same spec is bit-identical to one taken before
+  it).
+- `decode_from` (the `text`/`messages` form's schedule split — optional, a
+  BYTE offset into the rendered input, the same bytes `rendered_sha256`
+  hashes) or `decode_from_token` (the `ids` form's — a TOKEN INDEX,
+  trivially exact and bounds-checked at request-validation time, no
+  tokenizer needed): splits the schedule. Everything BEFORE it is
+  bulk-forwarded exactly as `use_cache` describes above; everything FROM
+  it onward is forwarded ONE TOKEN AT A TIME via
+  `forward_chunks(..., chunk_size: 1, ...)` — the SAME `model.forward(&[token],
+  &mut state)` call `describe_then_read`'s decode loop makes per generated
+  token, reused at that chunk size rather than reimplemented (see
+  `forward_chunks`'s doc comment). `decode_from` (the byte-offset form)
+  must land exactly on a token boundary of THIS endpoint's own fresh
+  tokenization of the input — refused with `400` naming the nearest
+  boundaries either side otherwise, never rounded silently; note this
+  inherits the `text`/`messages` re-tokenization caveat above, so a
+  boundary that looks right can still, in principle, land on the wrong
+  token if the bytes came out of a generation — prefer `ids`/
+  `decode_from_token` when they're available. This is what lets a caller
+  replay `/v1/opinion`'s OWN schedule, not just the bulk-only one below:
+  set it to the byte length (or, with `ids`, the token count) of the
+  prompt text BEFORE any of the model's own output (prefix + user turn,
+  ending right where the forced object/key opening — `{"verdict`, in the
+  shipped verdict specs — begins), and the response reproduces
+  `/v1/opinion`'s slot bit-for-bit (measured below). Omitted, the whole
+  input stays in the bulk phase — today's only schedule before this field
+  existed, and still the default.
+- **Bounds**: input tokens must fit the adjudicator context (`400`
+  otherwise); `continuations`/`generate` are capped as above (also `400`,
+  never clamped); `timeout_ms` 1–120000.
+- **Identity block**: `model_id`, `weight_hash`, `tokenizer_hash`,
+  `backend`, `dtype`, `sampling` (mirrors `PrefixInfo`'s fields, minus the
+  spec-specific ones — a probe is not bound to a spec), plus
+  `rendered_sha256`.
+- Telemetry: one span per probe, fields are lengths/counts only
+  (`input_tokens`, `cached_tokens`, `continuations`, `generated`,
+  `prefill_ms`, `score_ms`) — never the text, matching this crate's
+  blanket rule (`lib.rs`'s module docs, "no span, log, or metric anywhere
+  in this crate ever records input text").
+
+**What each schedule can reproduce bit-identically — measured, not
+assumed.** Without `decode_from`, `/v1/probe`'s warm resume is ONE bulk
+forward of everything after a spec's resident prefix.
+`POST /v1/adjudicate {"opinion": true}` (the F8 read, "Opinion reads"
+above) is the SAME shape: its `rendered` text (prefix + user turn + the
+spec's fixed `prefill` string) is bulk-prefilled in one call via
+`PromptCache::prepare`, no decode loop at all — so a bulk-only probe fed
+that exact text plus the spec's options as continuations reproduces it
+EXACTLY (`lfm2d/tests/probe_real.rs`,
+`probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm`,
+`#[ignore]`d: token identity, `first_logprob`, and `sequence_logprob` all
+bit-identical, `cached_tokens` equal to the spec's resident prefix
+length).
+
+`POST /v1/opinion`'s `describe_then_read` is NOT the same shape, even for
+a spec with nothing to describe: it still writes the JSON object's own
+opening (`{"verdict": "` — several tokens) through a GREEDY DECODE LOOP,
+one token at a time, because that text is GENERATED under the grammar,
+not given outright. A bulk forward of N tokens and N single-token forwards
+are the same computation in exact arithmetic, but not on this backend —
+quantized ROCm kernels differ by batch size (`lfm25-chunk-kernels.md`'s
+"block size picks the kernel"; `cold-and-cached-schedules-disagree`). So a
+**bulk-only** probe fed `/v1/opinion`'s own `rendered` text does NOT
+reproduce it bit-for-bit — measured on ROCm, `cargo clean`, `ask`'s
+`first_logprob` disagreed by 0.05 nats with ZERO fields preceding the
+slot (`command-verdict-opinion-v1`) and by up to 3.4 nats with three
+(`command-verdict-enum-v1`, `effect`/`scope`/`undo` before `verdict`) —
+small in the zero-field case, large enough to flip a threshold in the
+three-field one.
+
+**`decode_from` closes that gap.** Set to the byte length of the prompt
+text alone (before any of the model's own output), a probe fed
+`/v1/opinion`'s `rendered` text reproduces its slot EXACTLY — same token
+identity, same `first_logprob`, same `sequence_logprob` — for BOTH the
+zero-described-fields spec and the three-fields one that measured the 3.4
+nat gap above (`lfm2d/tests/probe_real.rs`,
+`probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from`,
+`#[ignore]`d, 2026-09-23). That test uses the `text`+`decode_from` form,
+which still carries the re-tokenization caveat in principle even though it
+passed here; a caller that wants the exactness guaranteed rather than
+observed uses `ids` (from `/v1/opinion`'s `rendered_token_ids`) +
+`decode_from_token` instead — see "The opinion API" above. **So:
+`/v1/probe` reproduces `POST /v1/adjudicate {"opinion": true}` with the
+bulk-only (default) schedule, and reproduces `POST /v1/opinion` when
+given its OWN decode schedule via `decode_from`/`decode_from_token`** —
+the caller supplies the split, because only the caller (having asked
+`/v1/opinion` or read `describe_then_read`'s own code) knows where a
+given render's generation actually began; `/v1/probe` has no spec/field
+awareness to infer it. A probe's warm resume never mutates the spec it
+resumes — measured directly: a `/v1/opinion` read taken right after a
+probe that warm-resumed the same spec is bit-identical to one taken
+before it, same test. Cold (`use_cache: false`) is
+reported the same way regardless of schedule: measured, never asserted
+equal to warm, exactly because production is always warm and a cold probe
+answers a genuinely different question.
 
 ## Snapshot semantics
 

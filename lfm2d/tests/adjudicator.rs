@@ -187,6 +187,13 @@ impl Generator for Fake {
     fn unregister(&mut self, _: &str) -> lfm2d::adjudicator::UnregisterOutcome {
         lfm2d::adjudicator::UnregisterOutcome::NotFound
     }
+    fn probe(
+        &mut self,
+        _: &lfm2d::probe_api::ProbeRequest,
+        _: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<lfm2d::probe_api::ProbeResponse, Failure> {
+        Err(Failure::Internal("this fake does not probe".into()))
+    }
 }
 fn request(input: &str) -> AdjudicateRequest {
     serde_json::from_value(serde_json::json!({"input":input})).unwrap()
@@ -225,7 +232,7 @@ async fn malformed_http_requests_never_enter_generator() {
         },
         info(),
     );
-    let router = lfm2d::adjudicator::router(h);
+    let router = lfm2d::adjudicator::router(h, true);
     for body in [
         r#"{"input":"x","max_tokens":0}"#,
         r#"{"input":"x","unknown":true}"#,
@@ -268,7 +275,7 @@ async fn opinion_flag_reaches_generator_and_the_wire_carries_a_read_not_a_genera
         },
         info(),
     );
-    let router = lfm2d::adjudicator::router(h);
+    let router = lfm2d::adjudicator::router(h, true);
     let response = router
         .oneshot(
             Request::post("/v1/adjudicate")
@@ -468,7 +475,7 @@ async fn a_request_without_distributions_gets_exactly_todays_response_shape() {
         },
         info(),
     );
-    let router = lfm2d::adjudicator::router(h);
+    let router = lfm2d::adjudicator::router(h, true);
     let response = router
         .oneshot(
             Request::post("/v1/adjudicate")
@@ -531,7 +538,7 @@ async fn a_request_with_distributions_gets_the_named_set_mass_alongside_top_k() 
         },
         info(),
     );
-    let router = lfm2d::adjudicator::router(h);
+    let router = lfm2d::adjudicator::router(h, true);
     let response = router
         .oneshot(
             Request::post("/v1/adjudicate")

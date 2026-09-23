@@ -389,6 +389,19 @@ pub struct OpinionResponse {
     /// the whole string. Absent, not null, when unasked.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rendered: Option<String>,
+    /// The SAME text `rendered` carries, as the model's own token ids —
+    /// prefix + user turn (a plain tokenization: this part was never
+    /// generated, so encoding it is unambiguous) followed by every field
+    /// generated before the LAST asked slot, EXACTLY as sampled, never a
+    /// re-tokenization of the decoded text. Present under the same
+    /// condition as `rendered` (kaibo review, 2026-09-23, F3): BPE is not
+    /// injective, so a caller that re-encodes `rendered`'s TEXT can
+    /// silently land on a different token path than the model actually
+    /// took — these ids are what closes that gap, e.g. as
+    /// `POST /v1/probe`'s `ids`/`decode_from_token` (`crate::probe_api`,
+    /// "the text-form caveat").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rendered_token_ids: Option<Vec<u32>>,
     pub cache: CacheOutcome,
     /// Tokens in the rendered prompt (prefix and user turn), before the
     /// description.

@@ -66,6 +66,7 @@ fn cli_with_token_classifier_only() -> Cli {
         device: lfm2d::device::DeviceArg::Cpu,
         device_index: 0,
         threads: None,
+        probe: true,
     }
 }
 

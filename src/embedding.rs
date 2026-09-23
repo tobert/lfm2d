@@ -226,6 +226,13 @@ impl Lfm2Embedding {
     pub fn trunk(&self) -> &Lfm2Trunk {
         &self.trunk
     }
+
+    /// This checkpoint's own tokenizer, for a caller that needs to inspect
+    /// tokenization directly (e.g. `lfm2d`'s `POST /v1/tokenize`) rather
+    /// than through [`Self::token_ids`]'s fixed `TextKind` prefix.
+    pub fn tokenizer(&self) -> &Tokenizer {
+        &self.tokenizer
+    }
 }
 
 /// Cosine similarity between two vectors of equal length.

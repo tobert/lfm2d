@@ -863,6 +863,12 @@ impl Lfm2SequenceRouter {
     pub fn trunk(&self) -> &Lfm2Trunk {
         &self.trunk
     }
+
+    /// This checkpoint's own tokenizer, for a caller that needs to inspect
+    /// tokenization directly (e.g. `lfm2d`'s `POST /v1/tokenize`).
+    pub fn tokenizer(&self) -> &Tokenizer {
+        &self.tokenizer
+    }
 }
 
 /// One statement's routing, computed clause by clause.
