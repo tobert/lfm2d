@@ -616,6 +616,7 @@ fn constrained_versus_free_decode_cost_on_real_weights() {
                         timeout_ms: 120_000,
                         distributions: None,
                         opinion: false,
+                        spec: None,
                     },
                     &|| Ok(()),
                 )
@@ -699,6 +700,7 @@ fn real_model_reports_are_valid_including_under_an_echo_attack() {
             timeout_ms: 120_000,
                         distributions: None,
             opinion: false,
+            spec: None,
         };
         let response = adjudicator.generate(&request, &|| Ok(())).expect("generate");
         eprintln!(

@@ -1,0 +1,453 @@
+//! `POST /v1/opinion/specs` and `DELETE /v1/opinion/specs/{id}` at the wire:
+//! content-addressed identity, idempotent re-registration, capacity/LRU
+//! eviction, and the 404-after-delete/-eviction contract. Over a fake
+//! generator — the dedup/LRU bookkeeping itself is unit-tested model-free
+//! in `lfm2d::adjudicator`'s `spec_store_tests`; this file certifies the
+//! HTTP <-> worker <-> `Handle` wiring around it (status codes, the id
+//! computed once and centrally by `Handle::register` regardless of which
+//! engine is running, and the live menu staying in step with the worker
+//! after every registration/eviction/delete).
+//!
+//! The real describe-then-read/generative paths against an uploaded spec
+//! (bit-identical to the same spec loaded at boot) are certified by
+//! `tests/opinion_real.rs`-style ignored real-model tests, not here.
+use lfm2d::adjudicator::{
+    AdjudicateRequest, AdjudicateResponse, Failure, Generator, Handle, PrefixInfo, PromptSpec,
+    RegisterOutcome, UnregisterOutcome,
+};
+use lfm2d::opinion_api::{OpinionRequest, OpinionResponse, ResolvedQuestion, SpecMenuEntry};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+
+fn info() -> PrefixInfo {
+    PrefixInfo {
+        model_id: "fixture".into(),
+        weight_hash: "hash".into(),
+        tokenizer_hash: "tok".into(),
+        template_version: "test".into(),
+        snapshot_id: "snapshot".into(),
+        prefix_tokens: 7,
+        input_cache_capacity: 1,
+        context_limit: 128,
+        backend: "cpu".into(),
+        dtype: "f32".into(),
+        sampling: "greedy".into(),
+        weight_dtypes: vec!["F32".into()],
+    }
+}
+
+/// A minimal but real spec: `SpecMenuEntry::from_prompt` (the same code the
+/// production `LoadedSpec::load` calls) reads it for real, so the menu
+/// entries this test double returns have a genuine schema-derived shape,
+/// not a hand-typed stand-in that could drift from what the real code
+/// produces.
+fn prompt(system: &str) -> PromptSpec {
+    serde_json::from_value(serde_json::json!({
+        "system": system,
+        "output_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {"verdict": {"type": "string", "enum": ["allow", "ask"]}},
+            "required": ["verdict"]
+        }
+    }))
+    .expect("valid test prompt spec")
+}
+
+/// A load that always fails, for the 422 case: its `system` text is the
+/// refusal message, so the test can assert the exact text made it through.
+const REFUSE: &str = "REFUSE: grammar cannot be compiled for this fixture";
+
+struct Inner {
+    boot: Vec<SpecMenuEntry>,
+    uploaded: VecDeque<SpecMenuEntry>,
+    capacity: usize,
+    load_calls: usize,
+    last_opine_spec: Option<String>,
+    last_generate_spec: Option<String>,
+}
+impl Inner {
+    fn menu(&self) -> Vec<SpecMenuEntry> {
+        self.boot.iter().chain(self.uploaded.iter()).cloned().collect()
+    }
+}
+
+#[derive(Clone)]
+struct Fake(Arc<Mutex<Inner>>);
+impl Fake {
+    fn new(boot: Vec<SpecMenuEntry>, capacity: usize) -> Self {
+        Self(Arc::new(Mutex::new(Inner {
+            boot,
+            uploaded: VecDeque::new(),
+            capacity,
+            load_calls: 0,
+            last_opine_spec: None,
+            last_generate_spec: None,
+        })))
+    }
+}
+
+impl Generator for Fake {
+    fn generate(
+        &mut self,
+        request: &AdjudicateRequest,
+        _: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<AdjudicateResponse, Failure> {
+        self.0.lock().unwrap().last_generate_spec = request.spec.clone();
+        Ok(AdjudicateResponse {
+            prefix: info(),
+            output: request.input.clone(),
+            report: None,
+            report_error: None,
+            finish_reason: "stop".into(),
+            prompt_tokens: 1,
+            cached_tokens: 0,
+            completion_tokens: 1,
+            queue_ms: 0.,
+            prefill_ms: 0.,
+            decode_ms: 0.,
+            distributions: None,
+            opinion: None,
+            resumed_tokens: None,
+        })
+    }
+    fn opine(
+        &mut self,
+        request: &OpinionRequest,
+        questions: &[ResolvedQuestion],
+        _: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<OpinionResponse, Failure> {
+        self.0.lock().unwrap().last_opine_spec = Some(request.spec.clone());
+        let question = questions.first().expect("the handler never sends none");
+        Ok(OpinionResponse {
+            prefix: info(),
+            spec: request.spec.clone(),
+            described: vec![],
+            answers: vec![lfm2d::opinion_api::Answer {
+                field: question.field.clone(),
+                read: lfm2d::opinion::OpinionRead {
+                    options: question
+                        .options
+                        .iter()
+                        .map(|o| lfm2d::opinion::OptionScore {
+                            option: o.clone(),
+                            logprob: -0.1,
+                            first_logprob: -0.1,
+                            prob: 1.0 / question.options.len() as f32,
+                            tokens: vec![1],
+                        })
+                        .collect(),
+                    sequence_mass: -0.01,
+                    first_token_mass: -0.01,
+                    shared_tokens: 1,
+                    scored_tokens: 1,
+                    rendered_sha256: "0".repeat(64),
+                },
+                margin: 0.1,
+            }],
+            rendered: None,
+            cache: lfm2d::opinion_api::CacheOutcome {
+                prefix: "hit".into(),
+                state: "miss".into(),
+                described: "miss".into(),
+            },
+            prompt_tokens: 1,
+            cached_tokens: 0,
+            described_tokens: 0,
+            queue_ms: 0.,
+            prefill_ms: 0.,
+            describe_ms: 0.,
+            read_ms: 0.,
+        })
+    }
+    fn register(
+        &mut self,
+        id: String,
+        prompt: PromptSpec,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<RegisterOutcome, Failure> {
+        check()?;
+        if prompt.system == REFUSE {
+            return Err(Failure::Unprocessable(REFUSE.to_string()));
+        }
+        let mut inner = self.0.lock().unwrap();
+        if let Some(entry) = inner.boot.iter().find(|e| e.id == id) {
+            let entry = entry.clone();
+            let menu = inner.menu();
+            return Ok(RegisterOutcome { entry, newly_loaded: false, evicted: None, load_ms: 0., menu });
+        }
+        if let Some(pos) = inner.uploaded.iter().position(|e| e.id == id) {
+            let entry = inner.uploaded.remove(pos).expect("position just found");
+            inner.uploaded.push_back(entry.clone());
+            let menu = inner.menu();
+            return Ok(RegisterOutcome { entry, newly_loaded: false, evicted: None, load_ms: 0., menu });
+        }
+        inner.load_calls += 1;
+        let entry = SpecMenuEntry::from_prompt(&id, &id, &prompt, "snap", 16)
+            .expect("test fixture spec is always a valid menu entry");
+        let evicted = if inner.uploaded.len() >= inner.capacity {
+            inner.uploaded.pop_front().map(|e| e.id)
+        } else {
+            None
+        };
+        inner.uploaded.push_back(entry.clone());
+        let menu = inner.menu();
+        Ok(RegisterOutcome { entry, newly_loaded: true, evicted, load_ms: 0.5, menu })
+    }
+    fn unregister(&mut self, id: &str) -> UnregisterOutcome {
+        let mut inner = self.0.lock().unwrap();
+        if inner.boot.iter().any(|e| e.id == id) {
+            return UnregisterOutcome::BootSpec;
+        }
+        match inner.uploaded.iter().position(|e| e.id == id) {
+            Some(pos) => {
+                let entry = inner.uploaded.remove(pos).expect("position just found");
+                let menu = inner.menu();
+                UnregisterOutcome::Deleted { entry, menu }
+            }
+            None => UnregisterOutcome::NotFound,
+        }
+    }
+}
+
+async fn post_bytes(router: &axum::Router, path: &str, body: &str) -> (u16, serde_json::Value) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let response = router
+        .clone()
+        .oneshot(Request::post(path).body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let value = if bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, value)
+}
+async fn post_json(router: &axum::Router, path: &str, body: &str) -> (u16, serde_json::Value) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let response = router
+        .clone()
+        .oneshot(
+            Request::post(path)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let value = if bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, value)
+}
+async fn delete(router: &axum::Router, path: &str) -> u16 {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let response = router
+        .clone()
+        .oneshot(Request::delete(path).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    response.status().as_u16()
+}
+async fn get(router: &axum::Router, path: &str) -> (u16, serde_json::Value) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let response = router
+        .clone()
+        .oneshot(Request::get(path).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+fn body_of(p: &PromptSpec) -> String {
+    serde_json::to_string(p).unwrap()
+}
+
+#[tokio::test]
+async fn registering_the_same_bytes_twice_is_idempotent_and_does_no_second_load() {
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine.clone(), info());
+    let router = lfm2d::adjudicator::router(handle);
+    let body = body_of(&prompt("idempotency fixture"));
+
+    let (status1, v1) = post_bytes(&router, "/v1/opinion/specs", &body).await;
+    assert_eq!(status1, 201, "{v1}");
+    let id1 = v1["id"].as_str().unwrap().to_string();
+    assert_eq!(id1.len(), 64, "the id is a sha256 hex digest: {id1}");
+
+    let (status2, v2) = post_bytes(&router, "/v1/opinion/specs", &body).await;
+    assert_eq!(status2, 200, "a re-registration of the same bytes is 200, not 201: {v2}");
+    assert_eq!(v2["id"], id1, "same bytes, same id");
+
+    assert_eq!(
+        engine.0.lock().unwrap().load_calls,
+        1,
+        "the second registration of the same bytes must not load again"
+    );
+}
+
+#[tokio::test]
+async fn field_order_alone_changes_the_id() {
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine, info());
+    let router = lfm2d::adjudicator::router(handle);
+    // Same JSON object, semantically, with `system` and `output_schema`
+    // swapped in the source text. `serde_json::Value` would sort both to
+    // the same key order and hide this; the id is over the RAW BYTES.
+    let a = r#"{"system":"order test","output_schema":{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["allow","ask"]}},"required":["verdict"]}}"#;
+    let b = r#"{"output_schema":{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["allow","ask"]}},"required":["verdict"]},"system":"order test"}"#;
+    let (status_a, va) = post_bytes(&router, "/v1/opinion/specs", a).await;
+    let (status_b, vb) = post_bytes(&router, "/v1/opinion/specs", b).await;
+    assert_eq!(status_a, 201, "{va}");
+    assert_eq!(status_b, 201, "{vb}");
+    assert_ne!(
+        va["id"], vb["id"],
+        "two specs differing only in field order must get different ids: {va} vs {vb}"
+    );
+}
+
+#[tokio::test]
+async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again() {
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine, info());
+    let router = lfm2d::adjudicator::router(handle);
+
+    let unknown = format!(
+        r#"{{"spec":"{}","state":{{"command":"x"}},"questions":[{{"field":"verdict"}}]}}"#,
+        "0".repeat(64)
+    );
+    let (status, v) = post_json(&router, "/v1/opinion", &unknown).await;
+    assert_eq!(status, 404, "an id nothing loaded names is 404: {v}");
+
+    let (status, v) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("upload-opine"))).await;
+    assert_eq!(status, 201, "{v}");
+    let id = v["id"].as_str().unwrap().to_string();
+
+    let ask = format!(
+        r#"{{"spec":"{id}","state":{{"command":"cargo clean"}},"questions":[{{"field":"verdict"}}]}}"#
+    );
+    let (status, v) = post_json(&router, "/v1/opinion", &ask).await;
+    assert_eq!(status, 200, "{v}");
+    assert_eq!(v["spec"], id, "the response names the spec it was read against");
+
+    let status = delete(&router, &format!("/v1/opinion/specs/{id}")).await;
+    assert_eq!(status, 204);
+
+    let (status, v) = post_json(&router, "/v1/opinion", &ask).await;
+    assert_eq!(status, 404, "a deleted spec's id is a clean miss afterward: {v}");
+
+    let status = delete(&router, &format!("/v1/opinion/specs/{id}")).await;
+    assert_eq!(status, 404, "deleting an already-deleted id is also 404, not a silent success");
+}
+
+#[tokio::test]
+async fn deleting_a_boot_spec_is_refused_and_it_stays_loaded() {
+    let boot_entry = SpecMenuEntry::from_prompt("boot-id", "boot-name", &prompt("boot"), "snap", 16).unwrap();
+    let engine = Fake::new(vec![boot_entry], 8);
+    let handle = Handle::spawn(engine, info()).with_menu(vec![
+        SpecMenuEntry::from_prompt("boot-id", "boot-name", &prompt("boot"), "snap", 16).unwrap(),
+    ]);
+    let router = lfm2d::adjudicator::router(handle);
+    let status = delete(&router, "/v1/opinion/specs/boot-id").await;
+    assert_eq!(status, 403, "a boot spec cannot be deleted at runtime");
+    // Still on the menu, still answerable.
+    let (status, menu) = get(&router, "/v1/opinion/specs").await;
+    assert_eq!(status, 200);
+    assert!(menu.as_array().unwrap().iter().any(|e| e["id"] == "boot-id"), "{menu}");
+}
+
+#[tokio::test]
+async fn capacity_plus_one_uploads_evicts_the_lru_and_a_recently_used_one_survives() {
+    let engine = Fake::new(vec![], 2);
+    let handle = Handle::spawn(engine, info());
+    let router = lfm2d::adjudicator::router(handle);
+    let (_, va) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("cap-a"))).await;
+    let (_, vb) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("cap-b"))).await;
+    let (ida, idb) = (va["id"].as_str().unwrap().to_string(), vb["id"].as_str().unwrap().to_string());
+    // Touch `a` (re-register the same bytes) so `b` becomes the LRU one.
+    let (status, _) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("cap-a"))).await;
+    assert_eq!(status, 200);
+    let (status, vc) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("cap-c"))).await;
+    assert_eq!(status, 201);
+    let idc = vc["id"].as_str().unwrap().to_string();
+
+    let (status, menu) = get(&router, "/v1/opinion/specs").await;
+    assert_eq!(status, 200);
+    let ids: Vec<String> = menu
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap().to_string())
+        .collect();
+    assert!(ids.contains(&ida), "recently-used a survives: {ids:?}");
+    assert!(ids.contains(&idc), "the fresh upload is present: {ids:?}");
+    assert!(!ids.contains(&idb), "the least recently used upload was evicted: {ids:?}");
+
+    // And the evicted one's id is a clean 404 for an opinion read.
+    let ask = format!(
+        r#"{{"spec":"{idb}","state":{{"command":"x"}},"questions":[{{"field":"verdict"}}]}}"#
+    );
+    let (status, v) = post_json(&router, "/v1/opinion", &ask).await;
+    assert_eq!(status, 404, "{v}");
+}
+
+#[tokio::test]
+async fn a_load_refusal_is_422_with_the_reason_text() {
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine, info());
+    let router = lfm2d::adjudicator::router(handle);
+    let (status, v) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt(REFUSE))).await;
+    assert_eq!(status, 422, "{v}");
+    assert_eq!(v["error"]["message"], REFUSE, "{v}");
+    assert_eq!(v["error"]["type"], "unprocessable", "{v}");
+}
+
+#[tokio::test]
+async fn an_unparseable_body_is_400_and_never_reaches_the_engine() {
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine, info());
+    let router = lfm2d::adjudicator::router(handle);
+    for body in ["not json at all", r#"{"system": "no schema key problem"}"#, "{}"] {
+        let (status, v) = post_bytes(&router, "/v1/opinion/specs", body).await;
+        // "{"system": "..."}" alone actually parses fine (output_schema is
+        // optional) — only genuinely malformed bodies are 400 here.
+        if body == "not json at all" || body == "{}" {
+            assert_eq!(status, 400, "{body:?}: {v}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn adjudicate_with_spec_names_the_uploaded_id_to_the_generator() {
+    let engine = Fake::new(vec![], 8);
+    let handle = Handle::spawn(engine.clone(), info());
+    let router = lfm2d::adjudicator::router(handle);
+    let (_, v) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("adjudicate-by-spec"))).await;
+    let id = v["id"].as_str().unwrap().to_string();
+
+    let (status, body) = post_json(
+        &router,
+        "/v1/adjudicate",
+        &format!(r#"{{"input":"x","spec":"{id}"}}"#),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        engine.0.lock().unwrap().last_generate_spec.as_deref(),
+        Some(id.as_str()),
+        "the resolved spec id reaches the generator's request"
+    );
+}
