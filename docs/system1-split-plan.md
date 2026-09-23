@@ -121,8 +121,10 @@ are (`~/.local/share/lfm2-training-data/`); they never lived in a repo.
 2. **Runtime spec registration in lfm2d**, test first. It includes the
    `409` pin and adjudicate-by-spec-name if Amy agrees. The pod rolls
    promptly once tested.
-3. **Stand up `~/src/kaish-training-data`** by filter-repo. It stays local
-   until Amy decides on a remote.
+3. **Stand up `~/src/kaish-training-data`** — DONE 2026-09-23, local only
+   (`e42cc06`, no remote). filter-repo copy of every "→ ktd" row plus
+   `lfm2d/prompts/`; paths unchanged; 21 scripts still reach into lfm2d by
+   path. Nothing removed from lfm2d yet.
 4. **kaijutsu takes the consumer side**: spec registration client,
    `build_facts`, the hook, and the shell evals. Repoint `gate.toml`.
 5. **Remove shell material from lfm2d**: code, tests, prompts, docs.
