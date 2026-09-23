@@ -31,7 +31,7 @@ implementation and start pushing the kaish/shell stuff over to kaijutsu."
    `~/exomemory/lfm2d/lfm25-probe-f9-2026-09-23/`.
 4. **This doc lives in `docs/`** until the move is done.
 
-## Runtime spec registration (ruled 2026-09-23)
+## Runtime spec registration (ruled 2026-09-23; MERGED `053f574`)
 
 Amy: "could the id be a content hash so we get some idempotency? whatever
 algo we use for kaibo's cas should be fine right?" and "keep specs in memory
@@ -78,6 +78,14 @@ Registration is a separate write on its own route, and opinion requests only
 name a spec, so "the spec menu never comes from request text" holds. Each
 registration and eviction gets its own span and log line, recording the id,
 the snapshot_id, the load time and the source address.
+
+**As built:** the worker publishes the menu after every mutation, and a
+body over 1 MiB is a 413 (`MAX_SPEC_BYTES`). Deleting a boot spec by id or
+name is 403. Open items:
+- Telemetry has no source address, because the daemon has no `ConnectInfo`
+  wiring anywhere yet.
+- The dropped post-mutation cancellation check is covered only by a double
+  (`handle_menu_tests`), not by a real `Adjudicator` load racing a cancel.
 
 **kaijutsu side:** it uploads each spec from its own tree whenever it is
 unsure, and always after a `404`. It records `id` and `snapshot_id` beside
