@@ -171,6 +171,12 @@ impl Lfm2SequenceClassifier {
         &self.id2label
     }
 
+    /// This checkpoint's own tokenizer, for a caller that needs to inspect
+    /// tokenization directly (e.g. `lfm2d`'s `POST /v1/tokenize`).
+    pub fn tokenizer(&self) -> &Tokenizer {
+        &self.tokenizer
+    }
+
     /// Tokenize, run the trunk, CLS-pool, and project to logits — the shared
     /// path under [`Self::logits`] and [`Self::predict`].
     fn compute_logits(&self, text: &str) -> Result<Tensor> {
