@@ -93,6 +93,20 @@ pub struct ProbeRequest {
     /// mirrors at one layer instead of three.
     #[serde(default = "yes")]
     pub use_cache: bool,
+    /// A byte offset into the rendered input (the same bytes
+    /// `rendered_sha256` hashes) marking where the daemon's schedule
+    /// switches from bulk prefill to replaying the decode loop's own
+    /// forward call, one token at a time — see [`ProbeCache`]. Must land
+    /// exactly on a token boundary of this input's own tokenization; a
+    /// non-boundary offset is refused with the nearest boundaries named,
+    /// never rounded silently. `None` (the default) is today's behavior:
+    /// the whole input is bulk-forwarded, matching
+    /// `POST /v1/adjudicate {"opinion": true}`'s own schedule, NOT
+    /// `POST /v1/opinion`'s — reproducing that one needs `decode_from` set
+    /// to where its generation began (`docs/lfm25-adjudicator.md` "Probe
+    /// and tokenize").
+    #[serde(default)]
+    pub decode_from: Option<usize>,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
 }
@@ -238,6 +252,16 @@ pub struct ProbeCache {
     /// How many of the input's tokens came from the resumed prefix rather
     /// than being forwarded now. `0` on a cold run.
     pub cached_tokens: usize,
+    /// Tokens forwarded IN BULK (chunk-sized pieces): the resumed prefix's
+    /// own `cached_tokens` plus any further tokens bulk-forwarded up to
+    /// `decode_from` (or the whole input, when `decode_from` was not
+    /// given — today's default schedule, the one
+    /// `POST /v1/adjudicate {"opinion": true}` also runs).
+    pub prefill_tokens: usize,
+    /// Tokens forwarded ONE AT A TIME after `decode_from`, replaying
+    /// `describe_then_read`'s own decode-loop forward call. `0` when
+    /// `decode_from` was not given.
+    pub stepwise_tokens: usize,
 }
 
 /// One continuation's teacher-forced read.
@@ -327,6 +351,7 @@ mod tests {
             continuations: vec![],
             generate: 0,
             use_cache: true,
+            decode_from: None,
             timeout_ms: 30000,
         }
     }

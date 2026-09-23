@@ -98,7 +98,17 @@ impl Generator for Fake {
             rendered: request.messages.is_some().then(|| "fake rendered".into()),
             rendered_sha256: "0".repeat(64),
             input_tokens: 3,
-            cache: ProbeCache { used_cache: false, resumed_spec: None, cached_tokens: 0 },
+            cache: ProbeCache {
+                used_cache: false,
+                resumed_spec: None,
+                cached_tokens: 0,
+                // Echoes decode_from back as a fake "1 stepwise token" so a
+                // wire test can see the field actually reached the
+                // generator, without this double needing to tokenize
+                // anything for real.
+                prefill_tokens: if request.decode_from.is_some() { 2 } else { 3 },
+                stepwise_tokens: if request.decode_from.is_some() { 1 } else { 0 },
+            },
             top_logprobs: vec![],
             continuations: (!request.continuations.is_empty()).then(|| ProbeContinuations {
                 options: request
@@ -179,6 +189,17 @@ async fn continuations_and_messages_pass_through_to_the_generator_and_back() {
     assert_eq!(value["rendered"], "fake rendered");
     assert_eq!(value["continuations"]["options"].as_array().unwrap().len(), 2);
     assert_eq!(value["continuations"]["prob"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn decode_from_reaches_the_generator_and_the_schedule_comes_back() {
+    let (handle, seen) = spawn();
+    let router = lfm2d::adjudicator::router(handle, true);
+    let (status, value) = post(&router, "/v1/probe", r#"{"text":"cargo clean","decode_from":6}"#).await;
+    assert_eq!(status, 200, "{value}");
+    assert_eq!(seen.lock().unwrap().probe_calls, 1);
+    assert_eq!(value["cache"]["prefill_tokens"], 2);
+    assert_eq!(value["cache"]["stepwise_tokens"], 1);
 }
 
 #[tokio::test]

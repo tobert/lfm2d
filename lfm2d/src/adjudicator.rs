@@ -461,28 +461,110 @@ struct PreparedEvaluation {
     cached_tokens: usize,
 }
 
-/// Forward `ids` through `state` in `CHUNK`-sized pieces, returning the last
-/// chunk's logits. Every path that must forward a suffix onto SOME resident
-/// prefix goes through this one function rather than its own copy of the
-/// loop: [`PromptCache::prepare`]'s cache-miss branch and `/v1/probe`'s
-/// warm-prefix resume (`crate::probe_api`) need to produce bit-identical
-/// numerics for the same suffix on the same prefix (the chunk boundaries
-/// this loop picks are themselves part of what makes cold and warm
-/// schedules disagree by ~0.15 nats — `docs/lfm25-chunk-kernels.md`), so a
-/// second hand-written copy is exactly the kind of drift that check exists
-/// to catch.
+/// Forward `ids` through `state` in `chunk_size`-sized pieces, returning
+/// the last chunk's logits. Every path that must forward a suffix onto
+/// SOME resident state goes through this one function, parameterized on
+/// `chunk_size`, rather than its own copy of the loop:
+/// [`PromptCache::prepare`]'s cache-miss branch and `/v1/probe`'s
+/// warm-prefix resume (`crate::probe_api`) both call it with
+/// [`CHUNK`] — they need to produce bit-identical numerics for the same
+/// suffix on the same prefix (the chunk boundaries this loop picks are
+/// themselves part of what makes cold and warm schedules disagree by
+/// ~0.15 nats — `docs/lfm25-chunk-kernels.md`), so a second hand-written
+/// copy is exactly the kind of drift that check exists to catch. `/v1/probe`
+/// ALSO calls it with `chunk_size: 1` for its `decode_from` replay: a
+/// single-element chunk is `model.forward(&[token], state)`, the EXACT
+/// call `describe_then_read`'s decode loop makes per generated token —
+/// reusing this function at that chunk size is what makes the replay the
+/// same forward call, not a new one shaped to look similar.
 fn forward_chunks(
     model: &Model,
     state: &mut ModelState,
     ids: &[u32],
+    chunk_size: usize,
     check: &dyn Fn() -> Result<(), Failure>,
 ) -> Result<Tensor, Failure> {
     let mut logits = None;
-    for chunk in ids.chunks(CHUNK) {
+    for chunk in ids.chunks(chunk_size) {
         check()?;
         logits = Some(model.forward(chunk, state)?);
     }
     logits.ok_or_else(|| Failure::Internal("no suffix tokens".into()))
+}
+
+/// Resolve `/v1/probe`'s `decode_from` (a byte offset into the rendered
+/// input) against `offsets` (that input's own per-token byte spans, in
+/// order) into a token count: how many of the input's tokens fall in the
+/// bulk-forward phase, the rest replaying the decode loop one at a time.
+/// `None` in means "no split" (`Ok(None)`, today's only schedule). `Some(0)`
+/// is always valid. Any other value must land exactly on some token's END
+/// offset, or this refuses naming the nearest boundaries either side —
+/// never rounds to the nearest one silently, since a caller replaying a
+/// specific production schedule needs the exact split it asked for or a
+/// loud refusal, not an approximation it might not notice.
+///
+/// Pure and offset-only (no tokenizer, no model), so it is unit-tested
+/// directly against hand-built offset lists as well as the real
+/// tokenizer's own offsets (`probe_decode_from_tests`, below).
+fn resolve_decode_from(offsets: &[(usize, usize)], decode_from: Option<usize>) -> Result<Option<usize>, String> {
+    let Some(offset) = decode_from else {
+        return Ok(None);
+    };
+    if offset == 0 {
+        return Ok(Some(0));
+    }
+    match offsets.iter().position(|&(_, end)| end == offset) {
+        Some(i) => Ok(Some(i + 1)),
+        None => {
+            let lower = offsets.iter().map(|&(_, end)| end).filter(|&end| end <= offset).max().unwrap_or(0);
+            let upper = offsets.iter().map(|&(_, end)| end).filter(|&end| end > offset).min();
+            Err(format!(
+                "decode_from={offset} is not a token boundary; nearest boundaries are {lower}{}",
+                upper.map(|u| format!(" and {u}")).unwrap_or_default()
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod probe_decode_from_tests {
+    use super::*;
+
+    /// Three tokens covering "abc" "def" "ghi" — boundaries at 0, 3, 6, 9.
+    fn offsets() -> Vec<(usize, usize)> {
+        vec![(0, 3), (3, 6), (6, 9)]
+    }
+
+    #[test]
+    fn none_keeps_everything_bulk() {
+        assert_eq!(resolve_decode_from(&offsets(), None), Ok(None));
+    }
+
+    #[test]
+    fn zero_is_always_a_valid_boundary_even_with_no_tokens() {
+        assert_eq!(resolve_decode_from(&[], Some(0)), Ok(Some(0)));
+        assert_eq!(resolve_decode_from(&offsets(), Some(0)), Ok(Some(0)));
+    }
+
+    #[test]
+    fn a_token_end_offset_resolves_to_the_token_count_up_to_it() {
+        assert_eq!(resolve_decode_from(&offsets(), Some(3)), Ok(Some(1)));
+        assert_eq!(resolve_decode_from(&offsets(), Some(6)), Ok(Some(2)));
+        assert_eq!(resolve_decode_from(&offsets(), Some(9)), Ok(Some(3)), "the last boundary: nothing left over");
+    }
+
+    #[test]
+    fn a_mid_token_offset_is_refused_naming_both_neighbors() {
+        let err = resolve_decode_from(&offsets(), Some(4)).unwrap_err();
+        assert!(err.contains("3") && err.contains("6"), "{err}");
+    }
+
+    #[test]
+    fn an_offset_past_the_last_token_is_refused_naming_only_the_lower_boundary() {
+        let err = resolve_decode_from(&offsets(), Some(50)).unwrap_err();
+        assert!(err.contains("nearest boundaries are 9"), "{err}");
+        assert!(!err.contains(" and "), "no upper boundary exists past the end: {err}");
+    }
 }
 
 struct PromptCache {
@@ -524,7 +606,7 @@ impl PromptCache {
         } else {
             (model.new_state(), 0)
         };
-        let logits = forward_chunks(model, &mut state, &full[start..], check)?;
+        let logits = forward_chunks(model, &mut state, &full[start..], CHUNK, check)?;
         // Publish only complete prefill. A failed/cancelled preparation retains
         // the previous entry; later decode never mutates the saved state/logits.
         logits.device().synchronize()?;
@@ -1911,12 +1993,11 @@ impl Adjudicator {
         check()?;
         let rendered = request.render();
         let rendered_sha256 = sha256_hex_bytes(rendered.as_bytes());
-        let full_ids = self
+        let encoding = self
             .tokenizer
             .encode(rendered.as_str(), false)
-            .map_err(|e| Failure::Internal(e.to_string()))?
-            .get_ids()
-            .to_vec();
+            .map_err(|e| Failure::Internal(e.to_string()))?;
+        let full_ids = encoding.get_ids().to_vec();
         if full_ids.is_empty() {
             return Err(Failure::BadRequest("rendered input tokenizes to nothing".into()));
         }
@@ -1929,16 +2010,28 @@ impl Adjudicator {
             ));
         }
 
-        // Warm-prefix resume: scan every loaded spec (boot and uploaded) for
-        // one whose resident prefix is a token-id prefix of the rendered
-        // input, exactly the condition `PromptCache::prepare` itself checks.
-        // Cloned out of the found spec immediately so this borrows only
-        // `self.specs`, not all of `self` — `self.model` is a disjoint
-        // field borrowed right after (same pattern `register`'s
-        // `CheckpointView` construction uses, see its comment).
+        // `decode_from`: how many of `full_ids` are bulk-forwarded (the
+        // rest replay the decode loop one token at a time — below). `None`
+        // keeps every token in the bulk phase, today's only schedule and
+        // still the default.
+        let decode_from_k = resolve_decode_from(encoding.get_offsets(), request.decode_from)
+            .map_err(Failure::BadRequest)?
+            .unwrap_or(full_ids.len());
+
+        // Warm-prefix resume applies to the BULK (prefill) portion only:
+        // scan every loaded spec (boot and uploaded) for one whose resident
+        // prefix is a token-id prefix of it, exactly the condition
+        // `PromptCache::prepare` itself checks (`>=` rather than `>`: with
+        // `decode_from` a prefill can legitimately equal a spec's resident
+        // prefix exactly, leaving nothing to bulk-forward before the
+        // stepwise phase takes over). Cloned out of the found spec
+        // immediately so this borrows only `self.specs`, not all of
+        // `self` — `self.model` is a disjoint field borrowed right after
+        // (same pattern `register`'s `CheckpointView` construction uses).
+        let prefill_ids = &full_ids[..decode_from_k];
         let resumed = if request.use_cache {
             self.specs.iter().find_map(|s| {
-                (full_ids.len() > s.cache.prefix_ids.len() && full_ids.starts_with(&s.cache.prefix_ids))
+                (prefill_ids.len() >= s.cache.prefix_ids.len() && prefill_ids.starts_with(&s.cache.prefix_ids))
                     .then(|| (s.id.clone(), s.cache.prefix.clone(), s.cache.prefix_ids.len()))
             })
         } else {
@@ -1949,7 +2042,31 @@ impl Adjudicator {
             Some((id, prefix_state, prefix_len)) => (prefix_state, prefix_len, Some(id)),
             None => (self.model.new_state(), 0, None),
         };
-        let logits = forward_chunks(&self.model, &mut state, &full_ids[cached_tokens..], check)?;
+        let bulk_ids = &prefill_ids[cached_tokens..];
+        let mut logits = if bulk_ids.is_empty() {
+            None
+        } else {
+            Some(forward_chunks(&self.model, &mut state, bulk_ids, CHUNK, check)?)
+        };
+        let prefill_tokens = decode_from_k;
+
+        // The stepwise replay: every token from `decode_from` onward,
+        // forwarded ONE AT A TIME via `forward_chunks(..., 1, ...)` — the
+        // exact `model.forward(&[token], &mut state)` call
+        // `describe_then_read`'s decode loop makes per generated token,
+        // reused rather than reimplemented (see `forward_chunks`'s docs).
+        let stepwise_ids = &full_ids[decode_from_k..];
+        if !stepwise_ids.is_empty() {
+            logits = Some(forward_chunks(&self.model, &mut state, stepwise_ids, 1, check)?);
+        }
+        let stepwise_tokens = stepwise_ids.len();
+        let logits = logits.ok_or_else(|| {
+            Failure::BadRequest(
+                "nothing to forward: decode_from lands exactly at the resumed spec's resident \
+                 prefix, with no input tokens beyond it"
+                    .into(),
+            )
+        })?;
         logits.device().synchronize()?;
         let prefill_ms = prefill_begin.elapsed().as_secs_f64() * 1000.;
 
@@ -2077,6 +2194,8 @@ impl Adjudicator {
                 used_cache: cached_tokens > 0,
                 resumed_spec,
                 cached_tokens,
+                prefill_tokens,
+                stepwise_tokens,
             },
             top_logprobs,
             continuations,
