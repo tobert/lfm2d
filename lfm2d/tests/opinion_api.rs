@@ -144,6 +144,7 @@ impl Generator for Fake {
             rendered: request
                 .rendered
                 .then(|| format!("fake rendered {}", request.state.command)),
+            rendered_token_ids: request.rendered.then(|| vec![1, 2, 3]),
             cache: CacheOutcome {
                 prefix: "hit".into(),
                 state: "miss".into(),

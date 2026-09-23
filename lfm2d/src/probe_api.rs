@@ -60,14 +60,38 @@ pub struct ProbeRequest {
     /// [`crate::adjudicator::validate_text`]). A probe exists partly to let
     /// a caller see what the model does with exactly the bytes it hands it,
     /// including ones the generative/opinion paths would refuse to render.
-    /// Exactly one of `text`/`messages` must be given.
+    ///
+    /// **The text-form caveat (kaibo review, 2026-09-23, F3):** `text` and
+    /// `messages` are both tokenized FRESH by this endpoint. That is exact
+    /// for bytes a caller wrote itself (there is only one canonical
+    /// encoding of a fixed string), but NOT for bytes that include a
+    /// model's own generated output: BPE is not injective in the other
+    /// direction, so decoding a token sequence to text and re-encoding
+    /// that text is not guaranteed to reproduce the SAME token ids the
+    /// model actually sampled — `describe_then_read`'s own "the model
+    /// leaving the canonical path" case exists for exactly this reason.
+    /// Measured to matter in practice on `decode_from`'s replay of
+    /// `/v1/opinion`'s decode loop; use [`Self::ids`] instead whenever the
+    /// bytes being replayed came out of a generation (`/v1/opinion`'s
+    /// `rendered_token_ids`, present when `rendered: true` was asked).
+    /// Exactly one of `text`/`messages`/`ids` must be given.
     #[serde(default)]
     pub text: Option<String>,
     /// Rendered through the checkpoint's turn shape and an opened assistant
-    /// turn; see [`ProbeRequest::render`]. Exactly one of `text`/`messages`
-    /// must be given.
+    /// turn; see [`ProbeRequest::render`]. Same text-form caveat as `text`.
+    /// Exactly one of `text`/`messages`/`ids` must be given.
     #[serde(default)]
     pub messages: Option<Vec<ProbeMessage>>,
+    /// Exact token ids, fed as-is: no tokenization at all, so this is
+    /// immune to the text-form caveat above — the ids a caller holds are
+    /// teacher-forced VERBATIM, never re-derived from decoded text. The
+    /// response still echoes a decoded `rendered` string (for a human to
+    /// read) and its `rendered_sha256`, but neither is used for anything
+    /// but that echo. `decode_from_token` is this form's schedule split
+    /// (a token INDEX, not a byte offset — see [`Self::decode_from_token`]).
+    /// Exactly one of `text`/`messages`/`ids` must be given.
+    #[serde(default)]
+    pub ids: Option<Vec<u32>>,
     /// Text appended after the opened assistant turn, before anything is
     /// read or generated. Only valid alongside `messages`.
     #[serde(default)]
@@ -93,20 +117,30 @@ pub struct ProbeRequest {
     /// mirrors at one layer instead of three.
     #[serde(default = "yes")]
     pub use_cache: bool,
-    /// A byte offset into the rendered input (the same bytes
-    /// `rendered_sha256` hashes) marking where the daemon's schedule
-    /// switches from bulk prefill to replaying the decode loop's own
-    /// forward call, one token at a time — see [`ProbeCache`]. Must land
-    /// exactly on a token boundary of this input's own tokenization; a
+    /// The `text`/`messages` form's schedule split: a byte offset into the
+    /// rendered input (the same bytes `rendered_sha256` hashes) marking
+    /// where the daemon's schedule switches from bulk prefill to replaying
+    /// the decode loop's own forward call, one token at a time — see
+    /// [`ProbeCache`]. Must land exactly on a token boundary of THIS
+    /// endpoint's own fresh tokenization of the input (see the text-form
+    /// caveat on [`Self::text`] for what that can and can't promise); a
     /// non-boundary offset is refused with the nearest boundaries named,
-    /// never rounded silently. `None` (the default) is today's behavior:
-    /// the whole input is bulk-forwarded, matching
+    /// never rounded silently. Only valid with `text`/`messages` — use
+    /// [`Self::decode_from_token`] with `ids`. `None` (the default) is
+    /// today's behavior: the whole input is bulk-forwarded, matching
     /// `POST /v1/adjudicate {"opinion": true}`'s own schedule, NOT
-    /// `POST /v1/opinion`'s — reproducing that one needs `decode_from` set
-    /// to where its generation began (`docs/lfm25-adjudicator.md` "Probe
-    /// and tokenize").
+    /// `POST /v1/opinion`'s — reproducing that one needs a schedule split
+    /// set to where its generation began (`docs/lfm25-adjudicator.md`
+    /// "Probe and tokenize").
     #[serde(default)]
     pub decode_from: Option<usize>,
+    /// The `ids` form's schedule split: a TOKEN INDEX (not a byte offset)
+    /// into `ids` — trivially exact, since `ids` carries no tokenization
+    /// ambiguity to land wrong on. `0..=ids.len()`; out of range is
+    /// refused. Only valid with `ids` — use [`Self::decode_from`] with
+    /// `text`/`messages`.
+    #[serde(default)]
+    pub decode_from_token: Option<usize>,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
 }
@@ -115,46 +149,52 @@ impl ProbeRequest {
     /// Shape checks that need no model: everything a handler can refuse
     /// before ever reaching the worker queue.
     pub fn validate(&self) -> Result<(), String> {
-        match (&self.text, &self.messages) {
-            (Some(_), Some(_)) => {
-                return Err("give exactly one of text or messages, not both".into());
+        let given = [self.text.is_some(), self.messages.is_some(), self.ids.is_some()];
+        if given.iter().filter(|&&g| g).count() != 1 {
+            return Err("give exactly one of text, messages, or ids".into());
+        }
+        if let Some(text) = &self.text {
+            if text.is_empty() {
+                return Err("text must not be empty".into());
             }
-            (None, None) => {
-                return Err("give exactly one of text or messages".into());
+            if text.len() > crate::adjudicator::MAX_INPUT_BYTES {
+                return Err(format!("text exceeds {} bytes", crate::adjudicator::MAX_INPUT_BYTES));
             }
-            (Some(text), None) => {
-                if text.is_empty() {
-                    return Err("text must not be empty".into());
-                }
-                if text.len() > crate::adjudicator::MAX_INPUT_BYTES {
-                    return Err(format!(
-                        "text exceeds {} bytes",
-                        crate::adjudicator::MAX_INPUT_BYTES
-                    ));
-                }
-                if self.assistant_prefill.is_some() {
-                    return Err("assistant_prefill only applies to messages, not text".into());
-                }
+            if self.assistant_prefill.is_some() {
+                return Err("assistant_prefill only applies to messages, not text".into());
             }
-            (None, Some(messages)) => {
-                if messages.is_empty() {
-                    return Err("messages must not be empty".into());
-                }
-                for m in messages {
-                    if !ALLOWED_ROLES.contains(&m.role.as_str()) {
-                        return Err(format!(
-                            "message role {:?} must be one of {ALLOWED_ROLES:?}",
-                            m.role
-                        ));
-                    }
-                    crate::adjudicator::validate_text(&m.content)
-                        .map_err(|e| format!("message content: {e}"))?;
-                }
-                if let Some(prefill) = &self.assistant_prefill {
-                    crate::adjudicator::validate_text(prefill)
-                        .map_err(|e| format!("assistant_prefill: {e}"))?;
-                }
+        }
+        if let Some(messages) = &self.messages {
+            if messages.is_empty() {
+                return Err("messages must not be empty".into());
             }
+            for m in messages {
+                if !ALLOWED_ROLES.contains(&m.role.as_str()) {
+                    return Err(format!("message role {:?} must be one of {ALLOWED_ROLES:?}", m.role));
+                }
+                crate::adjudicator::validate_text(&m.content).map_err(|e| format!("message content: {e}"))?;
+            }
+            if let Some(prefill) = &self.assistant_prefill {
+                crate::adjudicator::validate_text(prefill).map_err(|e| format!("assistant_prefill: {e}"))?;
+            }
+        }
+        if let Some(ids) = &self.ids {
+            if ids.is_empty() {
+                return Err("ids must not be empty".into());
+            }
+            if self.assistant_prefill.is_some() {
+                return Err("assistant_prefill only applies to messages, not ids".into());
+            }
+            if self.decode_from.is_some() {
+                return Err("decode_from applies to text/messages; use decode_from_token with ids".into());
+            }
+            if let Some(at) = self.decode_from_token
+                && at > ids.len()
+            {
+                return Err(format!("decode_from_token must be 0..={} (ids.len()), got {at}", ids.len()));
+            }
+        } else if self.decode_from_token.is_some() {
+            return Err("decode_from_token applies to ids; use decode_from with text/messages".into());
         }
         if self.top_k > crate::types::MAX_DISTRIBUTION_TOP_K {
             return Err(format!(
@@ -346,14 +386,20 @@ mod tests {
         ProbeRequest {
             text: Some("cargo clean".into()),
             messages: None,
+            ids: None,
             assistant_prefill: None,
             top_k: 5,
             continuations: vec![],
             generate: 0,
             use_cache: true,
             decode_from: None,
+            decode_from_token: None,
             timeout_ms: 30000,
         }
+    }
+
+    fn ids_req() -> ProbeRequest {
+        ProbeRequest { text: None, ids: Some(vec![1, 2, 3]), ..text_req() }
     }
 
     #[test]
@@ -366,7 +412,45 @@ mod tests {
         req.messages = Some(vec![ProbeMessage { role: "user".into(), content: "hi".into() }]);
         assert!(req.validate().unwrap_err().contains("exactly one"), "both given must be refused too");
 
+        let mut req = text_req();
+        req.ids = Some(vec![1, 2, 3]);
+        assert!(req.validate().unwrap_err().contains("exactly one"), "text and ids together must be refused");
+
         assert!(text_req().validate().is_ok());
+        assert!(ids_req().validate().is_ok());
+    }
+
+    #[test]
+    fn empty_ids_is_refused() {
+        let mut req = ids_req();
+        req.ids = Some(vec![]);
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn decode_from_and_decode_from_token_are_form_specific() {
+        let mut req = text_req();
+        req.decode_from_token = Some(1);
+        assert!(req.validate().unwrap_err().contains("decode_from_token applies to ids"));
+
+        let mut req = ids_req();
+        req.decode_from = Some(1);
+        assert!(req.validate().unwrap_err().contains("decode_from applies to text/messages"));
+
+        let mut req = ids_req();
+        req.decode_from_token = Some(3);
+        assert!(req.validate().is_ok(), "3 == ids.len() is a valid boundary (all-prefill)");
+        req.decode_from_token = Some(0);
+        assert!(req.validate().is_ok(), "0 is a valid boundary (all-stepwise)");
+        req.decode_from_token = Some(4);
+        assert!(req.validate().unwrap_err().contains("decode_from_token"), "past ids.len() is refused");
+    }
+
+    #[test]
+    fn assistant_prefill_is_refused_alongside_ids_too() {
+        let mut req = ids_req();
+        req.assistant_prefill = Some("x".into());
+        assert!(req.validate().unwrap_err().contains("ids"));
     }
 
     #[test]

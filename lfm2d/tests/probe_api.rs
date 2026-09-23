@@ -95,19 +95,27 @@ impl Generator for Fake {
                 dtype: "f32".into(),
                 sampling: "greedy".into(),
             },
-            rendered: request.messages.is_some().then(|| "fake rendered".into()),
+            rendered: (request.messages.is_some() || request.ids.is_some()).then(|| "fake rendered".into()),
             rendered_sha256: "0".repeat(64),
             input_tokens: 3,
             cache: ProbeCache {
                 used_cache: false,
                 resumed_spec: None,
                 cached_tokens: 0,
-                // Echoes decode_from back as a fake "1 stepwise token" so a
-                // wire test can see the field actually reached the
-                // generator, without this double needing to tokenize
-                // anything for real.
-                prefill_tokens: if request.decode_from.is_some() { 2 } else { 3 },
-                stepwise_tokens: if request.decode_from.is_some() { 1 } else { 0 },
+                // Echoes decode_from/decode_from_token back as a fake "1
+                // stepwise token" so a wire test can see the field
+                // actually reached the generator, without this double
+                // needing to tokenize anything for real.
+                prefill_tokens: if request.decode_from.is_some() || request.decode_from_token.is_some() {
+                    2
+                } else {
+                    3
+                },
+                stepwise_tokens: if request.decode_from.is_some() || request.decode_from_token.is_some() {
+                    1
+                } else {
+                    0
+                },
             },
             top_logprobs: vec![],
             continuations: (!request.continuations.is_empty()).then(|| ProbeContinuations {
@@ -202,6 +210,27 @@ async fn decode_from_reaches_the_generator_and_the_schedule_comes_back() {
     assert_eq!(value["cache"]["stepwise_tokens"], 1);
 }
 
+/// F3 (kaibo review, 2026-09-23): the exact-ids form, immune to the
+/// text-form re-tokenization caveat — `ids`/`decode_from_token` reach the
+/// generator and the response echoes the schedule and a decoded
+/// `rendered` string, same as `messages` does.
+#[tokio::test]
+async fn ids_form_reaches_the_generator_with_its_own_schedule_field() {
+    let (handle, seen) = spawn();
+    let router = lfm2d::adjudicator::router(handle, true);
+    let (status, value) =
+        post(&router, "/v1/probe", r#"{"ids":[1,2,3],"decode_from_token":2}"#).await;
+    assert_eq!(status, 200, "{value}");
+    assert_eq!(seen.lock().unwrap().probe_calls, 1);
+    assert_eq!(value["rendered"], "fake rendered", "ids form echoes a decoded rendered string too");
+    assert_eq!(value["cache"]["prefill_tokens"], 2);
+    assert_eq!(value["cache"]["stepwise_tokens"], 1);
+
+    // Without decode_from_token, ids still work (all-bulk schedule).
+    let (status, value) = post(&router, "/v1/probe", r#"{"ids":[1,2,3]}"#).await;
+    assert_eq!(status, 200, "{value}");
+}
+
 #[tokio::test]
 async fn malformed_probe_requests_never_reach_the_generator() {
     let (handle, seen) = spawn();
@@ -220,6 +249,12 @@ async fn malformed_probe_requests_never_reach_the_generator() {
         ("empty continuation", r#"{"text":"x","continuations":["a",""]}"#),
         ("generate over the cap", r#"{"text":"x","generate":257}"#),
         ("timeout_ms zero", r#"{"text":"x","timeout_ms":0}"#),
+        ("text and ids together", r#"{"text":"x","ids":[1,2,3]}"#),
+        ("empty ids", r#"{"ids":[]}"#),
+        ("decode_from with ids", r#"{"ids":[1,2,3],"decode_from":1}"#),
+        ("decode_from_token with text", r#"{"text":"x","decode_from_token":1}"#),
+        ("decode_from_token past ids.len()", r#"{"ids":[1,2,3],"decode_from_token":4}"#),
+        ("assistant_prefill with ids", r#"{"ids":[1,2,3],"assistant_prefill":"y"}"#),
     ];
     for (label, body) in cases {
         let (status, value) = post(&router, "/v1/probe", body).await;

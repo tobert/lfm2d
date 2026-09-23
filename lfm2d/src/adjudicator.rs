@@ -567,6 +567,76 @@ mod probe_decode_from_tests {
     }
 }
 
+/// The best warm-prefix resume candidate for `ids` among `prefixes`: the
+/// LONGEST one that is a STRICT token-id prefix of `ids` (`ids.len() >
+/// prefix.len()`, not `>=` — a prefix EQUAL to `ids` leaves nothing to
+/// bulk-forward, so it is not a usable resume candidate here; the caller
+/// falls back to a shorter match or cold rather than erroring "nothing to
+/// forward" — F4, kaibo review 2026-09-23). Returns the WINNING index, not
+/// a reference, so this stays pure and model-free: no `ModelState` to
+/// clone, no tokenizer, just index arithmetic over token ids — unit-tested
+/// directly below, and exercised for real by
+/// [`SpecStore::resolve_best_prefix_mut`].
+///
+/// F2, same review: this used to be "whichever loaded spec is checked
+/// first," which made the resumed spec (and therefore every number
+/// downstream of it) depend on iteration order — boot-then-uploaded, and
+/// WITHIN uploaded, LRU order, which live traffic changes continuously.
+/// Two specs can genuinely both prefix the same input (one spec's prompt
+/// extending another's, or simply sharing a common opening); the longest
+/// one is the most resident computation reused and the only choice that
+/// does not change answer-for-answer as an unrelated spec gets
+/// registered, served, or evicted elsewhere.
+fn best_prefix_match(ids: &[u32], prefixes: &[&[u32]]) -> Option<usize> {
+    prefixes
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| ids.len() > p.len() && ids.starts_with(p))
+        .max_by_key(|(_, p)| p.len())
+        .map(|(i, _)| i)
+}
+
+#[cfg(test)]
+mod best_prefix_match_tests {
+    use super::*;
+
+    #[test]
+    fn the_longest_matching_prefix_wins_regardless_of_order() {
+        let short: Vec<u32> = vec![1, 2];
+        let long: Vec<u32> = vec![1, 2, 3, 4];
+        let ids = vec![1, 2, 3, 4, 5];
+        // Short listed first: a first-match search would pick it wrongly.
+        assert_eq!(best_prefix_match(&ids, &[&short, &long]), Some(1));
+        // Long listed first: must still win, not just win by accident of order.
+        assert_eq!(best_prefix_match(&ids, &[&long, &short]), Some(0));
+    }
+
+    #[test]
+    fn a_prefix_equal_to_ids_is_not_a_candidate() {
+        let exact: Vec<u32> = vec![1, 2, 3];
+        let ids = vec![1, 2, 3];
+        assert_eq!(best_prefix_match(&ids, &[&exact]), None, "nothing left to bulk-forward");
+        // A SHORTER genuine prefix beside the exact-length one still wins.
+        let shorter: Vec<u32> = vec![1, 2];
+        assert_eq!(best_prefix_match(&ids, &[&exact, &shorter]), Some(1));
+    }
+
+    #[test]
+    fn a_non_prefix_never_matches_even_if_shorter() {
+        let unrelated: Vec<u32> = vec![9, 9];
+        let ids = vec![1, 2, 3, 4];
+        assert_eq!(best_prefix_match(&ids, &[&unrelated]), None);
+    }
+
+    #[test]
+    fn no_candidates_or_no_match_is_none() {
+        let ids = vec![1, 2, 3];
+        assert_eq!(best_prefix_match(&ids, &[]), None);
+        let longer: Vec<u32> = vec![1, 2, 3, 4];
+        assert_eq!(best_prefix_match(&ids, &[&longer]), None, "a prefix longer than ids cannot match");
+    }
+}
+
 struct PromptCache {
     prefix: ModelState,
     prefix_ids: Vec<u32>,
@@ -1194,6 +1264,32 @@ impl<T: SpecIdentity> SpecStore<T> {
             return self.uploaded.back_mut();
         }
         None
+    }
+    /// `/v1/probe`'s warm-prefix resume: the spec (boot or uploaded) whose
+    /// resident prefix is the LONGEST STRICT match for `ids`
+    /// ([`best_prefix_match`] — deterministic regardless of iteration or
+    /// LRU order, never "whichever is checked first"). A hit on an
+    /// UPLOADED spec touches it to the back of the LRU, same as
+    /// [`SpecStore::resolve_mut`]'s hit does: "served-or-registered = use"
+    /// (`docs/system1-split-plan.md` "Runtime spec registration") applies
+    /// here exactly as it does to a request that names the spec by id —
+    /// resuming its resident state IS serving a request against it.
+    /// `prefix_ids` extracts each spec's resident-prefix token ids; a
+    /// closure rather than a trait requirement so this stays usable from
+    /// `spec_store_tests`' model-free `Fixture` without giving every
+    /// `SpecStore<T>` a real `ModelState`.
+    fn resolve_best_prefix_mut(&mut self, ids: &[u32], prefix_ids: impl Fn(&T) -> &[u32]) -> Option<&mut T> {
+        let prefixes: Vec<&[u32]> = self.boot.iter().chain(self.uploaded.iter()).map(&prefix_ids).collect();
+        let winner = best_prefix_match(ids, &prefixes)?;
+        let boot_len = self.boot.len();
+        if winner < boot_len {
+            Some(&mut self.boot[winner])
+        } else {
+            let pos = winner - boot_len;
+            let spec = self.uploaded.remove(pos).expect("position just found");
+            self.uploaded.push_back(spec);
+            self.uploaded.back_mut()
+        }
     }
     /// The registration decision, in one place: already a boot spec (no
     /// work), already an uploaded spec (touched to the back, no work), or a
@@ -1970,6 +2066,11 @@ impl Adjudicator {
             described,
             answers,
             rendered: request.rendered.then(|| format!("{prompt_text}{last_text}")),
+            rendered_token_ids: request.rendered.then(|| {
+                let mut ids = prompt_ids.clone();
+                ids.extend_from_slice(last_generated);
+                ids
+            }),
             cache,
             prompt_tokens: prompt_ids.len(),
             cached_tokens,
@@ -1991,13 +2092,36 @@ impl Adjudicator {
     ) -> Result<crate::probe_api::ProbeResponse, Failure> {
         use crate::probe_api::{ProbeCache, ProbeContinuationScore, ProbeContinuations, ProbeGeneratedStep, ProbeIdentity, ProbeResponse};
         check()?;
-        let rendered = request.render();
+        // Two input forms, per `ProbeRequest`'s text-form-caveat docs (F3,
+        // kaibo review 2026-09-23): `ids` is exact — teacher-forced
+        // verbatim, no tokenizer round-trip that could silently land on a
+        // different token path than the one that produced them — and its
+        // schedule split (`decode_from_token`) is already bounds-checked
+        // by `ProbeRequest::validate` (a token index, not a byte offset,
+        // has no "boundary" to search for). `text`/`messages` are
+        // tokenized fresh, exact for bytes the CALLER wrote but not for
+        // bytes containing a model's own generated output.
+        let (full_ids, rendered, decode_from_k) = if let Some(ids) = &request.ids {
+            let rendered = self.tokenizer.decode(ids, false).map_err(|e| Failure::Internal(e.to_string()))?;
+            let decode_from_k = request.decode_from_token.unwrap_or(ids.len());
+            (ids.clone(), rendered, decode_from_k)
+        } else {
+            let rendered = request.render();
+            let encoding = self
+                .tokenizer
+                .encode(rendered.as_str(), false)
+                .map_err(|e| Failure::Internal(e.to_string()))?;
+            let full_ids = encoding.get_ids().to_vec();
+            // `decode_from`: how many of `full_ids` are bulk-forwarded (the
+            // rest replay the decode loop one token at a time — below).
+            // `None` keeps every token in the bulk phase, today's only
+            // schedule and still the default.
+            let decode_from_k = resolve_decode_from(encoding.get_offsets(), request.decode_from)
+                .map_err(Failure::BadRequest)?
+                .unwrap_or(full_ids.len());
+            (full_ids, rendered, decode_from_k)
+        };
         let rendered_sha256 = sha256_hex_bytes(rendered.as_bytes());
-        let encoding = self
-            .tokenizer
-            .encode(rendered.as_str(), false)
-            .map_err(|e| Failure::Internal(e.to_string()))?;
-        let full_ids = encoding.get_ids().to_vec();
         if full_ids.is_empty() {
             return Err(Failure::BadRequest("rendered input tokenizes to nothing".into()));
         }
@@ -2010,30 +2134,23 @@ impl Adjudicator {
             ));
         }
 
-        // `decode_from`: how many of `full_ids` are bulk-forwarded (the
-        // rest replay the decode loop one token at a time — below). `None`
-        // keeps every token in the bulk phase, today's only schedule and
-        // still the default.
-        let decode_from_k = resolve_decode_from(encoding.get_offsets(), request.decode_from)
-            .map_err(Failure::BadRequest)?
-            .unwrap_or(full_ids.len());
-
         // Warm-prefix resume applies to the BULK (prefill) portion only:
-        // scan every loaded spec (boot and uploaded) for one whose resident
-        // prefix is a token-id prefix of it, exactly the condition
-        // `PromptCache::prepare` itself checks (`>=` rather than `>`: with
-        // `decode_from` a prefill can legitimately equal a spec's resident
-        // prefix exactly, leaving nothing to bulk-forward before the
-        // stepwise phase takes over). Cloned out of the found spec
-        // immediately so this borrows only `self.specs`, not all of
+        // the LONGEST loaded spec (boot or uploaded) whose resident prefix
+        // is a STRICT token-id prefix of it — `resolve_best_prefix_mut`
+        // (deterministic regardless of iteration/LRU order, F2; a prefix
+        // EQUAL to `prefill_ids` is not a candidate, so that case resumes
+        // a shorter match or runs the bulk phase cold rather than erroring
+        // "nothing to forward," F4 — both kaibo review, 2026-09-23), also
+        // touching an uploaded winner to the back of the LRU exactly as a
+        // request that named it by id would (F5). Cloned out of the found
+        // spec immediately so this borrows only `self.specs`, not all of
         // `self` — `self.model` is a disjoint field borrowed right after
         // (same pattern `register`'s `CheckpointView` construction uses).
         let prefill_ids = &full_ids[..decode_from_k];
         let resumed = if request.use_cache {
-            self.specs.iter().find_map(|s| {
-                (prefill_ids.len() >= s.cache.prefix_ids.len() && prefill_ids.starts_with(&s.cache.prefix_ids))
-                    .then(|| (s.id.clone(), s.cache.prefix.clone(), s.cache.prefix_ids.len()))
-            })
+            self.specs
+                .resolve_best_prefix_mut(prefill_ids, |s| s.cache.prefix_ids.as_slice())
+                .map(|s| (s.id.clone(), s.cache.prefix.clone(), s.cache.prefix_ids.len()))
         } else {
             None
         };
@@ -2060,11 +2177,19 @@ impl Adjudicator {
             logits = Some(forward_chunks(&self.model, &mut state, stepwise_ids, 1, check)?);
         }
         let stepwise_tokens = stepwise_ids.len();
+        // Invariant, not a caller mistake: `full_ids` was already checked
+        // non-empty above, and `resolve_best_prefix_mut` only ever returns
+        // a STRICT prefix match (F4), so `bulk_ids` is non-empty whenever
+        // `resumed` is `Some`. The only way `bulk_ids` is empty is
+        // `decode_from_k == 0`, and then `stepwise_ids` IS `full_ids` —
+        // non-empty by the same earlier check. So one of the two forwards
+        // always ran; `Internal`, not `BadRequest`, if that ever stops
+        // being true — a caller cannot construct a request that reaches
+        // this, so it would mean the invariant above broke, not that the
+        // request was bad.
         let logits = logits.ok_or_else(|| {
-            Failure::BadRequest(
-                "nothing to forward: decode_from lands exactly at the resumed spec's resident \
-                 prefix, with no input tokens beyond it"
-                    .into(),
+            Failure::Internal(
+                "unreachable: neither the bulk nor the stepwise phase forwarded anything".into(),
             )
         })?;
         logits.device().synchronize()?;
@@ -2187,7 +2312,7 @@ impl Adjudicator {
                 dtype: "f32".into(),
                 sampling: format!("greedy; repetition_penalty={}; history=full", self.repeat_penalty),
             },
-            rendered: request.messages.is_some().then(|| rendered.clone()),
+            rendered: (request.messages.is_some() || request.ids.is_some()).then(|| rendered.clone()),
             rendered_sha256,
             input_tokens: full_ids.len(),
             cache: ProbeCache {
@@ -3056,6 +3181,13 @@ mod spec_store_tests {
     struct Fixture {
         id: String,
         name: String,
+        /// Only populated by `fp()`, for the `resolve_best_prefix_mut`
+        /// tests below — every other fixture leaves this empty, which
+        /// never matches anything (`best_prefix_match` requires
+        /// `ids.len() > prefix.len()`, so an empty prefix only "matches"
+        /// non-empty `ids`, and none of the id/name-keyed tests above ever
+        /// call `resolve_best_prefix_mut`).
+        prefix_ids: Vec<u32>,
     }
     impl SpecIdentity for Fixture {
         fn id(&self) -> &str {
@@ -3066,7 +3198,10 @@ mod spec_store_tests {
         }
     }
     fn f(id: &str) -> Fixture {
-        Fixture { id: id.into(), name: format!("{id}-name") }
+        Fixture { id: id.into(), name: format!("{id}-name"), prefix_ids: vec![] }
+    }
+    fn fp(id: &str, prefix_ids: &[u32]) -> Fixture {
+        Fixture { id: id.into(), name: format!("{id}-name"), prefix_ids: prefix_ids.to_vec() }
     }
     fn store(boot: &[&str], capacity: usize) -> SpecStore<Fixture> {
         SpecStore::new(boot.iter().map(|id| f(id)).collect(), capacity)
@@ -3241,6 +3376,63 @@ mod spec_store_tests {
         s.register_or_load("up1", || Ok::<_, ()>(f("up1"))).unwrap();
         let ids: Vec<&str> = s.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(ids, ["boot1", "boot2", "up1"]);
+    }
+
+    // ------------------------------------------ resolve_best_prefix_mut (F2/F4/F5)
+
+    #[test]
+    fn resolve_best_prefix_mut_picks_the_longest_match_across_boot_and_uploaded() {
+        let mut s = SpecStore::new(vec![fp("short", &[1, 2])], 4);
+        s.register_or_load("long", || Ok::<_, ()>(fp("long", &[1, 2, 3, 4]))).unwrap();
+        let ids = [1, 2, 3, 4, 5];
+        let winner = s.resolve_best_prefix_mut(&ids, |f| &f.prefix_ids).unwrap();
+        assert_eq!(winner.id, "long", "the longer prefix must win even though it was registered second");
+    }
+
+    #[test]
+    fn resolve_best_prefix_mut_requires_a_strict_prefix_not_an_exact_match() {
+        let mut s = SpecStore::new(vec![fp("exact", &[1, 2, 3]), fp("shorter", &[1, 2])], 4);
+        let ids = [1, 2, 3];
+        let winner = s.resolve_best_prefix_mut(&ids, |f| &f.prefix_ids).unwrap();
+        assert_eq!(winner.id, "shorter", "a prefix equal to ids leaves nothing to bulk-forward");
+    }
+
+    #[test]
+    fn resolve_best_prefix_mut_is_none_when_nothing_strictly_prefixes() {
+        let mut s = SpecStore::new(vec![fp("exact", &[1, 2, 3])], 4);
+        assert!(s.resolve_best_prefix_mut(&[1, 2, 3], |f| &f.prefix_ids).is_none());
+        assert!(s.resolve_best_prefix_mut(&[9, 9], |f| &f.prefix_ids).is_none());
+    }
+
+    #[test]
+    fn resolve_best_prefix_mut_touches_an_uploaded_winner_to_the_back_of_the_lru() {
+        // capacity 2: registering a third upload evicts the LRU front
+        // unless something already touched it to the back.
+        let mut s = SpecStore::new(vec![], 2);
+        s.register_or_load("a", || Ok::<_, ()>(fp("a", &[1, 2]))).unwrap();
+        s.register_or_load("b", || Ok::<_, ()>(fp("b", &[9, 9]))).unwrap();
+        // "a" is now LRU-front (registered first, never served since). A
+        // probe resuming it must touch it to the back — "served-or-
+        // registered = use" (F5) — exactly as `resolve_mut` already does
+        // for a request that names a spec by id.
+        let winner = s.resolve_best_prefix_mut(&[1, 2, 3], |f| &f.prefix_ids).unwrap();
+        assert_eq!(winner.id, "a");
+        s.register_or_load("c", || Ok::<_, ()>(fp("c", &[3, 3]))).unwrap();
+        let ids: Vec<&str> = s.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(
+            ids, ["a", "c"],
+            "resuming 'a' must have touched it past 'b', which is now the one evicted"
+        );
+    }
+
+    #[test]
+    fn resolve_best_prefix_mut_does_not_touch_a_boot_spec_since_boot_is_never_evicted() {
+        let mut s = SpecStore::new(vec![fp("boot", &[1, 2])], 4);
+        let winner = s.resolve_best_prefix_mut(&[1, 2, 3], |f| &f.prefix_ids).unwrap();
+        assert_eq!(winner.id, "boot");
+        // Boot specs are never evicted regardless of order, so there is
+        // nothing to assert about position here beyond: it is still there.
+        assert!(s.resolve_mut(Some("boot")).is_some());
     }
 }
 

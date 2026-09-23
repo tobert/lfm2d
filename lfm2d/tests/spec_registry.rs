@@ -146,6 +146,7 @@ impl Generator for Fake {
                 margin: 0.1,
             }],
             rendered: None,
+            rendered_token_ids: None,
             cache: lfm2d::opinion_api::CacheOutcome {
                 prefix: "hit".into(),
                 state: "miss".into(),
