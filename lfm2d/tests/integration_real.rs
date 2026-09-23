@@ -56,6 +56,7 @@ fn cli_with_classifier_only() -> Cli {
         adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
         opinion_specs: Vec::new(),
+        opinion_spec_capacity: 8,
         embedder_dir: None,
         classifier_dir: Some(dir),
         router_dir: None,

@@ -66,6 +66,10 @@ cargo build -p lfm2d --release --features rocm
 always on the `/v1/opinion` menu; `--opinion-spec` (repeatable, or
 `LFM2D_OPINION_SPECS` comma-separated) adds further specs to that menu, each
 with its own resident prefix. Specs are named by file stem.
+`--opinion-spec-capacity` (`LFM2D_OPINION_SPEC_CAPACITY`, default 8) bounds
+how many runtime-uploaded specs (`POST /v1/opinion/specs`, below) stay
+resident at once — boot-time specs above don't count against it and are
+never evicted.
 
 ### Deploying it: `lfm2d-system1`
 
@@ -447,17 +451,102 @@ description once. A cold request (`use_cache: false`) or one asking for
 A spec whose field name contains a quote or a backslash is refused at
 load: slot detection could not tell its escaped key from a later field's.
 
-Refused with 400, never queued: an unknown spec, a field the spec lacks or
-that is not a `choice`, an option outside the enum, fewer than two options,
-no question, a field asked twice, a non-null `context`, control tokens in
-the state. Refused with 500, each with its own message: a description that ends
-before the slot (the grammar makes every field required, so this is the
-context running out or the turn ending where the grammar forbids it); the
-model writing past the slot in one token (the grammar admits any token
-whose bytes begin the value, so `"a` is legal there — the model leaving
-the canonical path; 0 of 246 rows so far); an option that does not
-tokenize on its own pretokens after the slot. The harness counts these as
-`http_error` rows, never as reads.
+Refused with 404, never queued: a `spec` naming nothing loaded (boot or
+uploaded) — see "Runtime spec registration" below; this is the client's cue
+to upload the spec and retry, not a malformed request. Refused with 400,
+never queued: a field the spec lacks or that is not a `choice`, an option
+outside the enum, fewer than two options, no question, a field asked
+twice, a non-null `context`, control tokens in the state. Refused with
+500, each with its own message: a description that ends before the slot
+(the grammar makes every field required, so this is the context running
+out or the turn ending where the grammar forbids it); the model writing
+past the slot in one token (the grammar admits any token whose bytes
+begin the value, so `"a` is legal there — the model leaving the canonical
+path; 0 of 246 rows so far); an option that does not tokenize on its own
+pretokens after the slot. The harness counts these as `http_error` rows,
+never as reads.
+
+### Runtime spec registration
+
+Boot loads `--adjudicator-prompt` and every `--opinion-spec`; a running
+daemon can also load a spec at runtime, so a consumer (kaijutsu, for the
+shell specs) can iterate on its own specs without a redeploy of this
+daemon. Ruled 2026-09-23, `docs/system1-split-plan.md` "Runtime spec
+registration".
+
+```
+POST   /v1/opinion/specs        body: the spec's exact bytes
+DELETE /v1/opinion/specs/{id}
+```
+
+- **Identity is a content hash.** A spec's `id` is the lowercase hex
+  sha256 of the exact uploaded bytes — kaibo's CAS digest
+  (`kaibo/src/cas.rs`, `Digest::of_bytes`) and this crate's own
+  `hash::sha256_hex_bytes`. Nothing is canonicalized first: parsing into
+  `serde_json::Value` and re-serializing would sort every object's keys,
+  and a spec's field order IS its emission order (the grammar walks
+  `required` in the order stated — `btreemap-sorting-reaches-the-prompt`
+  bit this repo three times before). So two specs differing only in field
+  order get different ids, on purpose; re-formatting a spec's whitespace
+  also changes its id, which does no harm. Boot-time specs get their id
+  the same way, from their file's bytes, and also answer to their
+  file-stem name (as they always have) — `id` and name both work
+  wherever `spec` is accepted.
+- **`POST /v1/opinion/specs`** — the body IS the spec's bytes (any
+  content type; the daemon parses it as JSON regardless), capped at 1 MiB
+  (`MAX_SPEC_BYTES`) by a `DefaultBodyLimit` layer on this route — a spec's
+  system prompt, tools and schema are text, never a checkpoint, so this is
+  generous headroom, not a tuned limit. `413` for anything over that,
+  uniformly (never a `400` for a body just over the cap but under axum's
+  own larger built-in default). `201` when it was genuinely loaded now,
+  `200` when that id was already loaded (boot or a previous upload) — no
+  load runs the second time, which is what makes "upload any time you're
+  not sure" free. `400` when the body doesn't parse as a spec. `422` with
+  the load-time refusal text when it parses but cannot be served — the
+  same checks a boot spec passes before it ever answers a request: the
+  output schema doesn't compile to a grammar, an option or a field name
+  doesn't tokenize the way the slot detector needs, the opinion block's
+  options don't split cleanly. The response body is the registered spec's
+  menu entry (`id` and
+  `snapshot_id` included).
+- **Memory only, bounded.** Uploaded specs live in memory, under
+  `--opinion-spec-capacity` (env `LFM2D_OPINION_SPEC_CAPACITY`, default
+  8) — each holds a resident prefix state and a described cache, same as
+  a boot spec, which is why there's a limit. Past capacity, the least
+  recently used upload is evicted to make room for a new one; serving a
+  request against an upload OR re-registering it both count as use, so a
+  spec in active rotation never gets evicted out from under a caller that
+  keeps asking about it. Boot-time specs are never evicted and don't
+  count against the capacity.
+- **`DELETE /v1/opinion/specs/{id}`** — unloads an upload. `204` on
+  deletion, `404` if `id` names nothing loaded (already deleted, evicted,
+  or never registered), `403` if `id` names a boot-time spec — those
+  cannot be deleted at runtime; restart the daemon with a different
+  `--opinion-spec` list instead.
+- **An id cannot change what it means**, so there is no `409` pin to
+  worry about the way a mutable name would need one. `snapshot_id` still
+  tells a consumer when the model *under* that spec changed (a weights,
+  tokenizer, template, or repetition-penalty change) and invariant 8's
+  rule to refit calibration on a new `snapshot_id` still applies —
+  registering the same content twice never changes it.
+- **`POST /v1/opinion` and `POST /v1/adjudicate`'s `spec` field accepts
+  an id or a boot-time name.** Naming nothing loaded is `404` — never a
+  fallback to a different spec, and never `/v1/adjudicate`'s
+  `--adjudicator-prompt` default either, even for a stale name. Without
+  `spec`, `/v1/adjudicate` still serves the `--adjudicator-prompt` spec,
+  exactly as before this existed, so every caller that predates it keeps
+  working unchanged. An escalation from an opinion resumes from the
+  SAME spec's described cache only when the generative call names that
+  spec too — resolution shares the loaded spec instance between
+  `/v1/opinion` and `/v1/adjudicate`, so this falls out of the id/name
+  lookup rather than being special-cased.
+- **The menu never comes from request text.** Registration is its own
+  write, on its own route; `GET /v1/opinion/specs` (still) lists boot
+  specs and uploads together, each with its `id`. A registration or
+  eviction gets its own span and one log line: the id, the
+  `snapshot_id`, how long the call took, and whether it evicted anything
+  — `newly_loaded`/`evicted` in the response's telemetry, not the wire
+  body.
 
 ## Snapshot semantics
 

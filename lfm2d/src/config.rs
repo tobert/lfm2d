@@ -54,6 +54,15 @@ pub struct Cli {
     /// resident prefix. Named by file stem, so stems must not repeat.
     #[arg(long = "opinion-spec", env = "LFM2D_OPINION_SPECS", value_delimiter = ',')]
     pub opinion_specs: Vec<PathBuf>,
+    /// How many runtime-uploaded specs (`POST /v1/opinion/specs`) stay
+    /// resident at once. Each holds a resident prefix state, which is why
+    /// this is bounded. Past it, the least recently used upload is evicted
+    /// (a re-registration or a served request both count as use); its next
+    /// request gets a 404 that tells the client to upload it again.
+    /// Boot-time specs (`--adjudicator-prompt`/`--opinion-spec`) are never
+    /// evicted and don't count against this.
+    #[arg(long = "opinion-spec-capacity", env = "LFM2D_OPINION_SPEC_CAPACITY", default_value_t = 8)]
+    pub opinion_spec_capacity: usize,
 
     /// Directory holding an `Lfm2Embedding`-shaped checkpoint
     /// (`config.json`, `tokenizer.json`, `model.safetensors`). Backs
@@ -261,6 +270,9 @@ impl Cli {
         if !self.opinion_specs.is_empty() && self.adjudicator_model.is_none() {
             return Err("--opinion-spec needs the adjudicator (--adjudicator-model/--adjudicator-tokenizer/--adjudicator-prompt)".into());
         }
+        if self.opinion_spec_capacity == 0 {
+            return Err("--opinion-spec-capacity must be at least 1".into());
+        }
         Ok(())
     }
 }
@@ -338,6 +350,7 @@ mod tests {
             adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
             opinion_specs: Vec::new(),
+            opinion_spec_capacity: 8,
             embedder_dir: None,
             classifier_dir: None,
             router_dir: None,
@@ -388,6 +401,7 @@ mod tests {
             adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
             opinion_specs: Vec::new(),
+            opinion_spec_capacity: 8,
             embedder_dir: Some("/tmp/e".into()),
             classifier_dir: Some("/tmp/c".into()),
             router_dir: Some("/tmp/r".into()),
@@ -549,6 +563,20 @@ mod tests {
                 PathBuf::from("/models/router-guard"),
             ]
         );
+    }
+
+    #[test]
+    fn opinion_spec_capacity_defaults_to_eight_and_rejects_zero() {
+        let cli = Cli::parse_from(["lfm2d"]);
+        assert_eq!(cli.opinion_spec_capacity, 8);
+        let mut cli = base();
+        cli.router_dir = Some("/tmp/router".into());
+        cli.socket_path = Some("/tmp/lfm2d.sock".into());
+        cli.opinion_spec_capacity = 0;
+        let err = cli
+            .validate()
+            .expect_err("a capacity of 0 leaves no room for any upload");
+        assert!(err.contains("opinion-spec-capacity"), "{err}");
     }
 
     #[test]

@@ -1,0 +1,170 @@
+//! Runtime registration against the real LFM2.5-8B-A1B: a spec loaded via
+//! `Adjudicator::register` reads bit-identical to the same content loaded
+//! at boot via `--opinion-spec`.
+//!
+//! `register`'s dedup keys on the exact uploaded BYTES (the content hash),
+//! so registering `demo/specs/email-triage-v1.json`'s own bytes a second
+//! time — this test's daemon already boot-loaded it — would just return the
+//! boot entry with no new load, which certifies nothing about the runtime
+//! load path. So this test uploads the same PARSED spec with one trailing
+//! newline appended: different bytes (a different id, and a genuine miss
+//! that runs `LoadedSpec::load` for real), identical content. `snapshot_id`
+//! depends only on parsed content (template, weights, tokenizer, the
+//! rendered prefix, the repetition penalty — never the id or the file
+//! name), so the two must land on the same one, and an opinion read against
+//! each must produce the same description and the same option numbers,
+//! exactly — this is a fresh cold read both times, no cache to blur a
+//! difference.
+//!
+//! Ignored by default: it hashes and loads a 6 GB GGUF. Device is `auto`,
+//! so build with `--features rocm` on a GPU host.
+//!
+//!   LFM2D_ADJUDICATOR_MODEL=... LFM2D_ADJUDICATOR_TOKENIZER=... \
+//!   cargo test -p lfm2d --features rocm --test spec_registry_real -- --ignored --nocapture
+use clap::Parser as _;
+use lfm2d::adjudicator::{Adjudicator, Generator};
+use lfm2d::config::Cli;
+use lfm2d::opinion_api::OpinionRequest;
+
+fn cli() -> Cli {
+    let model = std::env::var("LFM2D_ADJUDICATOR_MODEL").unwrap_or_else(|_| {
+        "/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf".into()
+    });
+    let tokenizer = std::env::var("LFM2D_ADJUDICATOR_TOKENIZER").unwrap_or_else(|_| {
+        let models = std::env::var("LFM2_MODELS_DIR").unwrap_or_else(|_| {
+            format!("{}/.models", env!("CARGO_MANIFEST_DIR").trim_end_matches("/lfm2d"))
+        });
+        format!("{models}/LFM2.5-8B-A1B/tokenizer.json")
+    });
+    Cli::parse_from([
+        "lfm2d",
+        "--bind-addr",
+        "127.0.0.1:0",
+        "--adjudicator-model",
+        &model,
+        "--adjudicator-tokenizer",
+        &tokenizer,
+        "--adjudicator-prompt",
+        &format!(
+            "{}/prompts/command-verdict-enum-v1.json",
+            env!("CARGO_MANIFEST_DIR")
+        ),
+        "--opinion-spec",
+        &format!("{}/../demo/specs/email-triage-v1.json", env!("CARGO_MANIFEST_DIR")),
+        "--adjudicator-context",
+        "4096",
+    ])
+}
+
+#[test]
+#[ignore = "loads and hashes the 6 GB LFM2.5-8B-A1B GGUF; minutes on a GPU host"]
+fn a_runtime_registered_copy_reads_bit_identical_to_the_boot_loaded_spec() {
+    let cli = cli();
+    let mut adjudicator = Adjudicator::load(&cli).expect("load the adjudicator");
+    let ok = || Ok(());
+
+    let boot_menu = adjudicator.menu();
+    let boot_entry = boot_menu
+        .iter()
+        .find(|e| e.spec == "email-triage-v1")
+        .expect("email-triage-v1 is boot-loaded via --opinion-spec")
+        .clone();
+
+    let path = format!(
+        "{}/../demo/specs/email-triage-v1.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let mut bytes = std::fs::read(&path).expect("read the demo spec");
+    bytes.push(b'\n'); // different bytes, same parsed content — see module docs
+    let prompt: lfm2d::adjudicator::PromptSpec =
+        serde_json::from_slice(&bytes).expect("still valid JSON with the trailing newline");
+    let id = lfm2d::hash::sha256_hex_bytes(&bytes);
+    assert_ne!(id, boot_entry.id, "different bytes must get a different id");
+
+    let outcome = adjudicator
+        .register(id.clone(), prompt, &ok)
+        .expect("register the runtime copy");
+    assert!(outcome.newly_loaded, "the trailing-newline copy is a genuine miss, not a dedup hit");
+    assert_eq!(
+        outcome.entry.snapshot_id, boot_entry.snapshot_id,
+        "identical parsed content must land on the identical snapshot_id"
+    );
+    assert_eq!(outcome.entry.fields, boot_entry.fields);
+
+    let email = "I was charged twice for order #4471 and I want a refund today, this is \
+                 ridiculous and I've been a customer for six years.";
+    let ask = |spec: &str| -> OpinionRequest {
+        serde_json::from_value(serde_json::json!({
+            "spec": spec,
+            "state": {"command": email},
+            "questions": [{"field": "verdict"}, {"field": "feeling"}],
+            "rendered": true
+        }))
+        .unwrap()
+    };
+    let boot_request = ask("email-triage-v1");
+    let boot_questions = boot_entry.resolve_all(&boot_request.questions).unwrap();
+    let boot_read = adjudicator
+        .opine(&boot_request, &boot_questions, &ok)
+        .expect("opine against the boot-loaded spec");
+
+    let upload_request = ask(&id);
+    // The runtime copy's menu entry has the same fields as the boot one
+    // (asserted above), so resolving against either produces the same
+    // `ResolvedQuestion`s — using `outcome.entry` here is the honest path
+    // (it's what a real caller would resolve against after registering).
+    let upload_questions = outcome.entry.resolve_all(&upload_request.questions).unwrap();
+    let upload_read = adjudicator
+        .opine(&upload_request, &upload_questions, &ok)
+        .expect("opine against the runtime-registered spec");
+
+    assert_eq!(boot_read.cache.described, "miss", "cold read, no cache to blur a difference");
+    assert_eq!(upload_read.cache.described, "miss");
+
+    let described = |r: &lfm2d::opinion_api::OpinionResponse| -> Vec<(String, serde_json::Value)> {
+        r.described.iter().map(|d| (d.field.clone(), d.value.clone())).collect()
+    };
+    assert_eq!(
+        described(&boot_read),
+        described(&upload_read),
+        "the same content must describe the email identically"
+    );
+    assert_eq!(boot_read.answers.len(), upload_read.answers.len());
+    for (a, b) in boot_read.answers.iter().zip(&upload_read.answers) {
+        assert_eq!(a.field, b.field);
+        assert_eq!(a.read.sequence_mass, b.read.sequence_mass, "{}", a.field);
+        assert_eq!(a.read.first_token_mass, b.read.first_token_mass, "{}", a.field);
+        for (x, y) in a.read.options.iter().zip(&b.read.options) {
+            assert_eq!(
+                (x.option.as_str(), x.logprob, x.first_logprob, &x.tokens),
+                (y.option.as_str(), y.logprob, y.first_logprob, &y.tokens),
+                "{}",
+                a.field
+            );
+        }
+    }
+    // The rendered prefix text differs only in which spec answered — the
+    // spec's OWN prefix bytes (system prompt, schema) must be identical,
+    // since both came from the same parsed content.
+    let boot_rendered = boot_read.rendered.as_deref().expect("rendered was asked");
+    let upload_rendered = upload_read.rendered.as_deref().expect("rendered was asked");
+    assert_eq!(boot_rendered, upload_rendered, "byte-identical rendered prompt and description");
+
+    fn top<'r>(r: &'r lfm2d::opinion_api::OpinionResponse, field: &str) -> Option<&'r str> {
+        r.answers
+            .iter()
+            .find(|a| a.field == field)?
+            .read
+            .options
+            .iter()
+            .max_by(|a, b| a.prob.total_cmp(&b.prob))
+            .map(|o| o.option.as_str())
+    }
+    eprintln!(
+        "boot verdict={:?} feeling={:?}; upload verdict={:?} feeling={:?}",
+        top(&boot_read, "verdict"),
+        top(&boot_read, "feeling"),
+        top(&upload_read, "verdict"),
+        top(&upload_read, "feeling"),
+    );
+}

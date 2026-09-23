@@ -176,6 +176,17 @@ impl Generator for Fake {
             resumed_tokens: None,
         })
     }
+    fn register(
+        &mut self,
+        _: String,
+        _: lfm2d::adjudicator::PromptSpec,
+        _: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<lfm2d::adjudicator::RegisterOutcome, Failure> {
+        Err(Failure::Internal("this fake does not register specs".into()))
+    }
+    fn unregister(&mut self, _: &str) -> lfm2d::adjudicator::UnregisterOutcome {
+        lfm2d::adjudicator::UnregisterOutcome::NotFound
+    }
 }
 fn request(input: &str) -> AdjudicateRequest {
     serde_json::from_value(serde_json::json!({"input":input})).unwrap()

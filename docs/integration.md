@@ -107,7 +107,31 @@ evidence a consumer may act on.
 order and each choice field's options. Never hard-code a spec name, a
 field name, an option, or an option's position — invariants 1–3 again,
 for the opinion vocabulary. `described` is an ordered list of
-`{field, value}`, not an object; the order is the spec's.
+`{field, value}`, not an object; the order is the spec's. The menu now
+also carries uploads (invariant 12) beside the boot-time specs.
+
+**12. A spec's `id` is a content hash; an unknown `spec` means upload it.**
+Every menu entry (boot or uploaded) has an `id`: the lowercase hex sha256
+of the exact spec bytes, computed over the raw upload — never a
+re-serialized/canonicalized form, so two specs differing only in field
+order get different ids (a spec's field order is its emission order, which
+is meaning, not formatting). `POST /v1/opinion/specs` registers a spec at
+runtime; the body IS the spec's bytes. Registering bytes already loaded
+(boot or upload) is free — `200`, no work done — which is what makes
+"upload any time you're unsure" a correct client strategy, not just a
+convenient one. `POST /v1/opinion` and `POST /v1/adjudicate`'s `spec`
+field accepts an id or a boot-time spec's name; naming nothing loaded is
+now `404`, not `400` — the client's cue to upload (or re-upload) and
+retry, never a reason to fall back to a different spec or invent one.
+Uploads are held in memory only, under a bounded least-recently-used
+cache (`--opinion-spec-capacity`); an evicted upload's next request is
+also a clean `404`. Boot-time specs (`--adjudicator-prompt`/
+`--opinion-spec`) are never evicted and cannot be deleted at runtime
+(`DELETE /v1/opinion/specs/{id}` on one is `403`). See
+`docs/lfm25-adjudicator.md` "Runtime spec registration" for the wire, and
+`docs/system1-split-plan.md` "Runtime spec registration" for the ruling
+this implements (kaijutsu owns the shell specs and uploads them at
+startup and on change, rather than lfm2d shipping them).
 
 ## Operational numbers (measured, dated — re-measure before designing on them)
 
