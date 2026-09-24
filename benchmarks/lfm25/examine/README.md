@@ -1,5 +1,16 @@
 # Examiner tooling
 
+> **Its input source left on 2026-09-24.** These scripts read runs of
+> `verdict_eval.py` (`rows.jsonl` with the raw `input`/`output` bytes), and
+> that harness left lfm2d with the shell material; its history is in git
+> and in `~/src/kaish-training-data`. The method is general over any spec's
+> answer slot, and the bins it drives (`lfm25-examine`, `lfm25-expert-map`)
+> stay. Until `/v1/probe` grows `lens` and `routing` (planned: the
+> instruments move into the daemon so probes and production share one
+> stack), feeding this tooling means producing rows of that shape from a
+> spec run of your own. The examples below name the old shell spec and
+> val_F numbers as the record of what was measured, not as live paths.
+
 What reads a `verdict_eval.py` run back into the model: the logit lens at an
 answer slot, expert routing around it, and the pages that show either one.
 `lfm25-examine` and `lfm25-expert-map` (in `lfm2d/src/bin/`) do the inference;
