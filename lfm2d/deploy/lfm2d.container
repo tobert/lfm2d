@@ -7,11 +7,10 @@
 # Build the image first (from the repo root, NOT lfm2d/ — see Containerfile):
 #   podman build -t localhost/lfm2d:latest -f lfm2d/Containerfile .
 #
-# This example wires up a classifier + router for /v1/cascade. Adjust
-# --embedder-dir/--classifier-dir/--router-dir/--cascade-route to whatever
-# heads you're actually deploying; at least one head is required, and
-# /v1/cascade specifically needs both --classifier-dir and --router-dir
-# plus at least one --cascade-route (see lfm2d/README.md).
+# This example serves an embedder, the Prompt-Router and the PII-Detector.
+# Adjust --embedder-dir/--classifier-dir/--router-dir/--token-classifier-dir
+# to whatever heads you're actually deploying; at least one head is
+# required (see lfm2d/README.md).
 
 [Unit]
 Description=lfm2d — LFM2.5 encoder sidecar
@@ -40,16 +39,10 @@ Nice=10
 # the TCP stack entirely. The socket directory must exist and be
 # writable by the container's runtime user — %t is the runtime dir.
 Volume=%t/lfm2d:/run/lfm2d:rw,Z
-# The severe set belongs to the checkpoint, not to the daemon: v8+'s
-# labels are informative/situation-normal/data-critical, and the built-in
-# default severe set is v6's vocabulary. Move both lines together or
-# /v1/cascade refuses every request.
 Exec=/usr/local/bin/lfm2d \
-    --classifier-dir /models/kube_ordinal_v10 \
+    --embedder-dir /models/LFM2.5-Embedding-350M \
     --router-dir /models/LFM2.5-Encoder-350M-Prompt-Router \
-    --cascade-route shell --cascade-route k8s \
-    --cascade-severe-label situation-normal \
-    --cascade-severe-label data-critical \
+    --token-classifier-dir /models/LFM2.5-Encoder-350M-PII-Detector \
     --socket-path /run/lfm2d/lfm2d.sock \
     --bind-addr 0.0.0.0:8088
 #
@@ -59,13 +52,12 @@ Exec=/usr/local/bin/lfm2d \
 
 PublishPort=127.0.0.1:8088:8088
 
-# Env-var equivalents of every flag above also work (LFM2D_CLASSIFIER_DIR,
-# LFM2D_ROUTER_DIR, LFM2D_CASCADE_ROUTES, LFM2D_SOCKET_PATH,
-# LFM2D_BIND_ADDR, ...) — set via Environment= if you prefer config over
-# a long Exec= line:
-# Environment=LFM2D_CLASSIFIER_DIR=/models/kube_ordinal_v10
+# Env-var equivalents of the flags above also work (LFM2D_EMBEDDER_DIR,
+# LFM2D_ROUTER_DIR, LFM2D_SOCKET_PATH, LFM2D_BIND_ADDR, ...; lfm2d --help
+# lists them) — set via Environment= if you prefer config over a long
+# Exec= line:
+# Environment=LFM2D_EMBEDDER_DIR=/models/LFM2.5-Embedding-350M
 # Environment=LFM2D_ROUTER_DIR=/models/LFM2.5-Encoder-350M-Prompt-Router
-# Environment=LFM2D_CASCADE_ROUTES=shell,k8s
 # Environment=LFM2D_BIND_ADDR=0.0.0.0:8088
 
 # OTLP export (metrics + traces + logs — see lfm2d/README.md's telemetry

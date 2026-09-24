@@ -1,8 +1,8 @@
-# lfm2d-system1 — the resident adjudicator and the opinion API, on ROCm.
+# lfm2d-system1 — the resident opinion engine and the encoder heads, on ROCm.
 #
 # Two stages, like lfm2d/Containerfile: a builder produces the release
 # binary with the `rocm` feature, the runtime ships that binary plus the
-# prompt specs. The GGUF and tokenizer are mounted at runtime
+# demo prop specs. The GGUF, tokenizer and checkpoints are mounted at runtime
 # (deploy/k8s-zorak-system1.yaml), never baked in.
 #
 #   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.2.0 \
@@ -21,11 +21,11 @@
 # tag (7.4 GB) is not needed. The same image is the runtime stage so the
 # libraries are the ones the binary was linked against.
 #
-# The BOOT prompt specs are part of the daemon's identity (`snapshot_id`
-# hashes the rendered prefix and the opinion block), so they ship in the
-# image and changing one is an image release. Since 0.2.0 a consumer can
-# also upload its own specs at runtime (`POST /v1/opinion/specs`,
-# content-addressed); those need no release.
+# The image ships no production specs. Consumers own theirs and upload
+# them at runtime (`POST /v1/opinion/specs`, content-addressed; since
+# 0.2.0), which needs no release. A boot spec (`--opinion-spec`) is part of
+# the daemon's identity (`snapshot_id` hashes the rendered prefix and the
+# opinion block), so changing one baked in here is an image release.
 
 ARG ROCM_IMAGE=docker.io/rocm/dev-ubuntu-24.04:7.2.4
 
@@ -77,10 +77,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends rocblas rocrand
     && apt-get clean && ldconfig \
     && useradd --system --no-create-home --shell /usr/sbin/nologin lfm2d
 COPY --from=builder /build/target/release/lfm2d /usr/local/bin/lfm2d
-COPY lfm2d/prompts /etc/lfm2d/prompts
 # The demo specs (invented props like email-triage-v1, demo/README.md) ride
-# along so the demos run against the pod; kept apart from the production
-# prompts so nothing mistakes a prop for a measured spec.
+# along so the demos run against the pod. A prop is never a measured spec.
 COPY demo/specs /etc/lfm2d/demo-specs
 RUN mkdir -p /models /var/cache/candle-rocm && chown lfm2d:lfm2d /models /var/cache/candle-rocm
 ENV CANDLE_ROCM_CACHE_DIR=/var/cache/candle-rocm PATH=/opt/rocm/bin:$PATH

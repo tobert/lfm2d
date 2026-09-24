@@ -97,16 +97,14 @@ spec:
             # (both read off /v1/adjudicator on the host, 2026-09-22).
             - --adjudicator-model=/models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf
             - --adjudicator-tokenizer=/models/LFM2.5-8B-A1B/tokenizer.json
-            # The spec /v1/adjudicate generates from, always on the opinion
-            # menu. command-verdict-enum-v1: effect, scope, undo, verdict,
-            # reason — the describe-then-read numbers are this spec's.
-            - --adjudicator-prompt=/etc/lfm2d/prompts/command-verdict-enum-v1.json
-            # A second spec on the menu: the verdict-only read (measured to
-            # carry nothing on this checkpoint; served for comparison, not
-            # for decisions).
-            - --opinion-spec=/etc/lfm2d/prompts/command-verdict-opinion-v1.json
-            # The demos' support-inbox prop (demo/specs, invented; act three
-            # of demo/show.py). Not a measured spec — never a decision input.
+            # The only boot spec: the demos' support-inbox prop (demo/specs,
+            # invented; every act of demo/show.py). Not a measured spec —
+            # never a decision input. Consumers upload their own specs at
+            # runtime (POST /v1/opinion/specs) and name one on every
+            # /v1/opinion and /v1/adjudicate request; there is no default
+            # spec (Amy, 2026-09-24: "drop --adjudicator-prompt arg"). The
+            # shell specs whose numbers the describe-then-read results are
+            # (command-verdict-enum-v1) now belong to kaijutsu.
             - --opinion-spec=/etc/lfm2d/demo-specs/email-triage-v1.json
             # LFM2.5-Embedding-350M for /embed (kaijutsu-index). Amy,
             # 2026-09-24: "keep an embedder in lfm2d if it's light and on
