@@ -143,6 +143,16 @@ class PageTests(unittest.TestCase):
                 self.assertNotIn("ts.net", text)
                 self.assertNotIn("http://", text.replace("http://www.w3.org", ""))
 
+    def test_one_pass_props_are_well_formed(self):
+        static = Path(server.__file__).parent / "static"
+        spec = json.loads((static / "command-verdict-enum-v1.json").read_text())
+        self.assertIsInstance(spec.get("input_label"), str)
+        rows = json.loads((static / "one-pass-commands.json").read_text())["rows"]
+        inputs = [r["input"] for r in rows]
+        self.assertEqual(len(inputs), len(set(inputs)))
+        self.assertTrue(all(isinstance(r["hurts"], bool) for r in rows))
+        self.assertEqual({r["hurts"] for r in rows}, {True, False})
+
 
 if __name__ == "__main__":
     unittest.main()

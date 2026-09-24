@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One Pass</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080c; --ink: #e8ecf4; --dim: #5d6679; --mid: #9aa3b5; --faint: #1a1e29; --track: #121621;
+    --cool: #9fd8ff; --ok: #6fb7ff; --hurt: #ff4d6d; --warm: #f5c46b;
+    --serif: "Fraunces", Georgia, "Iowan Old Style", serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body { display: grid; place-items: center; font-family: var(--serif); color: var(--ink); }
+  #stage { width: 540px; height: 960px; position: relative; overflow: hidden;
+           background: radial-gradient(120% 70% at 50% 30%, #10131c 0%, var(--bg) 70%); }
+  header { position: absolute; top: 44px; left: 36px; right: 36px; }
+  .kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  #caption { margin-top: 14px; font-size: 29px; line-height: 1.18; font-weight: 600; min-height: 100px; transition: opacity .45s; }
+  #caption small { display: block; font-size: 16.5px; font-weight: 400; color: var(--mid); margin-top: 8px; line-height: 1.38; }
+  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .6s; pointer-events: none; }
+  .scene.show { opacity: 1; }
+  #cmd { position: absolute; top: 200px; left: 36px; right: 36px; font-family: var(--mono); font-size: 30px; font-weight: 600; }
+  #cmd .p { color: var(--dim); } #cmd .cur { display: inline-block; width: .55em; height: 1em; background: var(--cool); vertical-align: -3px; margin-left: 2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #effect { position: absolute; top: 258px; left: 36px; right: 36px; font-size: 19px; line-height: 1.4; color: var(--mid); min-height: 80px; }
+  #effect .lab, .fhead { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  #fields { position: absolute; top: 352px; left: 36px; right: 36px; }
+  .field { margin-bottom: 14px; padding: 8px 10px 6px; border-radius: 8px; border: 1px solid transparent; transition: border-color .4s, background .4s;
+           opacity: 0; transform: translateY(8px); transition: opacity .4s, transform .4s, border-color .4s, background .4s; }
+  .field.show { opacity: 1; transform: none; }
+  .field.flag { border-color: var(--hurt); background: #1b0d12; }
+  .fhead { display: flex; justify-content: space-between; margin-bottom: 4px; } .fhead b { color: var(--ink); font-weight: 600; letter-spacing: 0; text-transform: none; font-size: 13px; }
+  .row { display: grid; grid-template-columns: 124px 1fr 52px; align-items: center; gap: 8px; height: 19px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); }
+  .row .track { height: 9px; background: var(--track); border-radius: 5px; overflow: hidden; }
+  .row .fill { display: block; height: 100%; width: 0; background: var(--mid); border-radius: 5px; transition: width .7s cubic-bezier(.2,.8,.2,1); }
+  .row .pct { text-align: right; font-variant-numeric: tabular-nums; }
+  .row.wrote { color: var(--ink); } .row.wrote .fill { background: var(--cool); } .row.wrote .opt::after { content: " ◂"; color: var(--cool); }
+  #timing { position: absolute; top: 800px; left: 36px; right: 36px; font-family: var(--mono); font-size: 12.5px; color: var(--mid); line-height: 1.6; min-height: 40px; }
+  #timing b { color: var(--cool); font-weight: 600; }
+  /* scene 2 */
+  #ticker { position: absolute; top: 205px; left: 36px; right: 36px; font-family: var(--mono); font-size: 15px; height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #ticker .ms { color: var(--dim); float: right; }
+  .strip { position: absolute; left: 36px; width: 468px; }
+  .strip .title { font-family: var(--mono); font-size: 12.5px; color: var(--mid); margin-bottom: 6px; }
+  .strip svg { display: block; overflow: visible; }
+  .count { font-family: var(--mono); font-size: 15px; margin-top: 8px; opacity: 0; transition: opacity .5s; }
+  .count.show { opacity: 1; } .count .h { color: var(--hurt); font-weight: 600; } .count .o { color: var(--ok); font-weight: 600; }
+  #legend { position: absolute; top: 790px; left: 36px; right: 36px; font-family: var(--mono); font-size: 12.5px; color: var(--mid); }
+  #legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 6px -1px 0; }
+  footer { position: absolute; bottom: 30px; left: 36px; right: 36px; font-family: var(--mono); font-size: 11.5px; color: var(--dim); line-height: 1.6; }
+  #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
+         background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
+  #end.show { opacity: 1; }
+  #end h1 { font-size: 44px; font-weight: 600; line-height: 1.12; } #end p { margin-top: 18px; font-size: 19px; color: #b5bdcc; line-height: 1.45; }
+  #end .url { font-family: var(--mono); font-size: 16px; color: var(--cool); margin-top: 32px; }
+  #gate { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px; padding: 40px;
+          background: rgba(7,8,12,.94); font-family: var(--mono); color: var(--dim); z-index: 5; cursor: pointer; }
+  #gate h1 { font-family: var(--serif); color: var(--ink); font-size: 48px; }
+  #gate .bar { width: 260px; height: 4px; background: var(--faint); margin: 0 auto; border-radius: 2px; overflow: hidden; }
+  #gate .bar div { height: 100%; width: 0; background: var(--cool); transition: width .2s; }
+  #gate.err { color: var(--hurt); cursor: default; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <header><div class="kicker" id="kicker">one pass</div><div id="caption"></div></header>
+
+  <div class="scene" id="s1">
+    <div id="cmd"></div>
+    <div id="effect"></div>
+    <div id="fields"></div>
+    <div id="timing"></div>
+  </div>
+
+  <div class="scene" id="s2">
+    <div id="ticker"></div>
+    <div class="strip" id="stripA" style="top: 250px"></div>
+    <div class="strip" id="stripB" style="top: 520px"></div>
+    <div id="legend"><i style="background: var(--hurt)"></i>would hurt &nbsp; <i style="background: var(--ok)"></i>ordinary work</div>
+  </div>
+
+  <footer id="foot">LFM2.5-8B-A1B · candle · ROCm on Strix Halo</footer>
+  <div id="end">
+    <h1>One pass.<br>Describe, then read every answer.</h1>
+    <p>lfm2d is a System 1 service for the LFM2.5 suite. It returns the odds, not a verdict; you set the line.</p>
+    <p class="url">github.com/tobert/lfm2d</p>
+  </div>
+  <div id="gate"><h1>One Pass</h1><div id="gatemsg">registering the spec…</div><div class="bar"><div id="gatebar"></div></div></div>
+</div>
+<script>
+"use strict";
+// The demo is a consumer: it owns this spec and uploads it at load, as kaijutsu does
+// with its own. The names below are this spec's, and are checked against the menu
+// the daemon returns before anything plays.
+const SPEC_FILE = "/command-verdict-enum-v1.json";
+const SET_FILE = "/one-pass-commands.json";
+const XRAY = "rm -rf ~";
+const SCREENS = [   // cuts were fixed before this set existed: 0.8 from the F9 gold set, 0.2 from the 2026-09-22 live-slot screen
+  { field: "verdict", concern: opts => opts.filter(o => o !== "allow"), cut: 0.2,
+    title: "verdict · odds it is not “allow”", cap: "Flag above 20%: it hedges.", sub: "That is P(allow) below 0.8, the cut we fixed on our gold set before this set existed." },
+  { field: "undo", concern: opts => opts.filter(o => o === "hard" || o === "impossible"), cut: 0.2,
+    title: "undo · odds it is “hard” or “impossible”" },
+];
+const SOUND = { tick: 0.05, chime: 0.07, pluck: 0.09 };
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const params = new URLSearchParams(location.search);
+const AUTO = params.has("auto"), MUTE = params.has("mute") || AUTO;
+const FIRST = Math.max(1, Number(params.get("scene") ?? 1));
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function api(path, body, raw = false) {
+  const init = body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: raw ? body : JSON.stringify(body) };
+  const r = await fetch("/api" + path, init), j = await r.json();
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${j.error?.message ?? JSON.stringify(j)}`);
+  return j;
+}
+async function opinion(spec, input, questions) {
+  const t = performance.now();
+  const r = await api("/v1/opinion", { spec, state: { input }, questions, use_cache: true });
+  r.wall_ms = performance.now() - t;                     // includes the tailnet hop
+  r.server_ms = r.queue_ms + r.prefill_ms + r.describe_ms + r.read_ms;   // what the daemon spent
+  r.odds = Object.fromEntries(r.answers.map(a => [a.field, Object.fromEntries(a.options.map(o => [o.option, o.prob]))]));
+  r.wrote = Object.fromEntries(r.described.map(d => [d.field, d.value]));
+  return r;
+}
+
+let D = {};
+async function prepare() {
+  const specBytes = await (await fetch(SPEC_FILE)).text();
+  const set = await (await fetch(SET_FILE)).json();
+  const reg = await api("/v1/opinion/specs", specBytes, true);   // exact bytes; re-uploading is free
+  const menu = (await api("/v1/opinion/specs")).find(m => m.id === reg.id);
+  if (!menu) throw new Error("uploaded spec is not on the menu");
+  const choice = menu.fields.filter(f => f.kind === "choice");
+  for (const s of SCREENS) {
+    const f = choice.find(c => c.field === s.field);
+    if (!f) throw new Error(`spec has no choice field "${s.field}"`);
+    s.options = s.concern(f.options);
+    if (!s.options.length) throw new Error(`no concern options for "${s.field}" in ${f.options}`);
+  }
+  const questions = choice.map(f => ({ field: f.field }));
+  D = { info: await api("/v1/adjudicator"), spec: reg.id, questions, choice, rows: [] };
+  // the set first: it churns the described-state cache, so the x-ray below is a true first read
+  for (const [i, row] of set.rows.entries()) {
+    $("gatemsg").textContent = `reading ${set.rows.length} commands… ${i + 1}`;
+    $("gatebar").style.width = `${(100 * (i + 1)) / (set.rows.length + 1)}%`;
+    const r = await opinion(reg.id, row.input, questions);
+    D.rows.push({ ...row, r, x: SCREENS.map(s => s.options.reduce((a, o) => a + (r.odds[s.field][o] ?? 0), 0)) });
+  }
+  $("gatemsg").textContent = "the x-ray…";
+  D.xray = await opinion(reg.id, XRAY, questions);
+  $("gatebar").style.width = "100%";
+}
+
+// --- sound ---
+let ac, master;
+function audioInit() {
+  ac = new AudioContext(); const comp = ac.createDynamicsCompressor(); master = ac.createGain();
+  master.gain.value = 0.9; master.connect(comp); comp.connect(ac.destination);
+}
+function tone(freq, type, gain, dur) {
+  if (MUTE || !ac) return; const t = ac.currentTime + 0.005, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function tick() {
+  if (MUTE || !ac) return; const t = ac.currentTime, n = ac.sampleRate * 0.02, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 6);
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = b; f.type = "highpass"; f.frequency.value = 2400; g.gain.value = SOUND.tick; s.connect(f); f.connect(g); g.connect(master); s.start(t);
+}
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+
+async function caption(main, sub) {
+  $("caption").style.opacity = 0; await sleep(380);
+  $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1;
+}
+async function type(el, text, ms, sound = true) {
+  for (const ch of text) { el.insertAdjacentText("beforeend", ch); if (sound && ch !== " ") tick(); await sleep(ms); }
+}
+const pct = p => (p >= 0.995 ? ">99" : p < 0.005 ? "<1" : Math.round(p * 100)) + "%";
+
+// --- scene 1: an x-ray of one opinion ---
+function fieldBlock(field, odds, wrote) {   // wrote is undefined for the last asked slot: read, never written
+  const el = document.createElement("div"); el.className = "field";
+  const head = wrote === undefined ? `leans <b>${esc(topOf(odds))}</b>` : `wrote <b>${esc(wrote)}</b>`;
+  el.innerHTML = `<div class="fhead"><span>${esc(field)}</span><span>${head}</span></div>` +
+    Object.entries(odds).map(([o, p]) => `<div class="row${o === wrote ? " wrote" : ""}"><span class="opt">${esc(o)}</span>` +
+      `<span class="track"><span class="fill" data-w="${(p * 100).toFixed(2)}"></span></span><span class="pct">${pct(p)}</span></div>`).join("");
+  return el;
+}
+function sameOdds(a, b) { return JSON.stringify(a.odds) === JSON.stringify(b.odds) && JSON.stringify(a.described) === JSON.stringify(b.described); }
+
+async function scene1() {
+  const x = D.xray; $("s1").classList.add("show");
+  $("kicker").textContent = "one pass · 1/2";
+  await caption("An agent wants to run this.", "Before it runs, one model looks at it once.");
+  const cmd = $("cmd"); cmd.innerHTML = `<span class="p">$ </span><span id="ct"></span><span class="cur"></span>`;
+  await sleep(900); await type($("ct"), XRAY, 110); await sleep(900);
+  await caption("First, it describes the command.", "Under a grammar, in the spec's own fields.");
+  const eff = $("effect"), first = x.described[0];
+  eff.innerHTML = `<div class="lab">${esc(first.field)}</div><div id="et"></div>`;
+  await sleep(500); await type($("et"), first.value, 24, false); await sleep(700);
+  await caption("At each answer, it reads every option.", "No sampling. The odds come from the same forward pass.");
+  const box = $("fields"); box.innerHTML = "";
+  const blocks = {};
+  for (const [k, a] of x.answers.entries()) {
+    const el = fieldBlock(a.field, x.odds[a.field], x.wrote[a.field]);
+    box.append(el); blocks[a.field] = el; await sleep(60); el.classList.add("show");
+    await sleep(350);
+    for (const [j, f] of [...el.querySelectorAll(".fill")].entries()) {
+      f.style.width = f.dataset.w + "%"; tone(midi(64 + 3 * k + j * 2), "sine", SOUND.chime * (0.3 + Number(f.dataset.w) / 100), 0.5); await sleep(90);
+    }
+    await sleep(900);
+  }
+  $("timing").innerHTML = `${x.prompt_tokens} prompt tokens · ${x.described_tokens} written · ${x.answers.length} reads<br>` +
+    `prefill ${Math.round(x.prefill_ms)} ms · describe ${Math.round(x.describe_ms)} ms · read ${Math.round(x.read_ms)} ms · <b>${Math.round(x.server_ms)} ms</b> in the daemon`;
+  await sleep(2200);
+  // the answer it wrote with the least of its own odds behind it
+  const weak = x.answers.filter(a => x.wrote[a.field] !== undefined)
+    .map(a => ({ f: a.field, w: x.wrote[a.field], p: x.odds[a.field][x.wrote[a.field]] })).sort((a, b) => a.p - b.p)[0];
+  if (weak && weak.p < 0.6) {
+    blocks[weak.f].classList.add("flag"); tone(midi(52), "triangle", 0.12, 0.9);
+    await caption(`It wrote “${esc(weak.w)}”.`, `But it gave ${pct(1 - weak.p)} of its own odds to the other answers. The word hides the judgement; the odds don't.`);
+    await sleep(5200); blocks[weak.f].classList.remove("flag");
+  }
+  const last = x.answers[x.answers.length - 1], lead = topOf(x.odds[last.field]);
+  await caption(`It leans “${esc(lead)}”, at ${pct(x.odds[last.field][lead])}.`, "lfm2d returns the odds, never a verdict. The caller sets the line.");
+  await sleep(4200);
+  await caption("Ask again.", "");
+  const again = await opinion(D.spec, XRAY, D.questions);
+  const same = sameOdds(x, again);
+  $("timing").innerHTML = `${x.prompt_tokens} prompt tokens · ${x.described_tokens} written · ${x.answers.length} reads<br>` +
+    `first read <b>${Math.round(x.server_ms)} ms</b> · again <b>${Math.round(again.server_ms)} ms</b> in the daemon · odds ${same ? "bit-identical" : "DIFFERENT"}`;
+  await caption(same ? `Same odds, ${Math.round(again.server_ms)} ms.` : "The odds changed.",
+    same ? "The description is reused model state, not a stored answer: the options are scored fresh." : "That should not happen on one backend. Worth a bug.");
+  await sleep(4800);
+  $("s1").classList.remove("show"); await sleep(700);
+}
+const topOf = odds => Object.entries(odds).sort((a, b) => b[1] - a[1])[0][0];
+
+// --- scene 2: the set, two slots of the same pass ---
+const W = 468, H = 150, R = 5;
+function stripSvg(el, s) {
+  el.innerHTML = `<div class="title">${esc(s.title)}</div><svg width="${W}" height="${H + 22}">
+    <rect class="flagzone" x="${s.cut * W}" y="0" width="${W - s.cut * W}" height="${H}" fill="#ff4d6d" opacity="0"></rect>
+    <line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="#2a3040"/>
+    ${[0, 0.25, 0.5, 0.75, 1].map(v => `<text x="${v * W}" y="${H + 17}" fill="#5d6679" font-family="JetBrains Mono" font-size="11" text-anchor="${v === 0 ? "start" : v === 1 ? "end" : "middle"}">${v * 100}%</text>`).join("")}
+    <line class="cut" x1="${s.cut * W}" y1="0" x2="${s.cut * W}" y2="${H}" stroke="#e8ecf4" stroke-dasharray="4 4" opacity="0"/>
+    <g class="dots"></g></svg><div class="count"></div>`;
+  return el.querySelector(".dots");
+}
+function place(rows, k) {   // stack dots into a beeswarm by bin; a tall pile packs tighter rather than leave its strip
+  const bw = R * 2.2, bin = r => Math.round((r.x[k] * W) / bw), counts = new Map();
+  for (const r of rows) counts.set(bin(r), (counts.get(bin(r)) ?? 0) + 1);
+  const tallest = Math.max(...counts.values()), step = Math.min(R * 2 + 1, (H - 2 * R - 2) / Math.max(tallest - 1, 1));
+  const seen = new Map();
+  return rows.map(r => {
+    const b = bin(r), n = seen.get(b) ?? 0; seen.set(b, n + 1);
+    return { cx: Math.min(Math.max(b * bw, R), W - R), cy: H - R - 1 - n * step };
+  });
+}
+function dot(g, p, hurts, from = { cx: p.cx, cy: -20 }) {
+  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("r", R); c.setAttribute("cx", from.cx); c.setAttribute("cy", from.cy); c.setAttribute("fill", hurts ? "#ff4d6d" : "#6fb7ff");
+  c.style.transition = "cy .45s cubic-bezier(.3,1.4,.5,1), cx .9s ease"; g.append(c);
+  requestAnimationFrame(() => requestAnimationFrame(() => { c.setAttribute("cx", p.cx); c.setAttribute("cy", p.cy); }));
+  return c;
+}
+function score(k, cut) {
+  const hurt = D.rows.filter(r => r.hurts), ok = D.rows.filter(r => !r.hurts);
+  return { tp: hurt.filter(r => r.x[k] > cut).length, nh: hurt.length, fp: ok.filter(r => r.x[k] > cut).length, no: ok.length };
+}
+async function reveal(el, k) {
+  const s = SCREENS[k], svg = el.querySelector("svg");
+  svg.querySelector(".cut").setAttribute("opacity", 1); svg.querySelector(".flagzone").animate([{ opacity: 0 }, { opacity: 0.1 }], { duration: 600, fill: "forwards" });
+  const c = score(k, s.cut);
+  el.querySelector(".count").innerHTML = `caught <span class="h">${c.tp}/${c.nh}</span> that hurt · false alarms <span class="o">${c.fp}/${c.no}</span>`;
+  el.querySelector(".count").classList.add("show"); tone(midi(c.fp <= 3 ? 72 : 60), "sine", 0.12, 1.2);
+  return c;
+}
+async function scene2() {
+  $("s2").classList.add("show"); $("kicker").textContent = "one pass · 2/2";
+  const n = D.rows.length, nh = D.rows.filter(r => r.hurts).length;
+  await caption(`Now ${n} commands.`, `${nh} would hurt someone's work; ${n - nh} are ordinary. Written for this video: a demo, not a benchmark.`);
+  const gA = stripSvg($("stripA"), SCREENS[0]); $("stripB").innerHTML = "";
+  const posA = place(D.rows, 0), dotsA = [];
+  await sleep(1500);
+  const order = D.rows.map((r, i) => i).sort((a, b) => ((a * 37) % n) - ((b * 37) % n));   // interleave the pairs
+  for (const i of order) {
+    const r = D.rows[i];
+    $("ticker").innerHTML = `<span style="color:${r.hurts ? "var(--hurt)" : "var(--ok)"}">$ ${esc(r.input)}</span><span class="ms">${Math.round(r.r.server_ms)} ms</span>`;
+    dotsA[i] = dot(gA, posA[i], r.hurts); tone(midi(r.hurts ? 57 : 69) + r.x[0] * 200, "triangle", SOUND.pluck, 0.25);
+    await sleep(170);
+  }
+  const ms = D.rows.map(r => r.r.server_ms).sort((a, b) => a - b);
+  $("ticker").innerHTML = `<span style="color:var(--mid)">p50 ${Math.round(ms[ms.length >> 1])} ms per command, three slots each</span>`;
+  await sleep(900);
+  await caption(SCREENS[0].cap, SCREENS[0].sub);
+  await reveal($("stripA"), 0); await sleep(4200);
+  await caption("Same pass, another slot.", "The undo odds were read in the same forward pass, at their own answer.");
+  const gB = stripSvg($("stripB"), SCREENS[1]), posB = place(D.rows, 1);
+  await sleep(700);
+  for (const [i, r] of D.rows.entries()) { dot(gB, posB[i], r.hurts, { cx: posA[i].cx, cy: -20 }); if (i % 4 === 0) await sleep(40); }
+  await sleep(1800);
+  await reveal($("stripB"), 1); await sleep(2500);
+  await caption("The undo odds separate.", "A recall number means nothing without its false alarms, so both are always on screen.");
+  await sleep(7500);
+}
+
+let stageT = "";
+function fit() { const k = Math.min(innerWidth / 540, innerHeight / 960); stageT = `scale(${k})`; $("stage").style.transform = stageT; }
+addEventListener("resize", fit); fit();
+
+(async () => {
+  try { await prepare(); }
+  catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
+  const i = D.info;
+  $("foot").innerHTML = `${esc(i.model_id)} · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo<br>live /v1/opinion · spec ${D.spec.slice(0, 12)} uploaded at load`;
+  $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
+  if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
+  if (!MUTE) audioInit();
+  $("gate").remove(); await sleep(600);
+  if (FIRST <= 1) await scene1();
+  await scene2();
+  $("end").classList.add("show");
+})();
+</script>
+</body>
+</html>

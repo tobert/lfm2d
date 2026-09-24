@@ -31,6 +31,23 @@ start if the tokenizer's pieces and the probe's ids disagree. Probes run with
 - `?scene=3` starts at the third scene, for retakes.
 - The sound mapping lives in the `SOUND` object at the top of the script.
 
+## One Pass (`/one-pass`)
+
+The opinion engine as a consumer sees it. The page uploads its own spec at
+load (`command-verdict-enum-v1.json`: the shell spec behind the F9 numbers,
+from git f9ca081, plus `input_label`; kaijutsu owns the live shell specs) and
+checks the field and option names it uses against the menu. Scene 1 is an
+x-ray of one `/v1/opinion` call: the description, every option's odds at
+each choice slot, the daemon's timings, the written answer its own odds
+disagree with most, and a repeat served from the described-state cache.
+Scene 2 runs `one-pass-commands.json` (48 hand-written commands, a prop,
+not a benchmark) and plots two slots of the same pass with their recall
+and false alarms. Both cuts were fixed before the set existed (verdict
+P(allow) < 0.8 from F9, undo > 0.2 from the 2026-09-22 live-slot screen).
+
+The page reads the whole set (about 35 s) before the click. `?scene=2`
+skips the x-ray.
+
 ```sh
 python3 -m unittest discover -s demo/web
 ```
