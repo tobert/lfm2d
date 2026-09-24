@@ -159,6 +159,7 @@ mean it moves. "drop" means it is deleted; its history stays in lfm2d's git.
 | `src/cascade.rs`, `tests/cascade.rs`, `/v1/cascade` | v6 severity rank then router: a composite of shell clauses | **drop now** (ruled: "kaijutsu will do it differently, and a lot in .kai scripts") |
 | `tests/severity_ladder.rs`, `tests/clause_routing.rs` | shell-specific checkpoint tests | → ktd, or drop |
 | `/v1/classify`, `/v1/route`, `/v1/spans*`, `/embed` | general head endpoints | stays. Which checkpoints get served is deploy config |
+| the embedder on lfm2d-system1 | LFM2.5-Embedding-350M on `/embed`, for kaijutsu-index | **serving** (`f6fd4bb`). Amy: "keep an embedder in lfm2d if it's light and on our way". ROCm p50 16 ms, host RSS 0.23 GB, opinion answers unchanged under load. kaijutsu branch `embed-system1` (`fac669ad`, local) moves its factory default + migrates the retired `lfm2d-1` row |
 | the shell severity checkpoint | an output of training | **retire now.** Amy: "the old lfm2d service will stay frozen indefinitely. so we can move on." `lfm2d-1` keeps serving it from its frozen image to the Claude Code hook and kaijutsu `gate.toml`; main stops carrying it |
 | `lfm2d/hooks/` | advisory hook, kaish_plan, clause_split, stage4 | **moved to ktd `hooks/`** (`02cf276`, Amy's pick). `~/.claude/settings.json` now runs it from there. The lfm2d copy is deleted at sign-off |
 | `lfm2d/prompts/command-verdict-*`, `shell-severity-*` | shell specs | → kaijutsu, registered at runtime |
