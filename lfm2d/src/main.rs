@@ -55,7 +55,10 @@ async fn main() {
     }
 
     let cli = Cli::parse();
-    if let Err(msg) = cli.validate() {
+    if let Err(msg) = cli
+        .validate()
+        .and_then(|()| lfm2d::config::refuse_retired_env(|k| std::env::var_os(k).is_some()))
+    {
         eprintln!("lfm2d: {msg}");
         std::process::exit(2);
     }

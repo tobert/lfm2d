@@ -208,6 +208,28 @@ pub struct Cli {
     pub probe: bool,
 }
 
+/// Env vars whose flags were removed. clap ignores an env var it has no
+/// argument for, so a deployment that still sets one would start without
+/// the behaviour it asked for; startup refuses instead.
+pub const RETIRED_ENV: &[&str] = &[
+    "LFM2D_ADJUDICATOR_PROMPT",
+    "LFM2D_CASCADE_ROUTES",
+    "LFM2D_CASCADE_SEVERE_LABELS",
+];
+
+/// Refuses a retired env var by name. `is_set` is the environment lookup,
+/// injected so the check is testable without touching the process env.
+pub fn refuse_retired_env(is_set: impl Fn(&str) -> bool) -> Result<(), String> {
+    match RETIRED_ENV.iter().find(|name| is_set(name)) {
+        Some(name) => Err(format!(
+            "{name} is set, but its flag was removed (2026-09-24): no spec is a default \
+             and the cascade is gone. Unset it; boot specs are --opinion-spec, and \
+             /v1/opinion and /v1/adjudicate name a spec per request"
+        )),
+        None => Ok(()),
+    }
+}
+
 impl Cli {
     /// Cross-field checks `clap` itself can't express. Pure and
     /// unit-testable without ever invoking the CLI parser — see the tests
@@ -376,6 +398,16 @@ mod tests {
     #[test]
     fn log_input_hash_defaults_off() {
         assert!(!base().log_input_hash, "a secrets-detection endpoint must not hash input by default");
+    }
+
+    #[test]
+    fn a_retired_env_var_is_refused_by_name() {
+        for name in RETIRED_ENV {
+            let err = refuse_retired_env(|k| k == *name).expect_err("a retired env var must stop startup");
+            assert!(err.contains(name), "the refusal must name {name}: {err}");
+        }
+        refuse_retired_env(|k| k == "LFM2D_BIND_ADDR").expect("a live env var is not refused");
+        refuse_retired_env(|_| false).expect("an empty environment is not refused");
     }
 
     // ------------------------------------------------------- adjudicator
