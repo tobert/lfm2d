@@ -221,8 +221,8 @@ fn predict_is_softmax_of_logits() {
 /// wrong label set.
 #[test]
 fn an_id2label_gap_fails_loudly() {
-    // Skips id 1: ids present are {0, 2} but the map has 3 entries, so id 2
-    // is out of range for "3 labels" — a real gap, not merely fewer labels.
+    // Skips id 2: ids present are {0, 1, 3} but the map has 3 entries, so id
+    // 3 is out of range for "3 labels" — a real gap, not merely fewer labels.
     let gappy = r#"{"0": "safe", "1": "risky", "3": "dangerous"}"#;
     let dir = write_checkpoint(&tiny_config_json(gappy), full_weights(3));
 

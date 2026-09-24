@@ -517,6 +517,10 @@ mod tests {
         assert!(cli.log_input_hash);
         let cli = Cli::parse_from(["lfm2d"]);
         assert!(!cli.log_input_hash, "must default to false when unset");
+        assert!(
+            Cli::try_parse_from(["lfm2d", "--log-input-hash"]).is_err(),
+            "a bare --log-input-hash must be refused, not read as true"
+        );
     }
 
     // ------------------------------------------------------------- --no-probe

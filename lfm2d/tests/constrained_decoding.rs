@@ -10,7 +10,7 @@
 //!    Random logits are a harsher adversary than a real model — a model at
 //!    least wants to produce JSON.
 //! 2. **A real checkpoint**, `#[ignore]`d for runtime (it hashes and loads a
-//!    6 GB GGUF and then decodes on CPU), gated the way `integration_real.rs`
+//!    6 GB GGUF and then decodes on CPU), gated the way `integration_real_spans.rs`
 //!    gates: FAIL LOUDLY with a fetch pointer rather than silently skip.
 //!    `LFM2D_ADJUDICATOR_MODEL` / `LFM2_MODELS_DIR` override the defaults.
 //!

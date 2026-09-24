@@ -811,12 +811,12 @@ impl Checkpoint {
         device: crate::device::DeviceArg,
         device_index: usize,
     ) -> Result<Self, String> {
-        let mut tokenizer =
-            tokenizers::Tokenizer::from_file(tokenizer_path).map_err(|e| e.to_string())?;
+        let mut tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| format!("tokenizer {}: {e}", tokenizer_path.display()))?;
         tokenizer.with_padding(None);
         tokenizer.with_truncation(None).map_err(|e| e.to_string())?;
-        let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let ct = gguf_file::Content::read(&mut file).map_err(|e| e.to_string())?;
+        let mut file = std::fs::File::open(path).map_err(|e| format!("GGUF {}: {e}", path.display()))?;
+        let ct = gguf_file::Content::read(&mut file).map_err(|e| format!("GGUF {}: {e}", path.display()))?;
         let embedded_template = ct
             .metadata
             .get("tokenizer.chat_template")
@@ -1310,6 +1310,38 @@ mod snapshot_id_tests {
         assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1100:hip7.2", "rev-a", 1.05).unwrap());
         assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1151:hip7.1", "rev-a", 1.05).unwrap());
         assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1151:hip7.2", "rev-b", 1.05).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod checkpoint_load_error_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    // A missing file must name itself: a bare "No such file or directory"
+    // leaves an operator (or a fresh clone's test run) guessing which of two
+    // paths it was.
+    #[test]
+    fn a_missing_tokenizer_names_its_path() {
+        let tok = PathBuf::from("/nonexistent/lfm2d-test/tokenizer.json");
+        let err = Checkpoint::load(Path::new("/nonexistent/model.gguf"), &tok, crate::device::DeviceArg::Cpu, 0)
+            .err()
+            .expect("a missing tokenizer must fail");
+        assert!(err.contains("/nonexistent/lfm2d-test/tokenizer.json"), "{err}");
+    }
+
+    #[test]
+    fn a_missing_gguf_names_its_path() {
+        let models = std::env::var_os("LFM2_MODELS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".models"));
+        let tok = models.join("LFM2.5-8B-A1B/tokenizer.json");
+        assert!(tok.is_file(), "missing tokenizer at {} (see the root README, Getting started)", tok.display());
+        let gguf = PathBuf::from("/nonexistent/lfm2d-test/model.gguf");
+        let err = Checkpoint::load(&gguf, &tok, crate::device::DeviceArg::Cpu, 0)
+            .err()
+            .expect("a missing GGUF must fail");
+        assert!(err.contains("/nonexistent/lfm2d-test/model.gguf"), "{err}");
     }
 }
 

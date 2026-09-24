@@ -76,9 +76,9 @@ hf download LiquidAI/LFM2.5-8B-A1B-GGUF LFM2.5-8B-A1B-Q5_K_M.gguf \
 hf download LiquidAI/LFM2.5-8B-A1B tokenizer.json --local-dir .models/LFM2.5-8B-A1B
 ```
 
-Tests that need weights **fail loudly** with the download command rather
-than skipping, so a plain `cargo test --workspace` wants all of the above
-except the GGUF:
+Tests that need weights **fail loudly** rather than skipping, naming the
+missing file (most print the `hf download` command too), so a plain
+`cargo test --workspace` wants all of the above except the GGUF:
 
 | weights | tests |
 |---|---|
@@ -87,8 +87,9 @@ except the GGUF:
 | `LFM2.5-ColBERT-350M` | `colbert_parity` |
 | `LFM2.5-Encoder-350M-PII-Detector` | `pii_parity`, `lfm2d/tests/integration_real_spans` |
 | `LFM2.5-Encoder-350M-Prompt-Router` | `router_parity` |
-| `LFM2.5-8B-A1B/tokenizer.json` | `lfm2d/tests/tokenize_api`, `probe_tokenize_telemetry_safety` |
+| `LFM2.5-8B-A1B/tokenizer.json` | `lfm2d/tests/tokenize_api`, `probe_tokenize_telemetry_safety`, and unit tests in `lfm2d/src/{adjudicator,tokenize_api}.rs` |
 | the GGUF (`#[ignore]`d; minutes on a GPU, hours on CPU) | `opinion_real`, `probe_real`, `spec_registry_real`, `constrained_decoding` |
+| Embedding + Router + PII and a GPU (`#[ignore]`d) | `lfm2d/tests/device_real`, via `demo/test_devices.sh` |
 
 `LFM2_MODELS_DIR` and `LFM2_TOKEN_CLF_DIR` point the tests elsewhere
 (a git worktree has no `.models/`). `demo/test_devices.sh <rocm|cuda|metal>`

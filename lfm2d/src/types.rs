@@ -63,8 +63,8 @@ pub struct ModelInfo {
     pub id: String,
     pub kind: ModelKind,
     pub weight_hash: String,
-    /// Only present for a classifier or a token classifier — an
-    /// embedder/router has no fixed label set (the router's "labels" are
+    /// Only present for a token classifier — an embedder/router has no
+    /// fixed label set (the router's "labels" are
     /// caller-supplied routes at call time, not a trained output width; see
     /// `src/routing.rs`'s module docs). For a token classifier this is
     /// `entity_types()` (BIOES prefixes stripped, deduped), NOT the raw
@@ -169,7 +169,7 @@ pub struct SpanResult {
     /// that was sent — NOT a codepoint/char index, NOT a UTF-16 code-unit
     /// index. `Lfm2TokenClassifier::Span` (the library type this is built
     /// from) documents itself as byte offsets and this type passes that
-    /// value through unmodified — see `engine_real.rs`'s `spans_outcome`.
+    /// value through unmodified — see `engine_real.rs`'s `to_wire_span`.
     /// A Rust caller (kaibo, the first consumer) can slice
     /// `&text[start..end]` directly. A Python/JS caller must NOT index its
     /// own string with these numbers directly — Python `str` and JS
