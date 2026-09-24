@@ -167,6 +167,14 @@ class PageTests(unittest.TestCase):
                     self.assertTrue(w[key].strip(), key)
                 self.assertTrue(w["fact"].strip() and "\n" not in w["fact"])
 
+    def test_house_rules_props_are_well_formed(self):
+        static = Path(server.__file__).parent / "static"
+        conf = json.loads((static / "house-rules.json").read_text())
+        doc = (static / conf["file"].lstrip("/")).read_text()
+        self.assertGreaterEqual(sum(l.startswith("- ") for l in doc.splitlines()), 10)
+        self.assertTrue(conf["commands"] and conf["finale"])
+        self.assertEqual(len(set(conf["commands"] + conf["finale"])), len(conf["commands"]) + len(conf["finale"]))
+
 
 if __name__ == "__main__":
     unittest.main()

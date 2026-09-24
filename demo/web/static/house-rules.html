@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House Rules</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080c; --ink: #e8ecf4; --dim: #5d6679; --mid: #9aa3b5; --faint: #1a1e29; --track: #121621;
+    --allow: #6fb7ff; --ask: #f5a54b; --rule: #f2d479; --a: #7ee0c3; --b: #ff6b86;
+    --serif: "Fraunces", Georgia, "Iowan Old Style", serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body { font-family: var(--serif); color: var(--ink); }
+  /* centred on the window; fit() scales it. A transform does not shrink the layout box, so centring by layout would push it off the bottom. */
+  #stage { position: absolute; left: 50%; top: 50%; transform-origin: center center; width: 540px; height: 960px; overflow: hidden;
+           background: radial-gradient(120% 70% at 50% 45%, #10131c 0%, var(--bg) 70%); }
+  header { position: absolute; top: 34px; left: 30px; right: 30px; }
+  .kicker { font-family: var(--mono); font-size: 12.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  #caption { margin-top: 10px; font-size: 25px; line-height: 1.18; font-weight: 600; min-height: 84px; transition: opacity .4s; }
+  #caption small { display: block; font-size: 15px; font-weight: 400; color: var(--mid); margin-top: 6px; line-height: 1.38; }
+  #caption code { font-family: var(--mono); font-size: .82em; }
+
+  .win { position: absolute; left: 30px; right: 30px; border-radius: 10px; overflow: hidden; background: #0a0c12; border: 1px solid #222838; }
+  .win .chrome { height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: #141824; border-bottom: 1px solid #222838;
+                 font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  .win .chrome i { width: 8px; height: 8px; border-radius: 50%; background: #2a3042; } .win .chrome span { margin-left: 8px; }
+  #file { top: 150px; height: 300px; }
+  #fview { position: absolute; top: 24px; bottom: 0; left: 0; right: 0; overflow: hidden; }
+  #flist { padding: 8px 12px; font-family: var(--mono); font-size: 10.5px; line-height: 1.45; transition: transform .7s cubic-bezier(.3,.8,.3,1); }
+  #flist .h { color: var(--a); margin-top: 6px; } #flist .t { color: var(--ink); font-weight: 600; } #flist .p { color: var(--dim); }
+  #flist .li { color: var(--mid); padding: 1px 4px; border-radius: 4px; transition: background .4s, color .4s; }
+  #flist .li.hit { background: color-mix(in srgb, var(--rule) 22%, transparent); color: var(--ink); outline: 1px solid var(--rule); }
+  #term { top: 462px; height: 74px; }
+  #tbody { padding: 9px 12px; font-family: var(--mono); font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  #tbody .p { color: var(--a); } #tbody .c { font-weight: 600; }
+  .cur { display: inline-block; width: .55em; height: 1.05em; background: var(--ink); vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #emb { position: absolute; top: 540px; left: 30px; right: 30px; font-family: var(--mono); font-size: 11px; color: var(--dim); min-height: 16px; }
+
+  #box { position: absolute; top: 562px; left: 120px; width: 300px; height: 92px; border-radius: 16px; text-align: center; padding-top: 11px;
+         background: linear-gradient(180deg, #121827, #0c1019); border: 1px solid #2a3450; transition: box-shadow .3s, border-color .3s; }
+  #box.busy { border-color: var(--allow); box-shadow: 0 0 0 1px var(--allow), 0 0 38px rgba(111,183,255,.35); }
+  #box .n { font-family: var(--mono); font-size: 27px; font-weight: 600; }
+  #box .m { font-family: var(--mono); font-size: 10.5px; color: var(--dim); margin-top: 1px; }
+  #box .clk { font-family: var(--mono); font-size: 12px; color: var(--mid); margin-top: 5px; min-height: 16px; font-variant-numeric: tabular-nums; }
+
+  #board { position: absolute; top: 674px; left: 30px; right: 30px; font-family: var(--mono); font-size: 12px; }
+  .bh, .br { display: grid; grid-template-columns: 1fr 62px 62px 62px; gap: 8px; align-items: center; }
+  .bh { color: var(--dim); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; padding-bottom: 5px; border-bottom: 1px solid var(--faint); }
+  .br { height: 30px; border-bottom: 1px solid var(--faint); } .br .cmd { color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bh span:not(:first-child), .br span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .br span.pend { color: #2a3040; }
+
+  .fly { position: absolute; z-index: 3; pointer-events: none; font-family: var(--mono); white-space: pre-wrap; will-change: transform, opacity; }
+  footer { position: absolute; bottom: 12px; left: 30px; right: 30px; font-family: var(--mono); font-size: 10px; color: var(--dim); line-height: 1.5; }
+  #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
+         background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
+  #end.show { opacity: 1; }
+  #end h1 { font-size: 44px; font-weight: 600; line-height: 1.12; } #end p { margin-top: 18px; font-size: 18px; color: #b5bdcc; line-height: 1.45; }
+  #end .url { font-family: var(--mono); font-size: 16px; color: var(--allow); margin-top: 30px; }
+  #gate { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px; padding: 40px;
+          background: rgba(7,8,12,.94); font-family: var(--mono); color: var(--dim); z-index: 5; cursor: pointer; }
+  #gate h1 { font-family: var(--serif); color: var(--ink); font-size: 48px; }
+  #gate.err { color: var(--b); cursor: default; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <header><div class="kicker" id="kicker">house rules</div><div id="caption"></div></header>
+  <div class="win" id="file"><div class="chrome"><i></i><i></i><i></i><span>AGENTS.md</span></div><div id="fview"><div id="flist"></div></div></div>
+  <div class="win" id="term"><div class="chrome"><i></i><i></i><i></i><span>agent session</span></div><div id="tbody"></div></div>
+  <div id="emb"></div>
+  <div id="box"><div class="n">lfm2d</div><div class="m" id="boxm">LFM2.5-8B-A1B</div><div class="clk" id="clk"></div></div>
+  <div id="board"></div>
+  <footer id="foot"></footer>
+  <div id="end">
+    <h1>One rule,<br>in focus,<br>beats the whole file.</h1>
+    <p>An embedder picks the AGENTS.md line that matters; LFM2.5-8B-A1B reads the command with it, on lfm2d. No rewriting, no summarizing. Every call you saw was live.</p>
+    <p class="url">github.com/tobert/lfm2d</p>
+  </div>
+  <div id="gate"><h1>House Rules</h1><div id="gatemsg">loading…</div></div>
+</div>
+<script>
+"use strict";
+// A consumer page: it owns its spec and uploads it at load, checks the names it uses
+// against the menu, and retrieves AGENTS.md bullets itself through /embed. The file's
+// text is a fact the harness hands over verbatim; the command is what gets judged.
+const SPEC_FILE = "/command-verdict-enum-v1.json", SET_FILE = "/house-rules.json";
+const VERDICT = "verdict", PASS = "allow";
+const QUOTED = chunk => `Rules quoted from the repository's AGENTS.md:\n${chunk}\n\n`;
+const WHOLE = doc => `The repository's AGENTS.md:\n${doc.trim()}\n\n`;
+const SOUND = { tick: 0.04, chord: 0.08, pulse: 0.022, whoosh: 0.05 };
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const params = new URLSearchParams(location.search);
+const AUTO = params.has("auto"), MUTE = params.has("mute") || AUTO;
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = p => (p >= 0.995 ? ">99" : p < 0.005 ? "<1" : Math.round(p * 100)) + "%";
+
+async function api(path, body, raw = false) {
+  const init = body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: raw ? body : JSON.stringify(body) };
+  const r = await fetch("/api" + path, init), j = await r.json();
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${j.error?.message ?? JSON.stringify(j)}`);
+  return j;
+}
+const unit = v => { const n = Math.hypot(...v); if (!(n > 0) || !isFinite(n)) throw new Error("bad embedding norm"); return v.map(x => x / n); };
+const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
+
+let D, minMass = 1;
+async function prepare() {
+  const set = await (await fetch(SET_FILE)).json();
+  const doc = await (await fetch(set.file)).text(), spec = await (await fetch(SPEC_FILE)).text();
+  // one chunk per bullet, carrying its section heading (as in the retrieval probe)
+  const chunks = []; let section = null;
+  const flist = $("flist"); flist.innerHTML = "";
+  for (const line of doc.split("\n")) {
+    const el = document.createElement("div");
+    if (line.startsWith("# ")) { el.className = "t"; el.textContent = line; }
+    else if (line.startsWith("## ")) { section = line.slice(3).trim(); el.className = "h"; el.textContent = line; }
+    else if (line.startsWith("- ")) { el.className = "li"; el.textContent = line; chunks.push({ text: `## ${section}\n${line}`, el }); }
+    else if (line.trim()) { el.className = "p"; el.textContent = line; }
+    else continue;
+    flist.append(el);
+  }
+  const reg = await api("/v1/opinion/specs", spec, true);
+  const menu = (await api("/v1/opinion/specs")).find(m => m.id === reg.id);
+  const verdict = menu?.fields.find(f => f.field === VERDICT);
+  if (verdict?.kind !== "choice" || !verdict.options.includes(PASS)) throw new Error(`spec has no choice "${VERDICT}" with "${PASS}"`);
+  const models = await api("/v1/models");
+  if (!models.some(m => m.kind === "embedder")) throw new Error("the daemon serves no embedder");
+  $("gatemsg").textContent = `embedding ${chunks.length} AGENTS.md bullets…`;
+  const vecs = await api("/embed", { inputs: chunks.map(c => c.text), kind: "document" });
+  if (vecs.length !== chunks.length) throw new Error("embedding count mismatch");
+  vecs.forEach((v, i) => { chunks[i].vec = unit(v); });
+  D = { set, doc, chunks, spec: reg.id, info: await api("/v1/adjudicator"),
+        questions: menu.fields.filter(f => f.kind === "choice").map(f => ({ field: f.field })) };
+  if (params.get("cache") !== "keep") {   // a first take reads fresh: push the described-state LRU past its capacity
+    const decoys = Math.ceil(menu.described_cache_capacity / D.questions.length) + 1;
+    for (let i = 0; i < decoys; i++) {
+      $("gatemsg").textContent = `clearing cached descriptions… ${i + 1}/${decoys}`;
+      await api("/v1/opinion", { spec: reg.id, state: { input: `echo house-rules-decoy-${i}-${Date.now()}` }, questions: D.questions, use_cache: true });
+    }
+  }
+}
+
+async function read(input, facts) {
+  const state = facts === undefined ? { input } : { input, facts };
+  const t0 = performance.now(); let live = true;
+  $("box").classList.add("busy");
+  (async () => { let n = 0; while (live) { $("clk").textContent = `reading… ${Math.round(performance.now() - t0)} ms`; if (n++ % 6 === 0) pulse(); await sleep(33); } })();
+  try {
+    const r = await api("/v1/opinion", { spec: D.spec, state, questions: D.questions, use_cache: true });
+    const wall = performance.now() - t0;
+    minMass = Math.min(minMass, ...r.answers.map(a => Math.exp(a.first_token_mass))); footer();
+    const v = r.answers.find(a => a.field === VERDICT);
+    const p = v.options.find(o => o.option === PASS).prob;
+    $("clk").textContent = `${Math.round(wall)} ms · ${r.cache.described === "hit" ? "reused description" : "fresh read"}`;
+    return { p, wall };
+  } finally { live = false; $("box").classList.remove("busy"); }
+}
+async function retrieve(cmd) {
+  const t0 = performance.now();
+  const [q] = await api("/embed", { inputs: [cmd], kind: "query" });
+  const qv = unit(q), ranked = D.chunks.map(c => ({ c, s: dot(qv, c.vec) })).sort((a, b) => b.s - a.s);
+  $("emb").textContent = `embedder: best-matching bullet, cosine ${ranked[0].s.toFixed(2)} · ${Math.round(performance.now() - t0)} ms`;
+  return ranked[0].c;
+}
+function footer() {
+  const i = D.info;
+  $("foot").innerHTML = `${esc(i.model_id)} + LFM2.5-Embedding-350M · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo · live over the tailnet<br>` +
+    `AGENTS.md is made up for this video · spec ${D.spec.slice(0, 12)}` + (minMass < 1 ? ` · answer-set mass ≥ ${(100 * minMass).toFixed(1)}%` : "");
+}
+
+// --- sound ---
+let ac, master;
+function audioInit() { ac = new AudioContext(); const c = ac.createDynamicsCompressor(); master = ac.createGain(); master.gain.value = 0.9; master.connect(c); c.connect(ac.destination); }
+function tone(freq, type, gain, dur, at = 0, glide) {
+  if (MUTE || !ac) return; const t = ac.currentTime + 0.005 + at, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t); if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function tick() {
+  if (MUTE || !ac) return; const n = ac.sampleRate * 0.02, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 6);
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = b; f.type = "highpass"; f.frequency.value = 2400; g.gain.value = SOUND.tick; s.connect(f); f.connect(g); g.connect(master); s.start();
+}
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+const pulse = () => tone(midi(81), "sine", SOUND.pulse, 0.08);
+const down = () => tone(midi(76), "sine", SOUND.whoosh, 0.45, 0, midi(64));
+const ding = () => tone(midi(84), "sine", 0.05, 0.6);
+function verdictChord(p) {
+  const root = 57 + Math.round(p * 7), iv = p >= 0.5 ? [0, 4, 7, 12] : [0, 1, 6];
+  iv.forEach((k, j) => tone(midi(root + k), p >= 0.5 ? "sine" : "triangle", SOUND.chord, 1.5, j * 0.03));
+}
+function allowColour(p) {
+  const a = [111, 183, 255], b = [245, 165, 75], k = Math.min(Math.max((p - 0.2) / 0.6, 0), 1);
+  return `rgb(${b.map((v, j) => Math.round(v + (a[j] - v) * k)).join(",")})`;
+}
+
+// --- motion ---
+let K = 1;
+function rectIn(el) { const s = $("stage").getBoundingClientRect(), r = el.getBoundingClientRect(); return { x: (r.left - s.left) / K, y: (r.top - s.top) / K, w: r.width / K, h: r.height / K }; }
+async function fly(html, from, to, { dur = 900, scale = 0.4, color, size = 11, delay = 0 } = {}) {
+  const f = document.createElement("div"); f.className = "fly"; f.innerHTML = html;
+  Object.assign(f.style, { left: from.x + "px", top: from.y + "px", width: from.w + "px", fontSize: size + "px", color: color ?? "var(--ink)" });
+  $("stage").append(f);
+  const dx = to.x + to.w / 2 - (from.x + from.w / 2), dy = to.y + to.h / 2 - (from.y + from.h / 2);
+  await f.animate([{ transform: "translate(0,0) scale(1)", opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: 0 }],
+                  { duration: dur, delay, easing: "cubic-bezier(.5,0,.3,1)", fill: "forwards" }).finished;
+  f.remove();
+}
+function scrollTo(el) {   // bring a bullet into the middle of the file view
+  const view = $("fview").offsetHeight, top = el.offsetTop - view / 2 + el.offsetHeight / 2;
+  const max = Math.max(0, $("flist").offsetHeight - view);
+  $("flist").style.transform = `translateY(${-Math.min(Math.max(top, 0), max)}px)`;
+}
+
+// --- picture ---
+async function caption(main, sub) { $("caption").style.opacity = 0; await sleep(340); $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1; }
+async function typeCmd(text) {
+  $("tbody").innerHTML = `<span class="p">$ </span><span class="c" id="ct"></span><span class="cur"></span>`;
+  for (const ch of text) { $("ct").insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(45); }
+  return $("ct");
+}
+function board(cols) {
+  $("board").innerHTML = `<div class="bh"><span>command</span>${cols.map(c => `<span>${esc(c)}</span>`).join("")}</div>`;
+}
+function row(cmd, n) {
+  const r = document.createElement("div"); r.className = "br";
+  r.innerHTML = `<span class="cmd">${esc(cmd)}</span>` + Array.from({ length: n }, () => `<span class="pend">·</span>`).join("") + (n < 3 ? "<span></span>".repeat(3 - n) : "");
+  $("board").append(r); return r;
+}
+function setCell(r, k, p) { const s = r.children[k + 1]; s.classList.remove("pend"); s.textContent = pct(p); s.style.color = allowColour(p); }
+const box = () => rectIn($("box"));
+
+async function oneCommand(cmd, cols) {
+  const r = row(cmd, cols);
+  $("emb").textContent = ""; D.chunks.forEach(c => c.el.classList.remove("hit"));
+  const ct = await typeCmd(cmd); await sleep(300);
+  down(); await fly(esc("$ " + cmd), rectIn(ct), box(), { size: 13 });
+  const alone = await read(cmd); setCell(r, 0, alone.p); verdictChord(alone.p);
+  await sleep(900);
+  const hit = await retrieve(cmd); scrollTo(hit.el); await sleep(750);
+  hit.el.classList.add("hit"); ding(); await sleep(900);
+  down(); await Promise.all([fly(esc("$ " + cmd), rectIn(ct), box(), { size: 13 }), fly(esc(hit.el.textContent), rectIn(hit.el), box(), { color: "var(--rule)", delay: 150 })]);
+  const ruled = await read(cmd, QUOTED(hit.text)); setCell(r, 1, ruled.p); verdictChord(ruled.p);
+  return { r, alone, ruled, ct, hit };
+}
+
+async function main() {
+  $("kicker").textContent = "house rules";
+  await caption("An AI agent is working in this repo.", "Its AGENTS.md has rules. Before each command, the harness picks the one that matters.");
+  board(["alone", "1 rule", ""]);
+  await sleep(2200);
+  const res = [];
+  for (const [i, cmd] of D.set.commands.entries()) {
+    $("kicker").textContent = `house rules · ${i + 1}/${D.set.commands.length}`;
+    await caption(i === 0 ? "First, the command alone." : "Next.", i === 0 ? "Then an embedder finds the best-matching line in AGENTS.md, and it goes down with the command." : "");
+    const x = await oneCommand(cmd, 2); res.push(x);
+    const d = x.ruled.p - x.alone.p;
+    await caption(Math.abs(d) >= 0.25 ? `One line moved it: ${pct(x.alone.p)} → ${pct(x.ruled.p)}.` : "The rule barely moved this one.",
+                  Math.abs(d) >= 0.25 ? (d < 0 ? "The rule says no, and the model listened." : "The rule says it's fine, and the model listened.") : `${pct(x.alone.p)} → ${pct(x.ruled.p)}.`);
+    await sleep(3000);
+  }
+  // finale: the same thing with the whole file
+  $("kicker").textContent = "house rules · the whole file";
+  await caption("Why not hand it the whole file?", "Two more commands, three ways: alone, with one rule, with all of AGENTS.md.");
+  board(["alone", "1 rule", "whole"]);
+  await sleep(2400);
+  const fin = [];
+  for (const cmd of D.set.finale) {
+    const x = await oneCommand(cmd, 3);
+    await sleep(800);
+    D.chunks.forEach(c => c.el.classList.remove("hit"));
+    $("flist").style.transform = "translateY(0)"; await sleep(700);
+    const lines = [...$("flist").children].filter(el => el.offsetTop < $("fview").offsetHeight - 10);
+    down(); await Promise.all([fly(esc("$ " + cmd), rectIn(x.ct), box(), { size: 13 }),
+      ...lines.map((el, j) => fly(esc(el.textContent), rectIn(el), box(), { delay: 80 + j * 45, color: "var(--mid)", dur: 1000 }))]);
+    const whole = await read(cmd, WHOLE(D.doc)); setCell(x.r, 2, whole.p); verdictChord(whole.p);
+    fin.push({ cmd, ...x, whole });
+    await sleep(2200);
+  }
+  const slow = fin.map(f => f.whole.wall / f.ruled.wall), wrongWay = fin.filter(f => Math.abs(f.whole.p - f.ruled.p) >= 0.25);
+  const short = c => c.replace(/^cd \S+ && /, "").split(" ").slice(0, 2).join(" ");
+  if (wrongWay.length)
+    await caption(`The whole file got ${wrongWay.length === fin.length ? "both" : "one"} wrong.`,
+                  wrongWay.map(f => `${esc(short(f.cmd))} ${pct(f.ruled.p)} → ${pct(f.whole.p)}`).join(" · ") +
+                  ` · ${(slow.reduce((a, b) => a + b) / slow.length).toFixed(1)}× slower`);
+  else await caption("The whole file agrees here.", `But it took ${(slow.reduce((a, b) => a + b) / slow.length).toFixed(1)}× as long.`);
+  await sleep(6500);
+  $("end").classList.add("show");
+}
+
+function fit() { K = Math.min(innerWidth / 540, innerHeight / 960); $("stage").style.transform = `translate(-50%, -50%) scale(${K})`; }
+addEventListener("resize", fit); fit();
+
+(async () => {
+  try { await prepare(); }
+  catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
+  footer(); $("boxm").textContent = `${D.info.model_id} · ${D.info.backend === "rocm" ? "ROCm" : D.info.backend}`;
+  $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
+  if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
+  if (!MUTE) audioInit();
+  $("gate").remove(); await sleep(500);
+  try { await main(); } catch (e) { await caption("A call failed.", esc(String(e.message ?? e))); throw e; }
+})();
+</script>
+</body>
+</html>

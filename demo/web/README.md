@@ -31,6 +31,21 @@ start if the tokenizer's pieces and the probe's ids disagree. Probes run with
 - `?scene=3` starts at the third scene, for retakes.
 - The sound mapping lives in the `SOUND` object at the top of the script.
 
+## House Rules (`/house-rules`)
+
+A made-up `AGENTS.md` (`house-rules-AGENTS.md`, the file from the
+2026-09-24 retrieval probe) beside the agent's terminal. The page embeds
+the file's bullets through `/embed` at load; for each command it reads the
+command alone, embeds the command as a query, highlights the best-matching
+bullet, and reads the command again with that bullet quoted verbatim as
+facts. The finale adds a third read with the whole file. First takes
+(2026-09-24): `rm -rf data/survey` 52% -> 4% allow, `rm -rf docs/` 5% ->
+56%; `git status` 74 / 82 / 3% and `terraform apply -auto-approve` 2 /
+28 / 90% (alone / one rule / whole file). Captions come from the numbers.
+There is no similarity floor by design (Amy: retrieval is "about bringing
+texts into focus for our system 1"), so an unrelated bullet can come back
+(`git status` retrieves the commit-message rule).
+
 ## Two Worlds (`/two-worlds`)
 
 An agent's terminal on top, lfm2d below it. Each command is read three
