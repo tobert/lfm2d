@@ -91,7 +91,7 @@ name is 403. Open items:
 unsure, and always after a `404`. It records `id` and `snapshot_id` beside
 every decision.
 
-## Tokenize and probe endpoints (ruled 2026-09-23)
+## Tokenize and probe endpoints (ruled 2026-09-23; MERGED `dd64626`)
 
 Amy: "if we don't still have a tokenizing endpoint on lfm2d I think we should
 still have that. might add a general inference endpoint too so we can use it
@@ -194,8 +194,10 @@ are (`~/.local/share/lfm2-training-data/`); they never lived in a repo.
    `build_facts`, the hook, and the shell evals. Repoint `gate.toml`.
 5. **Remove shell material from lfm2d**: code, tests, prompts, docs.
    Rewrite the READMEs, CLAUDE.md and AGENTS.md.
-5b. **Tokenize + probe endpoints**, after registration merges (both touch
-   `Handle`).
+5b. **Tokenize + probe endpoints** — DONE `dd64626`. The probe reproduces
+   `/v1/opinion` bit-identically given its decode schedule (`decode_from`);
+   without it the gap is up to 3.4 nats. Exact-ids replay via
+   `rendered_token_ids`.
 6. **Delete this doc.** The kaiseki rename can ride here; see the memory
    note about copying the memory dir first.
 

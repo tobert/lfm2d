@@ -70,9 +70,11 @@ spec:
           # Same LAN gitea registry as the encoder image. A real version,
           # never `:latest`.
           #
-          # Running imageID digest for 0.1.2, read back off the pod
-          # 2026-09-22 (31ff707: several questions per request, field names
-          # with a quote refused at load):
+          # Running imageID digest for 0.2.0, read back off the pod
+          # 2026-09-24 (dd64626: runtime spec registration, POST
+          # /v1/tokenize, POST /v1/probe):
+          #   sha256:53b9d0d99cf1db09faabaf5362915883acbea9fcc0bbadd5ca12f64b349da9f7
+          # 0.1.2 (31ff707, several questions per request) was
           #   sha256:4fd4a4cc3228f8e11be4d6611ec093390d6b9c2becc09c2ca360bee4fcd3a635
           # 0.1.1 (c18543f, `rendered: true`, demo specs) was
           #   sha256:3937c201ec4a48099f6c3ddab937bc053b55eed5411be742a9839fb96ef1135b
@@ -84,7 +86,7 @@ spec:
           # to ready including the first-run kernel compile (40 files, 3.1 MB,
           # persisted on the host cache path below). Startup probe budget is
           # 5 min; the pull happens before it starts counting.
-          image: 192.168.1.2:3000/amy/lfm2d-system1:0.1.2
+          image: 192.168.1.2:3000/amy/lfm2d-system1:0.2.0
           imagePullPolicy: IfNotPresent
           args:
             # LFM2.5-8B-A1B Q5_K_M — the checkpoint every F9 number was

@@ -5,7 +5,7 @@
 # prompt specs. The GGUF and tokenizer are mounted at runtime
 # (deploy/k8s-zorak-system1.yaml), never baked in.
 #
-#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.1.2 \
+#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.2.0 \
 #       -f lfm2d/Containerfile.rocm .
 #
 # Build context is the repo ROOT; .containerignore allowlists what is
@@ -21,9 +21,11 @@
 # tag (7.4 GB) is not needed. The same image is the runtime stage so the
 # libraries are the ones the binary was linked against.
 #
-# The prompt specs are part of the daemon's identity (`snapshot_id` hashes
-# the rendered prefix and the opinion block), so they ship in the image and
-# a spec change is an image release, not a config edit.
+# The BOOT prompt specs are part of the daemon's identity (`snapshot_id`
+# hashes the rendered prefix and the opinion block), so they ship in the
+# image and changing one is an image release. Since 0.2.0 a consumer can
+# also upload its own specs at runtime (`POST /v1/opinion/specs`,
+# content-addressed); those need no release.
 
 ARG ROCM_IMAGE=docker.io/rocm/dev-ubuntu-24.04:7.2.4
 
