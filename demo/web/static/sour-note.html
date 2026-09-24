@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Sour Note</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080c; --ink: #e8ecf4; --dim: #5d6679; --faint: #1a1e29;
+    --cool: #9fd8ff; --warm: #f5e6a3; --hot: #ff9a3c; --sour: #ff3355;
+    --serif: "Fraunces", Georgia, "Iowan Old Style", serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body { display: grid; place-items: center; font-family: var(--serif); color: var(--ink); }
+  #stage {
+    width: 540px; height: 960px; position: relative; overflow: hidden;
+    background: radial-gradient(120% 70% at 50% 35%, #10131c 0%, var(--bg) 70%);
+    transform-origin: center center;
+  }
+  #flash { position: absolute; inset: 0; background: var(--sour); opacity: 0; pointer-events: none; }
+  header { position: absolute; top: 44px; left: 36px; right: 36px; }
+  .kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  #caption { margin-top: 14px; font-size: 30px; line-height: 1.18; font-weight: 600; min-height: 108px;
+             transition: opacity .5s; }
+  #caption small { display: block; font-size: 17px; font-weight: 400; color: var(--dim); margin-top: 8px; line-height: 1.35; }
+  #text { position: absolute; top: 250px; left: 36px; right: 36px; font-size: 25px; line-height: 1.5; }
+  #text.mono { font-family: var(--mono); font-size: 17px; line-height: 1.7; white-space: pre-wrap; }
+  #text .ctx { color: var(--dim); }
+  .tok { transition: color .25s, background-color .25s; border-radius: 3px; color: #2a3040; }
+  .tok.on { color: var(--c); }
+  .tok.now { background: color-mix(in srgb, var(--c) 22%, transparent); }
+  .tok.sour { color: var(--sour); text-decoration: underline wavy var(--sour) 2px; text-underline-offset: 6px; }
+  #meter { position: absolute; left: 36px; right: 36px; top: 612px; display: flex; justify-content: space-between;
+           align-items: baseline; font-family: var(--mono); }
+  #meter .label { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  #nats { font-size: 44px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #prob { font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; }
+  canvas { position: absolute; left: 36px; top: 676px; width: 468px; height: 170px; }
+  #card { position: absolute; left: 36px; right: 36px; top: 492px; padding: 16px 18px; border-radius: 10px;
+          background: #1b0d12; border: 1px solid var(--sour); font-family: var(--mono); font-size: 15px; line-height: 1.6;
+          opacity: 0; transform: translateY(10px); transition: opacity .35s, transform .35s; }
+  #card.show { opacity: 1; transform: none; }
+  #card b { color: var(--cool); font-weight: 600; } #card i { color: var(--sour); font-style: normal; font-weight: 600; }
+  footer { position: absolute; bottom: 30px; left: 36px; right: 36px; font-family: var(--mono); font-size: 11.5px;
+           color: var(--dim); line-height: 1.6; }
+  #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 48px;
+         background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; }
+  #end.show { opacity: 1; }
+  #end h1 { font-size: 46px; font-weight: 600; } #end p { margin-top: 18px; font-size: 20px; color: #b5bdcc; line-height: 1.45; }
+  #end .url { font-family: var(--mono); font-size: 16px; color: var(--cool); margin-top: 34px; }
+  #gate { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px;
+          background: rgba(7,8,12,.92); font-family: var(--mono); color: var(--dim); z-index: 5; cursor: pointer; }
+  #gate h1 { font-family: var(--serif); color: var(--ink); font-size: 48px; }
+  #gate.err { color: var(--sour); cursor: default; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="flash"></div>
+  <header><div class="kicker" id="kicker">the sour note</div><div id="caption"></div></header>
+  <div id="text"></div>
+  <div id="card"></div>
+  <div id="meter"><div><div class="label">surprise</div><div id="nats">&nbsp;</div></div><div id="prob"></div></div>
+  <canvas id="seis" width="936" height="340"></canvas>
+  <footer id="foot">LFM2.5-8B-A1B · candle · ROCm on Strix Halo</footer>
+  <div id="end">
+    <h1>Every note is a real number.</h1>
+    <p>Per-token log-probabilities from LFM2.5&#8209;8B&#8209;A1B, served by lfm2d on candle + ROCm. No smoothing, no staging.</p>
+    <p class="url">github.com/tobert/lfm2d</p>
+  </div>
+  <div id="gate"><h1>The Sour Note</h1><div id="gatemsg">tuning…</div></div>
+</div>
+<script>
+"use strict";
+// Each scene: text the model has already read (ctx), then text it reads now (read),
+// scored token by token through /v1/probe. `sour: true` marks the scene whose
+// loudest token gets the "what did it expect" card.
+const BOS = "<|startoftext|>";
+const MOBY = "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.";
+const SPICY = MOBY.replace("watery", "spicy");
+const POD = "$ kubectl delete pod web-7f9c -n staging";
+const SCENES = [
+  { caption: "A language model reads a passage.", sub: "Every token is a note. The more it surprises the model, the more sour the note.",
+    ctx: "", read: MOBY, tempo: 150 },
+  { caption: "Second time through.", sub: "It has read this once now. It can hum along.",
+    ctx: MOBY + "\n\n", read: MOBY, tempo: 120 },
+  { caption: "Now change one word.", sub: "Same passage, one word different.",
+    ctx: MOBY + "\n\n", read: SPICY, tempo: 120, sour: true },
+  { caption: "Same trick, in a terminal.", sub: "Two identical commands, then a third that isn't.",
+    ctx: POD + "\n" + POD + "\n", read: "$ kubectl delete namespace production", tempo: 170, sour: true, mono: true,
+    coda: "Surprise isn't judgement: the model notices this isn't what it saw, not that it's dangerous. Judging is a different instrument in lfm2d." },
+];
+// Sound design knobs. s = surprise in nats (-logprob).
+const SOUND = { scale: [0, 2, 4, 7, 9], root: 57, hum: 0.10, detunePerNat: 14, maxDetune: 160,
+                clusterFrom: 5, clusterSpan: 11, cap: 18 };
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const params = new URLSearchParams(location.search);
+const AUTO = params.has("auto");           // no click, so no sound: browsers need a gesture
+const MUTE = params.has("mute") || AUTO;
+const FIRST = Math.max(0, Number(params.get("scene") ?? 1) - 1);   // ?scene=3 starts at the third scene, for retakes
+
+async function api(path, body) {
+  const r = await fetch("/api" + path, body === undefined ? {} :
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${j.error?.message ?? JSON.stringify(j)}`);
+  return j;
+}
+
+// Token pieces with the text each one completes, decoded in order so a token
+// that splits a UTF-8 character shows nothing until the character is whole.
+function pieces(text, tokens) {
+  const bytes = new TextEncoder().encode(text), dec = new TextDecoder();
+  return tokens.map(t => dec.decode(bytes.slice(t.start, t.end), { stream: true }));
+}
+function bytePrefix(text, end) { return new TextDecoder().decode(new TextEncoder().encode(text).slice(0, end)); }
+function show(piece) { return piece.replace(/^Ġ/, " ").replace(/Ċ/g, "⏎").replace(/Ġ/g, " "); }
+
+async function prepare() {
+  const info = await api("/v1/adjudicator");
+  for (const sc of SCENES) {
+    const r = await api("/v1/probe", { text: BOS + sc.ctx, top_k: 0, use_cache: false, continuations: [sc.read] });
+    const opt = r.continuations.options[0];
+    const tk = await api("/v1/tokenize", { model: info.model_id, text: sc.read });
+    // The page draws tokenizer pieces over the probe's numbers; they must be the same tokens.
+    if (!opt.canonical) throw new Error(`scene "${sc.caption}": continuation is not canonical after its context`);
+    if (JSON.stringify(tk.ids) !== JSON.stringify(opt.tokens)) throw new Error(`scene "${sc.caption}": tokenize ids differ from probe ids`);
+    sc.s = opt.token_logprobs.map(lp => -lp);
+    sc.text = pieces(sc.read, tk.tokens);
+    sc.tokens = tk.ids;                 // ids pick the pitch: the same text always plays the same tune
+    sc.backend = r.backend; sc.sha = r.rendered_sha256;
+    if (sc.sour) {
+      sc.peak = sc.s.reduce((best, s, i) => (i > 1 && s > sc.s[best] ? i : best), 2);
+      const prefix = bytePrefix(sc.read, tk.tokens[sc.peak].start);
+      const e = await api("/v1/probe", { text: BOS + sc.ctx + prefix, top_k: 3, use_cache: false });
+      sc.expected = e.top_logprobs;
+    }
+  }
+  return info;
+}
+
+// --- sound ---
+let ac, master, verb;
+function audioInit() {
+  ac = new AudioContext();
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4;
+  master = ac.createGain(); master.gain.value = 0.9; master.connect(comp); comp.connect(ac.destination);
+  verb = ac.createConvolver(); const len = ac.sampleRate * 2.4, ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+  verb.buffer = ir; const wet = ac.createGain(); wet.gain.value = 0.28; verb.connect(wet); wet.connect(master);
+}
+function voice(freq, type, gain, t, dur, detune = 0) {
+  const o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+  o.type = type; o.frequency.value = freq; o.detune.value = detune;
+  f.type = "lowpass"; f.frequency.value = 900 + gain * 9000;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(f); f.connect(g); g.connect(master); g.connect(verb); o.start(t); o.stop(t + dur + 0.05);
+}
+function note(tokenId, index, s) {
+  if (MUTE || !ac) return;
+  const t = ac.currentTime + 0.01, deg = SOUND.scale[tokenId % SOUND.scale.length];
+  const midi = SOUND.root + deg + 12 * (index % 3 === 2 ? 1 : 0), freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const x = Math.min(s, SOUND.cap);
+  voice(freq, "sine", SOUND.hum + x * 0.012, t, 0.35 + x * 0.05);
+  if (x > 0.5) voice(freq, "triangle", Math.min(0.02 + x * 0.01, 0.16), t, 0.3 + x * 0.05, Math.min(x * SOUND.detunePerNat, SOUND.maxDetune));
+  const c = (x - SOUND.clusterFrom) / SOUND.clusterSpan;
+  if (c > 0) {                          // sour: a minor second and a tritone, louder and longer with surprise
+    const k = Math.min(c, 1), dur = 0.6 + k * 1.8;
+    voice(freq * Math.pow(2, 1 / 12), "sawtooth", 0.05 + k * 0.12, t, dur);
+    voice(freq * Math.pow(2, 6 / 12), "sawtooth", 0.04 + k * 0.10, t, dur, 11);
+    voice(freq / 2, "square", k * 0.08, t, dur);
+  }
+}
+
+// --- picture ---
+function colour(s) {
+  const stops = [[0, [159, 216, 255]], [4, [245, 230, 163]], [9, [255, 154, 60]], [15, [255, 51, 85]]];
+  for (let i = 1; i < stops.length; i++) if (s <= stops[i][0]) {
+    const [a, ca] = stops[i - 1], [b, cb] = stops[i], k = (s - a) / (b - a);
+    return `rgb(${ca.map((v, j) => Math.round(v + (cb[j] - v) * k)).join(",")})`;
+  }
+  return "rgb(255,51,85)";
+}
+const cv = $("seis"), g2 = cv.getContext("2d");
+function drawSeis(sc, upto) {
+  const W = cv.width, H = cv.height, n = sc.s.length, bw = W / n, top = 18;
+  g2.clearRect(0, 0, W, H);
+  g2.font = "20px JetBrains Mono, monospace"; g2.fillStyle = "#3a4152"; g2.strokeStyle = "#1a1e29"; g2.lineWidth = 2;
+  for (const v of [5, 10, 15]) { const y = H - (v / SOUND.cap) * (H - top); g2.beginPath(); g2.moveTo(0, y); g2.lineTo(W, y); g2.stroke(); g2.fillText(v, 4, y - 6); }
+  g2.fillText("nats", W - 56, top + 4);
+  for (let i = 0; i < upto; i++) {
+    const h = Math.max(3, (Math.min(sc.s[i], SOUND.cap) / SOUND.cap) * (H - top));
+    g2.fillStyle = colour(sc.s[i]); g2.fillRect(i * bw + 1, H - h, Math.max(bw - 2, 2), h);
+  }
+}
+function setMeter(s) {
+  $("nats").textContent = s.toFixed(1) + " nats"; $("nats").style.color = colour(s);
+  const p = Math.exp(-s);
+  $("prob").innerHTML = `chance the model gave it<br>${p >= 0.001 ? (p * 100).toFixed(p > 0.1 ? 0 : 1) + "%" : "1 in " + Math.round(1 / p).toLocaleString()}`;
+}
+async function caption(main, sub) {
+  $("caption").style.opacity = 0; await sleep(350);
+  $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1;
+}
+
+async function play(sc, n) {
+  $("card").classList.remove("show"); $("nats").innerHTML = "&nbsp;"; $("prob").textContent = "";
+  $("kicker").textContent = `the sour note · ${n + 1}/${SCENES.length}`;
+  await caption(sc.caption, sc.sub);
+  const box = $("text"); box.className = sc.mono ? "mono" : ""; box.innerHTML = "";
+  if (sc.mono && sc.ctx) { const c = document.createElement("span"); c.className = "ctx"; c.textContent = sc.ctx; box.append(c); }
+  const spans = sc.text.map(p => { const e = document.createElement("span"); e.className = "tok"; e.textContent = p; box.append(e); return e; });
+  drawSeis(sc, 0); await sleep(1400);
+  for (let i = 0; i < spans.length; i++) {
+    const s = sc.s[i], near = sc.sour && i >= sc.peak - 3 && i < sc.peak;
+    spans.forEach(e => e.classList.remove("now"));
+    spans[i].style.setProperty("--c", colour(s)); spans[i].classList.add("on", "now");
+    note(sc.tokens[i], i, s); setMeter(s); drawSeis(sc, i + 1);
+    if (sc.sour && i === sc.peak) { await sour(sc, spans[i]); continue; }
+    await sleep(sc.tempo * (near ? 2.2 : 1));
+  }
+  spans.forEach(e => e.classList.remove("now"));
+  if (sc.coda) { await sleep(900); await caption("It noticed.", sc.coda); await sleep(5200); }
+  else await sleep(1600);
+}
+async function sour(sc, span) {
+  span.classList.add("sour");
+  const f = $("flash"); f.animate([{ opacity: 0.45 }, { opacity: 0 }], { duration: 700, easing: "ease-out" });
+  $("stage").animate([{ transform: stageT + " translateX(-7px)" }, { transform: stageT + " translateX(6px)" }, { transform: stageT }], { duration: 260 });
+  const top = sc.expected[0], got = show(sc.text[sc.peak]);
+  let word = sc.text[sc.peak];            // the rest of the word the token starts, for a reader who doesn't think in tokens
+  for (let j = sc.peak + 1; j < sc.text.length && /^[\p{L}\p{N}]/u.test(sc.text[j]); j++) word += sc.text[j];
+  const odds = Math.round(Math.exp(sc.s[sc.peak])).toLocaleString();
+  const pct = (Math.exp(top.logprob) * 100);
+  $("card").innerHTML = `expected <b>“${show(top.text)}”</b> · ${pct >= 99.95 ? "99.9+" : pct.toFixed(1)}% sure<br>got <i>“${got}”</i>${word !== sc.text[sc.peak] ? ` (of “${word.trim()}”)` : ""} · 1 in ${odds}`;
+  await sleep(500); $("card").classList.add("show"); await sleep(3200);
+}
+
+let stageT = "";
+function fit() {
+  const k = Math.min(innerWidth / 540, innerHeight / 960);
+  stageT = `scale(${k})`; $("stage").style.transform = stageT;
+}
+addEventListener("resize", fit); fit();
+
+(async () => {
+  let info;
+  try { info = await prepare(); }
+  catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
+  $("foot").innerHTML = `${info.model_id} · candle · ${SCENES[0].backend === "rocm" ? "ROCm" : SCENES[0].backend} on Strix Halo<br>live /v1/probe · ${info.dtype} · weights ${info.weight_hash.slice(0, 12)}`;
+  $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
+  if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
+  if (!MUTE) audioInit();
+  $("gate").remove(); await sleep(700);
+  for (let i = FIRST; i < SCENES.length; i++) await play(SCENES[i], i);
+  $("end").classList.add("show");
+})();
+</script>
+</body>
+</html>
