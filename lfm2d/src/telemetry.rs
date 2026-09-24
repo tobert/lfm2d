@@ -129,7 +129,10 @@ fn resource(service_name: &str, models: &[ModelInfo], execution: &ExecutionMetad
         .with_attribute(KeyValue::new(
             "lfm2d.execution.dtype",
             execution.dtype.clone(),
-        ));
+        ))
+        // The candle fork revision the kernels came from: numbers measured
+        // under one build are not promised under another.
+        .with_attribute(KeyValue::new("lfm2d.candle_rev", crate::adjudicator::CANDLE_REV));
     if let Some(name) = &execution.device_name {
         builder =
             builder.with_attribute(KeyValue::new("lfm2d.execution.device_name", name.clone()));

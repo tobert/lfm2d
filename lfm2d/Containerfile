@@ -18,6 +18,8 @@ WORKDIR /build
 # to resolve, so both are copied up front.
 COPY Cargo.toml Cargo.lock ./
 COPY lfm2d/Cargo.toml lfm2d/Cargo.toml
+# build.rs names the candle revision from Cargo.lock (adjudicator::CANDLE_REV).
+COPY lfm2d/build.rs lfm2d/build.rs
 RUN mkdir -p src && echo "fn main() {}" > src/main.rs \
     && mkdir -p lfm2d/src \
     && echo "fn main() {}" > lfm2d/src/main.rs \

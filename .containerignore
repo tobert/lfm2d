@@ -7,5 +7,6 @@
 !Cargo.lock
 !src/
 !lfm2d/Cargo.toml
+!lfm2d/build.rs
 !lfm2d/src/
 !demo/specs/

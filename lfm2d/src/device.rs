@@ -57,6 +57,12 @@ pub struct ExecutionDevice {
     pub device: Device,
     pub backend: DeviceArg,
     pub selection_reasons: Vec<String>,
+    /// What the kernels were built for, as specific as the backend can say:
+    /// `rocm:gfx1151:hip7.2`, or the backend's bare name where candle does
+    /// not yet expose more (cpu, and CUDA and Metal until their ports). Part
+    /// of every `snapshot_id`, because numbers do not transfer between
+    /// targets.
+    pub identity: String,
 }
 
 impl ExecutionDevice {
@@ -75,18 +81,28 @@ impl ExecutionDevice {
         let device = if backend == DeviceArg::Cpu { Device::Cpu } else {
             initialized.ok_or("selected GPU without an initialized device")?
         };
-        Ok(Self { device, backend, selection_reasons })
+        let identity = identity_of(&device, backend);
+        Ok(Self { device, backend, selection_reasons, identity })
     }
 
     pub fn metadata(&self, dtype: DType) -> crate::telemetry::ExecutionMetadata {
         crate::telemetry::ExecutionMetadata {
             device_type: if self.device.is_cpu() { "cpu" } else { "gpu" }.into(),
             backend: self.backend.as_str().into(),
-            // Candle does not expose a portable hardware name. Avoid reporting
-            // the host's installed GPU as though it were necessarily selected.
-            device_name: None,
+            // The selected device's own identity, only where it names more
+            // than the backend (ROCm today); never the host's installed GPU
+            // read some other way, which need not be the one selected.
+            device_name: (self.identity != self.backend.as_str()).then(|| self.identity.clone()),
             dtype: format!("{dtype:?}").to_lowercase(),
         }
+    }
+}
+
+fn identity_of(device: &Device, backend: DeviceArg) -> String {
+    match device {
+        #[cfg(feature = "rocm")]
+        Device::Rocm(d) => format!("rocm:{}:hip{}", d.arch(), d.hip_version()),
+        _ => backend.as_str().to_string(),
     }
 }
 
@@ -123,6 +139,10 @@ mod tests {
         assert_eq!(metadata.device_type, "cpu");
         assert_eq!(metadata.backend, "cpu");
         assert_eq!(metadata.dtype, "f16");
+        // The identity snapshot_id hashes. On CPU it says no more than the
+        // backend, so telemetry gets no device_name rather than a repeat.
+        assert_eq!(execution.identity, "cpu");
+        assert_eq!(metadata.device_name, None);
     }
 
     #[test]

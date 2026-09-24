@@ -441,8 +441,10 @@ Resource attributes: `service.name`
 `main.rs`, AFTER models finish loading (weight hashes aren't known any
 earlier; see `src/telemetry.rs`'s module docs). The same resource is attached
 to traces, metrics, and logs. Device metadata comes from the loaded engine,
-not host hardware inventory; optional `lfm2d.execution.device_name` is omitted
-until a hardware name is available through the backend interface. Metrics:
+not host hardware inventory; `lfm2d.execution.device_name` carries the
+selected device's identity where the backend can name its target (ROCm:
+`rocm:gfx1151:hip7.2`) and is omitted elsewhere, and `lfm2d.candle_rev` names
+the candle build. Metrics:
 `lfm2d.worker.queue_depth` (observable gauge over an `AtomicUsize`,
 incremented on send, decremented when the worker picks a command up),
 `lfm2d.request.duration` (histogram, by route+status),
@@ -528,14 +530,13 @@ The task spec left a few things implicit; here's what was decided and why
 
 ## Problems noted, not fixed
 
-- **`snapshot_id` names the backend, not the GPU or the candle build.**
-  It hashes `"rocm"`/`"cuda"`, so two AMD cards that take different kernel
-  paths (the fork's `RDNA2`/`RDNA3` guards), or two builds of the candle
-  fork, share a `snapshot_id` while their distributions differ. A consumer
-  that refits on `snapshot_id` would miss that. Fix: add the device arch
-  and the candle revision to the identity; the ROCm device does not expose
-  its arch name yet, so it starts in the fork. Carried from the step-5
-  split, 2026-09-24.
+- **`snapshot_id` names the GPU target only on ROCm.** Since 2026-09-24
+  it hashes the device identity (`rocm:gfx1151:hip7.2`, from the fork's
+  `RocmDevice::arch()`/`hip_version()`) and the candle revision
+  (`CANDLE_REV`, read from `Cargo.lock` by `lfm2d/build.rs`). CUDA and
+  Metal still report the bare backend name: two NVIDIA cards would share a
+  `snapshot_id`. The CUDA port should add the compute capability the same
+  way.
 - **Spec registration telemetry has no source address.** The daemon has
   no `ConnectInfo` wiring, so a registration or eviction log line cannot
   say who uploaded the spec.
@@ -635,9 +636,10 @@ re-uploading the same spec is free; an unknown or evicted `spec` is `404`,
 the cue to upload and retry. There is no default spec: `/v1/opinion` and
 `/v1/adjudicate` both require `spec`, and `/v1/adjudicate` without one is
 a `400` naming the menu. `GET /v1/adjudicator` reports the checkpoint
-only (`model_id`, `weight_hash`, `tokenizer_hash`, `context_limit`,
-`backend`, `dtype`, `sampling`, `weight_dtypes`); per-spec identity is
-each menu entry's `snapshot_id`. See the guide's "Runtime spec
+and where it runs (`model_id`, `weight_hash`, `tokenizer_hash`,
+`context_limit`, `backend`, `device`, `candle_rev`, `dtype`, `sampling`,
+`weight_dtypes`); per-spec identity is each menu entry's `snapshot_id`,
+which hashes `device` and `candle_rev` too. See the guide's "Runtime spec
 registration" and `docs/integration.md` invariants 12 and 14.
 
 Two more routes are answered without ever entering a spec's judgement

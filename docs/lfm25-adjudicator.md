@@ -150,9 +150,10 @@ curl --fail-with-body 'http://127.0.0.1:18152/v1/adjudicate' \
 
 ## Response contract
 
-`GET /v1/adjudicator` identifies the checkpoint only (`model_id`,
-`weight_hash`, `tokenizer_hash`, `context_limit`, `backend`, `dtype`,
-`sampling`, `weight_dtypes`); per-spec identity (`snapshot_id`,
+`GET /v1/adjudicator` identifies the checkpoint and where it runs
+(`model_id`, `weight_hash`, `tokenizer_hash`, `context_limit`, `backend`,
+`device` such as `rocm:gfx1151:hip7.2`, `candle_rev`, `dtype`, `sampling`,
+`weight_dtypes`); per-spec identity (`snapshot_id`,
 `template_version`, `prefix_tokens`) is on each `GET /v1/opinion/specs`
 entry. `/v1/models` also lists the adjudicator. Each generation response
 includes:
@@ -557,7 +558,8 @@ DELETE /v1/opinion/specs/{id}
 - **An id cannot change what it means**, so there is no `409` pin to
   worry about the way a mutable name would need one. `snapshot_id` still
   tells a consumer when the model *under* that spec changed (a weights,
-  tokenizer, template, or repetition-penalty change) and invariant 8's
+  tokenizer, template, repetition-penalty, device-target or candle-build
+  change) and invariant 8's
   rule to refit calibration on a new `snapshot_id` still applies —
   registering the same content twice never changes it.
 - **`POST /v1/opinion` and `POST /v1/adjudicate`'s `spec` field accepts
@@ -799,9 +801,9 @@ or, the exact-ids form:
   otherwise); `continuations`/`generate` are capped as above (also `400`,
   never clamped); `timeout_ms` 1–120000.
 - **Identity block**: `model_id`, `weight_hash`, `tokenizer_hash`,
-  `backend`, `dtype`, `sampling` (mirrors `PrefixInfo`'s fields, minus the
-  spec-specific ones — a probe is not bound to a spec), plus
-  `rendered_sha256`.
+  `backend`, `device`, `candle_rev`, `dtype`, `sampling` (mirrors
+  `PrefixInfo`'s fields, minus the spec-specific ones — a probe is not bound
+  to a spec), plus `rendered_sha256`.
 - Telemetry: one span per probe, fields are lengths/counts only
   (`input_tokens`, `cached_tokens`, `continuations`, `generated`,
   `prefill_ms`, `score_ms`) — never the text, matching this crate's
