@@ -193,9 +193,7 @@ blanket claim that LFM2.5 cannot reuse any prefix is too strong.
 Service readiness, checked in source and against live deployment arguments:
 
 - lfm2d already has the dense embedding HTTP interface kaijutsu's
-  `Lfm2dEmbedder` expects. The live deployment currently loads classifier,
-  router, and PII models, **no embedder**. Enabling it needs weights/config
-  and memory; this demo does not mutate that deployment.
+  `Lfm2dEmbedder` expects.
 - Kaijutsu already wires that adapter into index startup, pins model identity,
   and normalizes vectors. Its current context index truncates the combined
   conversation into one embedding: passage storage/aggregation and retention
@@ -206,7 +204,7 @@ Service readiness, checked in source and against live deployment arguments:
 - ColBERT works in the Rust library, with parity/quality evidence, but is not
   served by lfm2d. It would need its own per-token representation/scoring API;
   it cannot substitute directly into the single-vector index interface.
-- Existing Rust tests cover model parity, classifier/PII real-engine routing,
+- Existing Rust tests cover model parity, PII real-engine routing,
   stub HTTP contracts, TCP/UDS serving and shutdown. These Python tests add
   real-weight embedding transport and retrieval coverage. Kaijutsu → index →
   lfm2d with real weights still needs a separate cross-project E2E test.

@@ -32,9 +32,9 @@ label strings breaks on rollback or upgrade; invariant 1 is how it
 survives.
 
 **3. RETIRED (2026-09-24).** Promised ascending-severity label order for
-the shell severity classifiers. lfm2d no longer ships a severity head; a
-sequence classifier's `labels` are in its checkpoint's `id2label` id
-order, and no ordering semantics are promised for them.
+the shell severity classifiers. lfm2d no longer ships a severity head,
+and since the same day serves no sequence classifier at all
+(`Lfm2SequenceClassifier` remains in the library).
 
 **4. RETIRED (2026-09-24).** Described `/v1/cascade`'s `models` array.
 The cascade left lfm2d.

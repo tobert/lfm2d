@@ -1,7 +1,9 @@
 # lfm2d
 
-HTTP sidecar/daemon serving `lfm2-encoder` heads over a Unix domain
-socket and/or TCP, from ONE process. Built because:
+HTTP sidecar/daemon serving `lfm2-encoder` heads (embedder, Prompt-Router,
+token classifiers such as the PII-Detector) and the LFM2.5-8B-A1B opinion
+engine ("Resident causal adjudicator" below) over a Unix domain socket
+and/or TCP, from ONE process. Built because:
 
 - candle's `from_mmaped_safetensors` copies every tensor into private
   anonymous RSS on load — N processes loading the same 350M checkpoint cost
@@ -53,9 +55,10 @@ ordinary CPU build remains portable to machines without those libraries.
 The container recipes below build the ordinary CPU variant; a GPU container
 also needs the runtime libraries and device access.
 
-Changing the execution device can change classifier scores and near-tied
-verdicts. Validate deployment calibration before moving a safety head; the
-numerical parity gate is not a replacement for traffic evaluation.
+Changing the execution device can change scores and flip near-tied
+readings. Validate deployment calibration before moving a head a decision
+depends on; the numerical parity gate is not a replacement for traffic
+evaluation.
 
 Run the mandatory device gate when changing backend selection/execution:
 
@@ -63,8 +66,8 @@ Run the mandatory device gate when changing backend selection/execution:
 bash demo/test_devices.sh rocm
 ```
 
-It builds once with the chosen backend, compares real embedding/classifier/
-router/PII heads on CPU and GPU, then runs the real HTTP suite under explicit
+It builds once with the chosen backend, compares real embedding/router/PII
+heads on CPU and GPU, then runs the real HTTP suite under explicit
 CPU, explicit GPU, automatic GPU selection, and automatic CPU fallback after
 an invalid GPU ordinal. A missing GPU/driver/weight file fails this gate.
 The hardware Rust test is opt-in (`--ignored`, invoked by this script); normal
@@ -94,10 +97,8 @@ CLI flags, each with an env-var fallback (`clap`'s `env` feature):
 | Flag | Env var | Meaning |
 | --- | --- | --- |
 | `--embedder-dir` | `LFM2D_EMBEDDER_DIR` | `Lfm2Embedding`-shaped checkpoint dir; backs `/embed` |
-| `--classifier-dir` | `LFM2D_CLASSIFIER_DIR` | `Lfm2SequenceClassifier`-shaped checkpoint dir; backs `/predict`, `/v1/classify` |
 | `--router-dir` | `LFM2D_ROUTER_DIR` | Prompt-Router checkpoint dir; backs `/v1/route` |
-| `--token-classifier-dir` (repeatable) | `LFM2D_TOKEN_CLASSIFIER_DIR` (comma-separated) | `Lfm2TokenClassifier`-shaped checkpoint dir(s) — REPEATABLE, unlike the three heads above; backs `/v1/spans`, `/v1/spans/credentials` |
-| `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter (or, on a failed candidate pass, a failure counter) and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
+| `--token-classifier-dir` (repeatable) | `LFM2D_TOKEN_CLASSIFIER_DIR` (comma-separated) | `Lfm2TokenClassifier`-shaped checkpoint dir(s) — REPEATABLE, unlike the two heads above; backs `/v1/spans`, `/v1/spans/credentials` |
 | `--dtype` | `LFM2D_DTYPE` | `f32` (default), `f16` or `bf16`, for every head. Read the flag's own help before reaching for `f16`: these checkpoints ship f32 natively, so f16 is a real loss of resolution at ~1.6× latency, and `LFM2.5-Embedding-350M` ships bf16, where bf16→f16 can produce inf/0 rather than rounding. It is a memory lever, not a speed one |
 | `--device` | `LFM2D_DEVICE` | `auto` (default), `cpu`, `rocm`, `cuda`, or `metal`; requires corresponding compiled GPU feature |
 | `--device-index` | `LFM2D_DEVICE_INDEX` | GPU ordinal (default `0`); values exceeding the driver's signed 32-bit range are refused |
@@ -119,19 +120,19 @@ of these are `clap` flags, they're read directly by the OTLP exporters and
 `main.rs`.
 
 At least one of `--socket-path`/`--bind-addr` and at least one of
-`--embedder-dir`/`--classifier-dir`/`--router-dir`/`--token-classifier-dir`/
+`--embedder-dir`/`--router-dir`/`--token-classifier-dir`/
 `--adjudicator-model` are required (an opinion-engine-only daemon is
 valid), and a retired env var (`LFM2D_ADJUDICATOR_PROMPT`,
-`LFM2D_CASCADE_*`) is refused by name — startup
+`LFM2D_CASCADE_*`, `LFM2D_CLASSIFIER_DIR`,
+`LFM2D_CANDIDATE_CLASSIFIER_DIR`) is refused by name — startup
 fails loudly (`exit 2`, config problem named) otherwise. Model loading
 itself is synchronous and happens before the socket is ever bound: a bad
 checkpoint path or an incompatible config also fails loudly at startup
 (`exit 1`), never lazily on the first request.
 
-Only ONE model per head kind is supported for the embedder/classifier/router
-heads — `/predict`, `/v1/classify`, `/v1/route` don't take a model-selection
-parameter, so a deployment serving multiple classifiers, say, needs multiple
-`lfm2d` processes. Token classifiers are the one exception: `--token-classifier-dir`
+Only ONE model per head kind is supported for the embedder and router
+heads — `/embed` and `/v1/route` don't take a model-selection parameter, so
+a deployment serving two routers, say, needs two `lfm2d` processes. Token classifiers are the one exception: `--token-classifier-dir`
 is repeatable, and `/v1/spans`/`/v1/spans/credentials` take an optional
 `"model"` field to pick among them — see the API section below.
 
@@ -147,8 +148,6 @@ GET  /healthz                 liveness
 GET  /readyz                  readiness
 GET  /v1/models               [{id, kind, weight_hash, labels?, hidden_size}]
 POST /embed                   TEI-compat  {"inputs": str|[str], "kind"?: document|query}
-POST /predict                 TEI-compat  {"inputs": str|[str]}
-POST /v1/classify             {"inputs": str|[str]}
 POST /v1/route                {"input": str, "routes": [str]}  -> RAW cosines
 POST /v1/spans                {"inputs": str|[str], "model"?: str}
 POST /v1/spans/credentials    same shape; credential.* entities only
@@ -169,9 +168,9 @@ takes singular `input` because it scores one text against many routes.
 - `GET /readyz` → `200` once every configured model has loaded, `503`
   before.
 - `GET /v1/models` → `[{id, kind, weight_hash, labels?, hidden_size}]` —
-  every loaded model. `kind` is `embedder`/`classifier`/`router`/
-  `token_classifier`. `labels` is present for a classifier (its full label
-  set) or a token classifier (its distinct `entity_types()`, BIOES prefix
+  every loaded model. `kind` is `embedder`/`router`/`token_classifier`/
+  `adjudicator`. `labels` is present for a token classifier (its distinct
+  `entity_types()`, BIOES prefix
   stripped and deduped — NOT the raw `id2label`, which on the PII detector
   is 161 entries wide for only 40 distinct entities). `weight_hash` is
   sha256 over the checkpoint's `model.safetensors`, 64 lowercase hex chars
@@ -186,13 +185,6 @@ takes singular `input` because it scores one text against many routes.
   `X-Model-Id`/`X-Model-Weight-Hash` response headers, not in the JSON body
   — keeping the body wire-compatible with plain TEI clients that don't
   know these headers exist.
-- `POST /predict` — TEI-ish sequence classification. `{"inputs": ...}` →
-  per input, `[{"label", "score"}, ...]` covering ALL labels (full
-  softmax, never just top-1), sorted by score descending. Audit headers
-  same as `/embed`.
-- `POST /v1/classify` — our full contract, not TEI-compat: `{"inputs":
-  [...]}` → per input `{"scores": {label: prob}, "top": label, "model_id",
-  "weight_hash"}`.
 - `POST /v1/route` — `{"input": str, "routes": [str, ...]}` → `{"model_id",
   "weight_hash", "routes": [{"route", "cosine"}, ...]}`. **RAW COSINE
   ONLY** — this router's softmax is route-count arithmetic and carries no
@@ -203,7 +195,7 @@ takes singular `input` because it scores one text against many routes.
   as a 400 naming every loaded id when 2+ are loaded, implicit when
   exactly 1 is) → `[[{"start", "end", "entity", "score"}, ...], ...]`, a
   bare array of arrays, one span list per input, same TEI-shaped
-  convention as `/embed`/`/predict`. Audit pair travels as `X-Model-Id`/
+  convention as `/embed`. Audit pair travels as `X-Model-Id`/
   `X-Model-Weight-Hash` headers, same reason.
   - **`start`/`end` are UTF-8 BYTE offsets, not codepoints/chars, not
     UTF-16 code units.** A Rust caller (kaibo, the first consumer) can
@@ -314,8 +306,8 @@ your own baseline controls and record that you skipped.
 
 ### Standards this API follows, and where it stops
 
-`/embed` and `/predict` are TEI-shaped, so a TEI-conformant client works
-against them unchanged. The `/v1/*` endpoints have no standard to follow:
+`/embed` is TEI-shaped, so a TEI-conformant client works against it
+unchanged. The `/v1/*` endpoints have no standard to follow:
 TEI has no token-classification endpoint at all, and KServe V2/OIP — the
 only real standard here — is tensor-clunky and was deliberately not
 adopted. The span shape follows the PII-service convention (Presidio,
@@ -449,18 +441,12 @@ the candle build. Metrics:
 incremented on send, decremented when the worker picks a command up),
 `lfm2d.request.duration` (histogram, by route+status),
 `lfm2d.inference.duration` (histogram, by operation kind), `lfm2d.requests`
-(counter), and the shadow-classifier pair `lfm2d.candidate.agreement` /
-`lfm2d.candidate.failure` (counters, only when
-`--candidate-classifier-dir` is set). Read those two together: a candidate
-forward-pass failure never reaches the caller, but it IS counted, because
-agreement over an unknown denominator is not a measurement — a candidate
-failing systematically would otherwise read as near-perfect agreement over
-a shrinking set of successes. The two histograms carried a
+(counter). The two histograms carried a
 `_duration_ms` name until the OTel exporter's unit suffix made it
 `..._ms_milliseconds`; `src/telemetry.rs` is the source of truth for the
 name, and a running image may still be exporting the old one until it is
 rebuilt. Verified against a real OTLP/gRPC capture server with a
-classifier and the Prompt-Router loaded: spans arrived correctly nested
+sequence classifier (since removed) and the Prompt-Router loaded: spans arrived correctly nested
 (`http_request` parenting `worker_call`) carrying `queue_wait_ms`/
 `inference_ms`, all four metrics arrived, logs arrived with the effective
 config and per-model weight hashes, and SIGTERM still drained and exited 0
@@ -489,20 +475,18 @@ trailing comment and `deploy/k8s.yaml` itself).
 
 ## Judgment calls worth knowing about
 
-The task spec left a few things implicit; here's what was decided and why
-(also in the relevant doc comments):
+The original design brief left a few things implicit; here's what was
+decided and why (also in the relevant doc comments):
 
-1. **Audit headers vs. audit body fields.** The spec requires "every
-   inference response carries `{model_id, weight_hash}`" AND specifies
-   `/embed`/`/predict` as bare TEI-compatible arrays with no room for those
-   fields. Resolved by putting them in `X-Model-Id`/`X-Model-Weight-Hash`
-   response headers for those two endpoints, and directly in the JSON body
-   for `/v1/classify`/`/v1/route` (which are "our full contract," not
-   TEI-compat).
-2. **One model per head kind — except token classifiers.** No `/predict`/
-   `/v1/classify`/`/v1/route` request carries a model-selection parameter,
-   so this daemon serves at most one embedder, one classifier, one router
-   at a time. `/v1/spans`/`/v1/spans/credentials` are the deliberate
+1. **Audit headers vs. audit body fields.** Every inference response
+   carries `{model_id, weight_hash}`, but `/embed` and `/v1/spans` are bare
+   TEI-shaped arrays with no room for those fields. Resolved by putting
+   them in `X-Model-Id`/`X-Model-Weight-Hash` response headers there, and
+   directly in the JSON body for `/v1/route` (which is "our full
+   contract," not TEI-compat).
+2. **One model per head kind — except token classifiers.** No `/embed` or
+   `/v1/route` request carries a model-selection parameter, so this daemon
+   serves at most one embedder and one router at a time. `/v1/spans`/`/v1/spans/credentials` are the deliberate
    exception: `--token-classifier-dir` is repeatable and the request takes
    an optional `"model"` field, because "N secrets/PII detectors behind one
    sidecar" (a general PII head plus a narrower secrets-only head, say) is

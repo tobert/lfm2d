@@ -607,9 +607,8 @@ contract.
   model's own tokenizer, cloned out BEFORE that model's owning engine
   moves into its worker thread (`RealEngine::tokenizers`,
   `Adjudicator::tokenizer_clone`, both called from `main.rs` ahead of
-  `WorkerHandle::spawn_crash_on_panic`/`adjudicator::Handle::spawn`). The
-  shadow `--candidate-classifier-dir` head is excluded, matching its
-  absence from `/v1/models`. Unknown `model` is `404`. **Every clone the
+  `WorkerHandle::spawn_crash_on_panic`/`adjudicator::Handle::spawn`).
+  Unknown `model` is `404`. **Every clone the
   registry stores has truncation and padding explicitly cleared**
   (`TokenizerRegistry::insert`), regardless of what the source checkpoint
   set them to for its OWN inference path — `Lfm2Embedding` loads its

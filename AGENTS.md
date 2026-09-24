@@ -6,9 +6,9 @@ encoder heads, plus a resident LFM2.5-8B-A1B opinion engine.
 
 Workspace of two crates: `lfm2-encoder` (library, repo root) and `lfm2d`
 (HTTP daemon). The daemon serves whichever encoder heads a deployment
-configures (embedder, ColBERT, sequence classifier, Prompt-Router,
-token classifiers such as the PII-Detector) and, beside them, the
-**opinion engine**: LFM2.5-8B-A1B (MoE, GGUF) with reusable prefix state
+configures (embedder, Prompt-Router, token classifiers such as the
+PII-Detector; ColBERT and sequence classification live in the library)
+and, beside them, the **opinion engine**: LFM2.5-8B-A1B (MoE, GGUF) with reusable prefix state
 and schema-constrained output. `/v1/opinion` is the fast read,
 `/v1/adjudicate` the generative continuation, `/v1/probe` and
 `/v1/tokenize` the instruments.
