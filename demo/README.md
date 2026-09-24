@@ -235,74 +235,54 @@ summaries; added explicit generation smoke and split-passage CLI coverage.
 
 ## System 1 opinion demos (`/v1/opinion`)
 
-Six scripts, one story arc — and `show.py` to run the lot: a gut reaction
-for commands, a cascade that prices hesitation, a read that answers
-questions with no shell in them, a fleet feed on watch, then two looks at
-the numbers under all of it. Stdlib Python;
-the `email-triage-v1` spec under `specs/` and the input lines under
-`inputs/` are invented fixtures, like the ones above.
+Three scripts and `show.py` to run them in order: a read that answers any
+question a spec can name, then two looks at the numbers under it. Stdlib
+Python; the `email-triage-v1` spec under `specs/` and the input lines under
+`inputs/` are invented fixtures, like the ones above. The spec names its own
+input (`"input_label": "Email"`), so a request sends `state: {"input": ...}`.
 
-Start a daemon (a throwaway on a free port is the pattern; the shell spec is
-the resident adjudicator prompt so the escalation acts think in the right
-vocabulary, and the email spec rides along on the menu):
+Start a daemon (a throwaway on a free port is the pattern) with the email
+spec on its boot menu:
 
 ```sh
 target/release/lfm2d \
   --adjudicator-model /tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf \
   --adjudicator-tokenizer .models/LFM2.5-8B-A1B/tokenizer.json \
-  --adjudicator-prompt lfm2d/prompts/command-verdict-enum-v1.json \
   --opinion-spec demo/specs/email-triage-v1.json \
   --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
 ```
 
-- **`show.py`** — the matinee: six acts in one terminal, title cards
-  between, commands driven through a pty so they echo like someone typed
+A daemon without it on the menu takes it as an upload:
+`curl --data-binary @demo/specs/email-triage-v1.json -H 'content-type: application/json' http://127.0.0.1:18171/v1/opinion/specs`.
+
+- **`show.py`** — the matinee: three acts in one terminal, title cards
+  between, items driven through a pty so they echo like someone typed
   them and each next line waits for the child's own prompt. `--auto` skips
-  the between-act pauses; `--acts 24` picks a subset; `--watch-loop` leaves
-  act four running forever.
-- **`blink.py --pass-option allow`** — a gut for commands. Type a command,
-  get the describe-then-read distribution and a one-line gate verdict in
-  ~40 ms warm. Nothing runs.
-- **`cascade.py --pass-option allow --cold`** — the gut gates the expensive
-  thought. Below the gate it escalates to `/v1/adjudicate`, which resumes
-  from the blink's own state (`resumed_tokens`); `--cold` prices the same
-  thought from scratch. The exit ledger shows how little thinking the
-  hesitation rate buys.
+  the between-act pauses; `--acts 13` picks a subset (an unknown act is an
+  error). It refuses to start when `email-triage-v1` is not on the menu.
 - **`blink_anything.py --spec email-triage-v1 --field verdict`** — the
-  verdict vocabulary is the app's, not ours. Same primitive routes a
+  verdict vocabulary is the app's, not ours. The primitive routes a
   support inbox (`auto_close` / `human_read`) over a spec written as a prop.
-- **`night_watch.py --pass-option allow inputs/fleet_feed.txt --repeat`** —
-  a synthetic k8s fleet on loop. The feed is sized to the described cache,
-  so the first pass maps the cluster at cold-read speed and every pass
-  after runs at ~40 ms an event; below-gate events carry a system 2 thought
-  with its reason. At the default 0.8 gate this feed flags ~40%
-  (`journalctl -u kubelet` among them) — show it as calibration evidence
-  or demo it at `--ask-below 0.5`.
-- **`xray.py --spec command-verdict-enum-v1`** — what the model wrote, and
-  the distribution it wrote it from. Asks every choice field in turn, puts
-  the full option distribution (prob, raw `first_logprob`, token ids, raw
-  mass) under each written value — the last choice field has no later
+- **`xray.py --spec email-triage-v1`** — what the model wrote, and the
+  distribution it wrote it from. Asks every choice field in one request,
+  puts the full option distribution (prob, raw `first_logprob`, token ids,
+  raw mass) under each written value — the last choice field has no later
   field to reveal its write, so it shows the read alone — flags near ties,
   and prints the exact bytes the last read continued (`rendered: true`)
-  after checking their sha256 against `rendered_sha256`. `git clean -fdx`
-  is the one to show: described as deleting user data, written
-  `undo: easy`, and `scope` written `nothing` at 50.2% against 49.5% for
-  `project`. A daemon older than the flag refuses the request (the request
-  type denies unknown fields); `--no-prompt` skips the view, and a
-  response that omits `rendered` when asked ends the demo loudly.
-- **`asked.py --spec command-verdict-enum-v1 --field verdict`** — was the
-  model even asked? Each item is read over the full menu, then with each
-  option left out once (`item :: a,b` asks a subset). The full menu holds
-  ~99.9% of the mass on everything, "what is the capital of France?"
-  included: the grammar walks the model to the slot, so full mass proves
-  the question was put, not that the input made sense. Narrowing drops the
-  mass by what the omitted options held while `prob` renormalises the
-  rest into a confident-looking answer (`rm -rf ~` without `ask`: allow
-  74.8% at 44.9% mass). Invariant 9, on one screen.
+  after checking their sha256 against `rendered_sha256`. A daemon older
+  than the flag refuses the request (the request type denies unknown
+  fields); `--no-prompt` skips the view, and a response that omits
+  `rendered` when asked ends the demo loudly.
+- **`asked.py --spec email-triage-v1 --field verdict`** — was the model
+  even asked? Each item is read over the full menu, then with each option
+  left out once (`item :: a,b` asks a subset). On the shell spec these
+  acts were built against, the full menu held ~99.9% of the mass on
+  everything, "what is the capital of France?" and emoji included: the
+  grammar walks the model to the slot, so full mass proves the question
+  was put, not that the input made sense. Narrowing drops the mass by what
+  the omitted options held while `prob` renormalises the rest into a
+  confident-looking answer. Invariant 9, on one screen.
 
-The gated acts take `--pass-option` from the caller, and every script
-checks its spec, field and options against `GET /v1/opinion/specs` at
-load: no script hard-codes a field name, an option, or which verdict means
-go. Known prompt gaps show live in the demos
-(sudo-restart and npm publish read allow; see the F9 notes) — they are
-prompt-policy findings, not endpoint bugs.
+Every script checks its spec, field and options against
+`GET /v1/opinion/specs` at load: no script hard-codes a field name, an
+option, or which option means go.

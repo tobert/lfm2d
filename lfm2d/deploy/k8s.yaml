@@ -53,17 +53,11 @@ spec:
           # explicitly (or via LFM2D_THREADS) if a `limits.cpu` is ever
           # added here.
           args:
-            # A checkpoint and its severe set travel together: v8 and later speak
-            # informative/situation-normal/data-critical, v6 spoke
-            # informative/mutating/destructive, and the daemon's built-in
-            # default severe set is v6's. Changing --classifier-dir alone
-            # makes /v1/cascade refuse every request.
-            - --classifier-dir=/models/kube_ordinal_v10
+            # Whichever heads this deployment serves; at least one is
+            # required. Each is its own resident trunk (~1.4 GiB at f32).
+            - --embedder-dir=/models/LFM2.5-Embedding-350M
             - --router-dir=/models/LFM2.5-Encoder-350M-Prompt-Router
-            - --cascade-route=shell
-            - --cascade-route=k8s
-            - --cascade-severe-label=situation-normal
-            - --cascade-severe-label=data-critical
+            - --token-classifier-dir=/models/LFM2.5-Encoder-350M-PII-Detector
             - --bind-addr=0.0.0.0:8088
           ports:
             - containerPort: 8088
@@ -104,20 +98,16 @@ spec:
             failureThreshold: 30
           resources:
             requests:
-              # MEASURED, not estimated: `/proc/<pid>/status` VmRSS on this
-              # box with BOTH a classifier (kube_ordinal_v6) and a router
-              # (LFM2.5-Encoder-350M-Prompt-Router) loaded — the same
-              # config `args:` above requests — read 2,849,368 KiB
-              # (~2.78 GiB) steady-state RSS, i.e. ~1.4 GiB per loaded
-              # head-with-trunk (matches the parent crate's
-              # `candle-mmap-loads-are-copies` finding almost exactly).
-              # VmHWM (peak, captured during load) read 4,225,404 KiB
-              # (~4.03 GiB) — the load-time transient headroom below is
-              # sized off THAT peak, not the steady-state number, since a
-              # request during warmup (readyz is 503 until load finishes,
-              # so there shouldn't be one, but OOM-killing a pod mid-boot
-              # is a worse failure mode than requesting slightly more).
-              memory: "4Gi"
+              # Sized per resident head: each head-with-trunk is ~1.4 GiB
+              # at f32 (`candle-mmap-loads-are-copies`; measured 2,849,368
+              # KiB VmRSS for two heads, peak VmHWM 4,225,404 KiB during
+              # load). The three heads in `args:` above are the same shape
+              # as the frozen zorak pod's three (a classifier, the router,
+              # the PII-Detector), which runs at 4,166 MiB steady state
+              # (`kubectl top`, 2026-09-24) on a 6Gi request. Load-time
+              # peak runs ~1.4x steady state, so size off the peak: an
+              # OOM-kill mid-boot is a worse failure than requesting more.
+              memory: "6Gi"
               # CPU requests WITHOUT a limit — deliberate, not an
               # oversight. rayon's global thread pool
               # (`--threads`/`available_parallelism()` — see src/config.rs)

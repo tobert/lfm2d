@@ -8,7 +8,7 @@ sense. Narrow the menu and the mass falls by whatever the omitted options
 held, while `prob` renormalises the remainder into a confident-looking
 answer. That is invariant 9 (docs/integration.md) in one screen.
 
-    python3 asked.py --url http://127.0.0.1:18171 --spec command-verdict-enum-v1 --field verdict
+    python3 asked.py --url http://127.0.0.1:18171 --spec email-triage-v1 --field verdict
 
 Each line is an item; by default it is read over the full menu and then
 with each option left out once. `item :: a,b` asks exactly that subset.
@@ -73,7 +73,7 @@ def main():
         full_top, outcomes = None, []
         t0 = time.perf_counter()
         for i, opts in enumerate(menus):
-            body = {'spec': a.spec, 'state': {'command': item},
+            body = {'spec': a.spec, 'state': {'input': item},
                     'questions': [{'field': a.field, 'options': opts}]}
             try:
                 resp = rpc(a.url, '/v1/opinion', body)

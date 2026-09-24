@@ -1,7 +1,0 @@
-DIVERSITY: every row structurally distinct, no template stamping; vary
-tool/command choice and invented path/package/db/branch names widely.
-Every row must have "author": "AUTHOR_TAG" exactly.
-
-Validate before finishing: every line you emit must parse as JSON with
-exactly the 7 keys text/label/verb/resource/contested/note/author, and a
-valid label. Write EXACTLY N rows. Output ONLY the JSON lines.
