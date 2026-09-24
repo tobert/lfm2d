@@ -116,6 +116,34 @@ fn full_weights(num_labels: usize) -> HashMap<String, Tensor> {
     map
 }
 
+/// [`full_weights`]' shapes, refilled with small seeded values (norm
+/// weights near 1), so the trunk and head actually compute: logits depend
+/// on the input text. The zero fixture cannot tell two loading paths apart,
+/// since every path yields `logits == bias`; parity checks need this one.
+fn seeded_weights(num_labels: usize) -> HashMap<String, Tensor> {
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut next = move || {
+        state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        ((state >> 40) as f32 / (1u64 << 24) as f32) - 0.5
+    };
+    let mut names: Vec<(String, Vec<usize>)> =
+        full_weights(num_labels).into_iter().map(|(name, t)| (name, t.dims().to_vec())).collect();
+    names.sort();
+    names
+        .into_iter()
+        .map(|(name, dims)| {
+            let n: usize = dims.iter().product();
+            let values: Vec<f32> = if name.contains("norm") {
+                (0..n).map(|_| 1.0 + 0.1 * next()).collect()
+            } else {
+                (0..n).map(|_| 0.2 * next()).collect()
+            };
+            let t = Tensor::from_vec(values, dims.as_slice(), &Device::Cpu).unwrap();
+            (name, t)
+        })
+        .collect()
+}
+
 /// A minimal real tokenizer (WordLevel + whitespace splitting) covering just
 /// the words these tests use as input text. Built programmatically rather
 /// than hand-written as JSON so the on-disk `tokenizer.json` is exactly what
@@ -193,8 +221,8 @@ fn predict_is_softmax_of_logits() {
 /// wrong label set.
 #[test]
 fn an_id2label_gap_fails_loudly() {
-    // Skips id 1: ids present are {0, 2} but the map has 3 entries, so id 2
-    // is out of range for "3 labels" — a real gap, not merely fewer labels.
+    // Skips id 2: ids present are {0, 1, 3} but the map has 3 entries, so id
+    // 3 is out of range for "3 labels" — a real gap, not merely fewer labels.
     let gappy = r#"{"0": "safe", "1": "risky", "3": "dangerous"}"#;
     let dir = write_checkpoint(&tiny_config_json(gappy), full_weights(3));
 
@@ -297,22 +325,47 @@ fn from_trunk_over_a_differently_shaped_head_checkpoint_is_refused() {
     assert!(msg.contains("hidden_size"), "{msg}");
 }
 
-/// The parity contract, on a synthetic (hermetic, no real weights) fixture:
-/// `from_dir` and `from_trunk(load_shared(dir), dir)` over the SAME
-/// checkpoint directory must produce bit-identical logits. This is the same
-/// property `tests/sequence_classification_parity.rs` checks against a real
-/// checkpoint; kept here too because it needs no downloaded weights and so
-/// runs on every `cargo test`, not just when a specialist checkpoint is
-/// present on disk.
+/// The parity contract: `from_dir` and `from_trunk(load_shared(dir), dir)`
+/// over the SAME checkpoint directory must produce bit-identical logits.
+/// On seeded weights, so the logits depend on the input (asserted first);
+/// on the zero fixture both paths would return the bias and agree no matter
+/// what either computed.
 #[test]
 fn from_trunk_over_a_matching_checkpoint_matches_from_dir_exactly() {
-    let dir = write_checkpoint(&tiny_config_json(GOOD_ID2LABEL), full_weights(NUM_LABELS));
+    let dir = write_checkpoint(&tiny_config_json(GOOD_ID2LABEL), seeded_weights(NUM_LABELS));
 
     let direct = Lfm2SequenceClassifier::from_dir(dir.path()).expect("from_dir");
     let trunk = Lfm2Trunk::load_shared(dir.path()).expect("load_shared");
     let shared = Lfm2SequenceClassifier::from_trunk(trunk, dir.path()).expect("from_trunk");
 
-    let want = direct.logits("hello world").expect("from_dir logits");
-    let got = shared.logits("hello world").expect("from_trunk logits");
-    assert_eq!(want, got, "from_dir and from_trunk must agree exactly on a synthetic checkpoint too");
+    let a = direct.logits("hello world").expect("from_dir logits");
+    let b = direct.logits("world hello").expect("from_dir logits");
+    assert_ne!(a, b, "the fixture must make logits input-dependent, or parity below proves nothing");
+    for text in ["hello world", "world hello", "hello"] {
+        let want = direct.logits(text).expect("from_dir logits");
+        let got = shared.logits(text).expect("from_trunk logits");
+        assert_eq!(want, got, "from_dir and from_trunk must agree exactly on {text:?}");
+    }
+}
+
+/// `from_trunk` is for many heads over one loaded trunk: the Arc count is
+/// exactly the handles given out (more would be a hidden clone or leak,
+/// fewer a head that dropped its reference), both heads point at the same
+/// allocation, and dropping one leaves the other working.
+#[test]
+fn two_heads_share_one_trunk_load() {
+    let dir = write_checkpoint(&tiny_config_json(GOOD_ID2LABEL), seeded_weights(NUM_LABELS));
+
+    let trunk = Lfm2Trunk::load_shared(dir.path()).expect("load_shared");
+    assert_eq!(Arc::strong_count(&trunk), 1, "a freshly loaded trunk should have exactly one owner");
+
+    let a = Lfm2SequenceClassifier::from_trunk(Arc::clone(&trunk), dir.path()).expect("from_trunk a");
+    let b = Lfm2SequenceClassifier::from_trunk(Arc::clone(&trunk), dir.path()).expect("from_trunk b");
+    assert_eq!(Arc::strong_count(&trunk), 3, "the original handle plus two heads hold three references");
+    assert!(std::ptr::eq(a.trunk(), b.trunk()), "both heads must share one trunk allocation");
+
+    let before = b.logits("hello world").expect("logits before drop");
+    drop(a);
+    assert_eq!(Arc::strong_count(&trunk), 2);
+    assert_eq!(b.logits("hello world").expect("logits after drop"), before, "dropping one head must not disturb the other");
 }

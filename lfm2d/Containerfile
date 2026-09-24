@@ -35,7 +35,7 @@ FROM docker.io/library/debian:bookworm-slim AS runtime
 # No extra system packages: neither `candle-core` (default features — no
 # `accelerate`/`cuda`/`mkl` — so matmul is the pure-Rust `gemm` crate, no
 # BLAS to link) nor lfm2d's own deps (axum/tokio without TLS features, no
-# `hub` feature on the parent crate) need anything debian-slim doesn't
+# Hub download: checkpoints are mounted) need anything debian-slim doesn't
 # already ship. Revisit if a future dependency changes that.
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin lfm2d
 COPY --from=builder /build/target/release/lfm2d /usr/local/bin/lfm2d

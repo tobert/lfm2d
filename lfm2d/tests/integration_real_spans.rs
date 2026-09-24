@@ -1,8 +1,8 @@
 //! End-to-end smoke test for `/v1/spans`/`/v1/spans/credentials` against a
-//! REAL checkpoint — as `integration_real.rs` does for `/v1/classify`, but
-//! for `--token-classifier-dir`. Gated the same way (FAIL LOUDLY via
-//! `assert!` on the checkpoint's presence, not a silent skip — see that
-//! file's module docs for the rationale). Defaults to the PII detector
+//! REAL checkpoint, over `--token-classifier-dir`. FAILS LOUDLY via
+//! `assert!` on the checkpoint's presence rather than skipping: a skip
+//! reads as a pass in CI output, so a missing checkpoint would quietly
+//! retire the only real-weight check on this endpoint. Defaults to the PII detector
 //! checkpoint this repo's `CLAUDE.md` documents at
 //! `.models/LFM2.5-Encoder-350M-PII-Detector` (present in this working
 //! tree already); `LFM2_TOKEN_CLF_DIR` overrides.
@@ -48,13 +48,11 @@ fn cli_with_token_classifier_only() -> Cli {
         adjudicator_model: None,
         adjudicator_tokenizer: None,
         adjudicator_context: 4096,
-            adjudicator_repeat_penalty: 1.05,
+        adjudicator_repeat_penalty: 1.05,
         opinion_specs: Vec::new(),
         opinion_spec_capacity: 8,
         embedder_dir: None,
-        classifier_dir: None,
         router_dir: None,
-        candidate_classifier_dir: None,
         token_classifier_dir: vec![dir],
         log_input_hash: false,
         socket_path: None,

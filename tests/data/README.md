@@ -79,6 +79,6 @@ benchmark:
 - No query has an id appearing in both its `relevant` and `hard_negatives` lists.
 - Every query has 1–4 `relevant` ids and 1–3 `hard_negatives` ids.
 
-If you add documents or queries by hand later, re-run the same checks — nothing in this
-crate enforces the schema automatically (there is no Rust test wired to this file yet;
-that's the natural next step once there's an embedding pipeline to score with it).
+If you add documents or queries by hand later, re-run the same checks.
+`tests/retrieval_quality.rs` reads this file on every `cargo test` and holds the
+retrieval numbers in the root README, but it does not re-validate the schema.

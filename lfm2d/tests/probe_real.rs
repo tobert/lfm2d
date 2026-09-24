@@ -66,7 +66,10 @@ const EMAILS: [&str; 2] = [
 
 fn cli() -> Cli {
     let model = std::env::var("LFM2D_ADJUDICATOR_MODEL").unwrap_or_else(|_| {
-        "/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf".into()
+        let models = std::env::var("LFM2_MODELS_DIR").unwrap_or_else(|_| {
+            format!("{}/.models", env!("CARGO_MANIFEST_DIR").trim_end_matches("/lfm2d"))
+        });
+        format!("{models}/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf")
     });
     // A worktree has no `.models`; `LFM2_MODELS_DIR` points at main's, as
     // the other real-model tests expect.

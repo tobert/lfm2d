@@ -88,7 +88,7 @@ Both benchmark processes passed deadline/reuse and in-flight shutdown checks.
 
 Report validity (10/12) and fixture grades (7/12) are unchanged. They remain prompt/model
 observations, not proof of adjudication quality. Raw responses and validation
-logs are retained in `~/exomemory/lfm2d/lfm25-kv-2026-09-15/`.
+logs are in the author's private notes (`lfm25-kv-2026-09-15`, not published).
 
 Kaibo DeepSeek (`deepseek-flash`) reviewed the whole allocator, model, tests,
 and tensor-copy implementation. Accepted feedback added direct storage-identity
@@ -103,7 +103,7 @@ The suggested removal of the existing convolution `.copy()` was rejected:
 singleton dimensions do not constrain Candle's contiguous-layout test, so a
 single-channel narrow view can retain the larger allocation. CPU mixed-format
 expert coverage remains a recorded follow-up; the existing explicit ROCm
-mixed-format test passes. Full review and resolutions live in exomemory.
+mixed-format test passes. Full review and resolutions are in the author's private notes.
 
 ## Build during local development
 

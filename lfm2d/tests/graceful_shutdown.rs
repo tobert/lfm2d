@@ -25,10 +25,10 @@ use lfm2d::engine_stub::StubEngine;
 use lfm2d::server::{begin_shutdown, build_router, serve, AppState};
 use lfm2d::worker::WorkerHandle;
 
-async fn raw_post_classify(mut stream: TcpStream) -> String {
-    let body = br#"{"inputs": ["kubectl delete ns prod"]}"#;
+async fn raw_post_embed(mut stream: TcpStream) -> String {
+    let body = br#"{"inputs": ["the quarterly report is attached"]}"#;
     let request = format!(
-        "POST /v1/classify HTTP/1.1\r\n\
+        "POST /embed HTTP/1.1\r\n\
          Host: localhost\r\n\
          Content-Type: application/json\r\n\
          Content-Length: {}\r\n\
@@ -80,7 +80,7 @@ async fn sigterm_sequence_drains_in_flight_requests_then_resolves() {
 
     // Fire the slow request in the background — it will be mid-`sleep`
     // inside the worker thread by the time we trigger shutdown below.
-    let inflight = tokio::spawn(raw_post_classify(stream));
+    let inflight = tokio::spawn(raw_post_embed(stream));
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // --- trigger the same sequence main.rs's SIGTERM handler runs ---
@@ -144,7 +144,7 @@ async fn drain_hard_cap_gives_up_on_a_request_that_outlives_it() {
         }
     }
     let stream = connected.expect("server never came up");
-    let _inflight = tokio::spawn(raw_post_classify(stream));
+    let _inflight = tokio::spawn(raw_post_embed(stream));
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     begin_shutdown(&ready, &shutdown_handle);

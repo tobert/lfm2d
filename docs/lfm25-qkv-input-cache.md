@@ -61,7 +61,7 @@ in-flight SIGTERM. The final published dependency is also built and smoked.
 Kaibo DeepSeek (`deepseek-flash`) reviewed whole model and daemon files.
 Its ownership concern produced a failing regression test and an explicit
 ownership check; its tokenizer-boundary suggestion became a startup guard.
-Full review and resolution notes are in `~/exomemory/lfm2d/`.
+Full review and resolution notes are in the author's private notes (not published).
 
 ## Opportunities for this adjudicator
 

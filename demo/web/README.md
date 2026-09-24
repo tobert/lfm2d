@@ -4,8 +4,8 @@ Browser pages that play themselves against a running lfm2d, sized 9:16 for
 recording a tab. Python 3.10+, standard library only.
 
 ```sh
-python3 demo/web/server.py --upstream 'http://<lfm2d host>:8088'
-# demos on http://<tailnet ip>:8765/
+python3 demo/web/server.py --upstream 'http://<lfm2d host>:8088' --host 127.0.0.1
+# demos on http://127.0.0.1:8765/
 ```
 
 `server.py` binds the host's tailnet IPv4 (`tailscale ip -4`) unless `--host`

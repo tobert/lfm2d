@@ -64,14 +64,17 @@ rather than a quiet rebuild.
 
 ```
 export EX=~/somewhere/outside/this/repo/examined
-python3 verdict_inputs.py "$RUN" --prompt ../../../lfm2d/prompts/command-verdict-enum-v1.json \
-        --slot verdict > "$EX/inputs.jsonl"
-python3 replay_vs_rebuild.py "$RUN" --prompt ../../../lfm2d/prompts/command-verdict-enum-v1.json \
-        --slot verdict --rows "$EX/differing-rows.txt"
+export SPEC=path/to/the-spec-the-run-used.json
+python3 verdict_inputs.py "$RUN" --prompt "$SPEC" --slot verdict > "$EX/inputs.jsonl"
+python3 replay_vs_rebuild.py "$RUN" --prompt "$SPEC" --slot verdict \
+        --rows "$EX/differing-rows.txt"
 ```
 
-Then `lfm25-examine --inputs-file "$EX/inputs.jsonl" --prompt <same spec>`, and
-`verdict_ribbon.py --rows "$RUN/rows.jsonl" --examined "$EX/examinations.jsonl"`.
+Then `lfm25-examine --model <gguf> --tokenizer <tokenizer.json> --out "$EX"
+--inputs-file "$EX/inputs.jsonl" --prompt "$SPEC"`, and
+`verdict_ribbon.py --rows "$RUN/rows.jsonl" --examined "$EX/examinations.jsonl"
+--out <dir> --field verdict --up <WORD,WORD> --down <WORD,WORD>`, with the
+lean words spelled as the spec spells them.
 
 **Pass `--device rocm`.** `--device auto` has picked CPU for `lfm25-examine` and
 run for six minutes with the GPU idle. The binary needs `--features rocm` to

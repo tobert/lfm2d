@@ -5,16 +5,9 @@
 //! break for kaish/kaijutsu callers; these tests make it a compile-time-red
 //! `cargo test`, not a discovery made in production.
 //!
-//! Maps that get string-compared (`scores`, `severity_scores`) are typed
-//! `BTreeMap`, not `HashMap` — `HashMap`'s iteration order is randomized
-//! per-process, which would make an exact-string assertion flaky by
-//! construction.
-
-use std::collections::BTreeMap;
-
 use lfm2d::types::{
-    ApiError, ClassifyRequest, ClassifyResult, EmbedRequest, Inputs, LabelScore, ModelInfo,
-    ModelKind, PredictRequest, RouteRequest, RouteResponse, RouteScore, SpanResult, SpansRequest,
+    ApiError, EmbedRequest, Inputs, ModelInfo, ModelKind, RouteRequest, RouteResponse, RouteScore,
+    SpanResult, SpansRequest,
 };
 
 fn assert_json_eq<T: serde::Serialize>(value: &T, expected: &str) {
@@ -76,41 +69,12 @@ fn inputs_single_and_many_both_normalize_through_into_vec() {
     assert_eq!(many.into_vec(), vec!["x".to_string(), "y".to_string(), "z".to_string()]);
 }
 
-// --------------------------------------------------------------- /predict
-
-#[test]
-fn predict_request_round_trips() {
-    let req: PredictRequest = serde_json::from_str(r#"{"inputs": ["kubectl delete ns prod"]}"#)
-        .expect("parse");
-    assert_eq!(req.inputs.into_vec(), vec!["kubectl delete ns prod".to_string()]);
-}
-
-#[test]
-fn label_score_serializes_with_exact_field_names() {
-    let ls = LabelScore { label: "destructive".to_string(), score: 0.71 };
-    assert_json_eq(&ls, r#"{"label": "destructive", "score": 0.71}"#);
-}
-
-#[test]
-fn predict_response_shape_is_a_list_of_label_lists() {
-    // The wire response has NO wrapper object — TEI-ish: a bare
-    // Vec<Vec<LabelScore>>, one inner list per input, covering ALL labels.
-    let resp: Vec<Vec<LabelScore>> = vec![vec![
-        LabelScore { label: "mutating".to_string(), score: 0.6 },
-        LabelScore { label: "informative".to_string(), score: 0.4 },
-    ]];
-    assert_json_eq(
-        &resp,
-        r#"[[{"label": "mutating", "score": 0.6}, {"label": "informative", "score": 0.4}]]"#,
-    );
-}
-
 // ------------------------------------------------------------- /v1/models
 
 #[test]
 fn model_kind_serializes_as_lowercase_snake_case() {
     assert_json_eq(&ModelKind::Embedder, r#""embedder""#);
-    assert_json_eq(&ModelKind::Classifier, r#""classifier""#);
+    assert_json_eq(&ModelKind::Adjudicator, r#""adjudicator""#);
     assert_json_eq(&ModelKind::Router, r#""router""#);
 }
 
@@ -128,66 +92,6 @@ fn model_info_for_an_embedder_omits_labels() {
         &format!(
             r#"{{"id": "LFM2.5-Embedding-350M", "kind": "embedder", "weight_hash": "{}", "hidden_size": 1024}}"#,
             "a".repeat(64)
-        ),
-    );
-}
-
-#[test]
-fn model_info_for_a_classifier_carries_labels() {
-    let info = ModelInfo {
-        id: "kube_ordinal_v6".to_string(),
-        kind: ModelKind::Classifier,
-        weight_hash: "b".repeat(64),
-        labels: Some(vec!["destructive".into(), "informative".into(), "mutating".into()]),
-        hidden_size: 1024,
-    };
-    let v = serde_json::to_value(&info).unwrap();
-    assert_eq!(v["labels"], serde_json::json!(["destructive", "informative", "mutating"]));
-}
-
-// ------------------------------------------------------------ /v1/classify
-
-#[test]
-fn classify_request_takes_an_inputs_array() {
-    let req: ClassifyRequest = serde_json::from_str(r#"{"inputs": ["rm -rf /"]}"#).expect("parse");
-    assert_eq!(req.inputs.into_vec(), vec!["rm -rf /".to_string()]);
-}
-
-/// `/v1/classify` must accept the bare-string form too. It used to take an
-/// array only — deliberately, on the reasoning that it is our own contract
-/// rather than a TEI-compat shim. But `/v1/spans` is equally our own and
-/// always accepted a bare string, so the real rule was "this one endpoint
-/// differs," which cost a live caller a 400 on `{"inputs": "ls"}` that
-/// `/predict` and `/v1/spans` both accepted. An API may be strict; it may
-/// not be unpredictably strict.
-#[test]
-fn classify_request_also_takes_a_bare_string_like_every_other_endpoint() {
-    let req: ClassifyRequest = serde_json::from_str(r#"{"inputs": "ls"}"#).expect("parse");
-    assert_eq!(req.inputs.into_vec(), vec!["ls".to_string()]);
-}
-
-#[test]
-fn classify_result_pins_scores_top_model_id_and_weight_hash() {
-    let mut scores = BTreeMap::new();
-    scores.insert("destructive".to_string(), 0.71f32);
-    scores.insert("informative".to_string(), 0.05f32);
-    scores.insert("mutating".to_string(), 0.24f32);
-    let result = ClassifyResult {
-        scores,
-        top: "destructive".to_string(),
-        model_id: "kube_ordinal_v6".to_string(),
-        weight_hash: "c".repeat(64),
-    };
-    assert_json_eq(
-        &result,
-        &format!(
-            r#"{{
-                "scores": {{"destructive": 0.71, "informative": 0.05, "mutating": 0.24}},
-                "top": "destructive",
-                "model_id": "kube_ordinal_v6",
-                "weight_hash": "{}"
-            }}"#,
-            "c".repeat(64)
         ),
     );
 }
@@ -263,7 +167,7 @@ fn span_result_pins_start_end_entity_score_and_nothing_else() {
 
 #[test]
 fn spans_response_shape_is_a_bare_array_of_span_lists() {
-    // No wrapper object — TEI-ish, matching /embed and /predict: a bare
+    // No wrapper object — TEI-ish, matching /embed: a bare
     // Vec<Vec<SpanResult>>, one inner list per input.
     let resp: Vec<Vec<SpanResult>> = vec![
         vec![SpanResult { start: 0, end: 3, entity: "person.name".to_string(), score: 0.8 }],

@@ -100,7 +100,7 @@ validation was relaxed and no report repair was added to hide them.
 
 Two Kaibo DeepSeek / deepseek-flash reviews checked routing, memory access,
 and the Q5 arithmetic. Their full responses, Amy's direction, and our
-resolution notes are retained under `~/exomemory/lfm2d/`. Focused ROCm lib/test
+resolution notes are in the author's private notes (not published). Focused ROCm lib/test
 lint passes with `unnecessary_cast` allowed for two pre-existing core casts;
 unrestricted lint reports only those existing casts.
 

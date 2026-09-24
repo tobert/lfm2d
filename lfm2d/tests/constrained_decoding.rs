@@ -10,7 +10,7 @@
 //!    Random logits are a harsher adversary than a real model — a model at
 //!    least wants to produce JSON.
 //! 2. **A real checkpoint**, `#[ignore]`d for runtime (it hashes and loads a
-//!    6 GB GGUF and then decodes on CPU), gated the way `integration_real.rs`
+//!    6 GB GGUF and then decodes on CPU), gated the way `integration_real_spans.rs`
 //!    gates: FAIL LOUDLY with a fetch pointer rather than silently skip.
 //!    `LFM2D_ADJUDICATOR_MODEL` / `LFM2_MODELS_DIR` override the defaults.
 //!
@@ -574,9 +574,7 @@ fn specs_dir() -> PathBuf {
 fn gguf_path() -> PathBuf {
     std::env::var_os("LFM2D_ADJUDICATOR_MODEL")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from("/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf")
-        })
+        .unwrap_or_else(|| models_dir().join("LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf"))
 }
 
 /// The scorer for the end-to-end overhead number: the same inputs through the

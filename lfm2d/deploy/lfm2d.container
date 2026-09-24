@@ -8,7 +8,7 @@
 #   podman build -t localhost/lfm2d:latest -f lfm2d/Containerfile .
 #
 # This example serves an embedder, the Prompt-Router and the PII-Detector.
-# Adjust --embedder-dir/--classifier-dir/--router-dir/--token-classifier-dir
+# Adjust --embedder-dir/--router-dir/--token-classifier-dir
 # to whatever heads you're actually deploying; at least one head is
 # required (see lfm2d/README.md).
 
