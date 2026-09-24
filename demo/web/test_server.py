@@ -153,6 +153,14 @@ class PageTests(unittest.TestCase):
         self.assertTrue(all(isinstance(r["hurts"], bool) for r in rows))
         self.assertEqual({r["hurts"] for r in rows}, {True, False})
 
+    def test_two_worlds_props_are_well_formed(self):
+        static = Path(server.__file__).parent / "static"
+        cases = json.loads((static / "two-worlds.json").read_text())["cases"]
+        self.assertEqual(len({c["input"] for c in cases}), len(cases))
+        for c in cases:
+            self.assertEqual(len(c["worlds"]), 2)
+            self.assertTrue(all(w.strip() and "\n" not in w for w in c["worlds"]))
+
 
 if __name__ == "__main__":
     unittest.main()

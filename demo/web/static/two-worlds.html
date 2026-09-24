@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two Worlds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080c; --ink: #e8ecf4; --dim: #5d6679; --mid: #9aa3b5; --faint: #1a1e29; --track: #121621;
+    --allow: #6fb7ff; --ask: #f5a54b; --review: #6b7385; --a: #7ee0c3; --b: #ff6b86;
+    --serif: "Fraunces", Georgia, "Iowan Old Style", serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body { display: grid; place-items: center; font-family: var(--serif); color: var(--ink); }
+  #stage { width: 540px; height: 960px; position: relative; overflow: hidden;
+           background: radial-gradient(120% 70% at 50% 30%, #10131c 0%, var(--bg) 70%); }
+  header { position: absolute; top: 40px; left: 32px; right: 32px; }
+  .kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  #caption { margin-top: 12px; font-size: 28px; line-height: 1.18; font-weight: 600; min-height: 92px; transition: opacity .45s; }
+  #caption small { display: block; font-size: 16px; font-weight: 400; color: var(--mid); margin-top: 7px; line-height: 1.38; }
+  #cmd { position: absolute; top: 178px; left: 32px; right: 32px; font-family: var(--mono); font-size: 23px; font-weight: 600; min-height: 32px; }
+  #cmd .p { color: var(--dim); } #cmd .cur { display: inline-block; width: .55em; height: 1em; background: var(--ink); vertical-align: -3px; margin-left: 2px; animation: blink 1s steps(1) infinite; }
+  #bare { position: absolute; top: 216px; left: 32px; right: 32px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); opacity: 0; transition: opacity .5s; }
+  #bare.show { opacity: 1; } #bare b { color: var(--mid); font-weight: 600; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .world { position: absolute; left: 32px; right: 32px; height: 318px; padding: 16px 18px; border-radius: 12px;
+           border: 1px solid var(--faint); background: #0b0d14; opacity: 0; transform: translateY(10px); transition: opacity .5s, transform .5s; }
+  .world.show { opacity: 1; transform: none; }
+  #w0 { top: 248px; } #w1 { top: 584px; }
+  .tag { font-family: var(--mono); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; }
+  #w0 .tag { color: var(--a); } #w1 .tag { color: var(--b); }
+  .facts { margin-top: 6px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: var(--ink); min-height: 63px; }
+  .lab { margin-top: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .effect { margin-top: 3px; font-size: 16px; line-height: 1.38; color: var(--mid); height: 66px; overflow: hidden; }
+  .undo { margin-top: 8px; font-family: var(--mono); font-size: 13px; color: var(--dim); min-height: 18px; }
+  .undo b { color: var(--ink); font-weight: 600; }
+  .verdict { position: absolute; left: 18px; right: 18px; bottom: 16px; }
+  .vtop { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); }
+  .vbig { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--allow); }
+  .vbig small { font-size: 13px; color: var(--dim); font-weight: 400; margin-left: 6px; }
+  .vleg { font-size: 11.5px; color: var(--dim); }
+  .bar { margin-top: 6px; height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; display: flex; }
+  .bar span { display: block; height: 100%; width: 0; transition: width .9s cubic-bezier(.2,.8,.2,1); }
+  footer { position: absolute; bottom: 12px; left: 32px; right: 32px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); line-height: 1.5; }
+  #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
+         background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
+  #end.show { opacity: 1; }
+  #end h1 { font-size: 44px; font-weight: 600; line-height: 1.12; } #end p { margin-top: 18px; font-size: 19px; color: #b5bdcc; line-height: 1.45; }
+  #end .url { font-family: var(--mono); font-size: 16px; color: var(--allow); margin-top: 32px; }
+  #gate { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px; padding: 40px;
+          background: rgba(7,8,12,.94); font-family: var(--mono); color: var(--dim); z-index: 5; cursor: pointer; }
+  #gate h1 { font-family: var(--serif); color: var(--ink); font-size: 48px; }
+  #gate.err { color: var(--b); cursor: default; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <header><div class="kicker" id="kicker">two worlds</div><div id="caption"></div></header>
+  <div id="cmd"></div>
+  <div id="bare"></div>
+  <div class="world" id="w0"></div>
+  <div class="world" id="w1"></div>
+  <footer id="foot">LFM2.5-8B-A1B · candle · ROCm on Strix Halo</footer>
+  <div id="end">
+    <h1>Same command.<br>Different world.<br>Different odds.</h1>
+    <p>The harness hands lfm2d one line of facts. LFM2.5-8B-A1B describes the command in that world, then every answer's odds are read from the same pass.</p>
+    <p class="url">github.com/tobert/lfm2d</p>
+  </div>
+  <div id="gate"><h1>Two Worlds</h1><div id="gatemsg">registering the spec…</div></div>
+</div>
+<script>
+"use strict";
+// A consumer page: it owns its spec and uploads it at load. The names below are
+// this spec's; prepare() checks them against the daemon's menu before anything plays.
+const SPEC_FILE = "/command-verdict-enum-v1.json", CASES_FILE = "/two-worlds.json";
+const DESCRIBE = "effect", UNDO = "undo", VERDICT = "verdict", PASS = "allow";
+const FACTS = line => `Facts from the harness:\n- ${line}\n\n`;
+const COLORS = ["--allow", "--ask", "--review"];   // by the verdict's option order on the menu
+const SOUND = { tick: 0.045, chord: 0.08 };
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const params = new URLSearchParams(location.search);
+const AUTO = params.has("auto"), MUTE = params.has("mute") || AUTO;
+const FIRST = Math.max(0, Number(params.get("case") ?? 1) - 1);   // ?case=4 starts at the fourth command
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = p => (p >= 0.995 ? ">99" : p < 0.005 ? "<1" : Math.round(p * 100)) + "%";
+
+async function api(path, body, raw = false) {
+  const init = body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: raw ? body : JSON.stringify(body) };
+  const r = await fetch("/api" + path, init), j = await r.json();
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${j.error?.message ?? JSON.stringify(j)}`);
+  return j;
+}
+
+let D;
+async function prepare() {
+  const spec = await (await fetch(SPEC_FILE)).text(), set = await (await fetch(CASES_FILE)).json();
+  const reg = await api("/v1/opinion/specs", spec, true);
+  const menu = (await api("/v1/opinion/specs")).find(m => m.id === reg.id);
+  if (!menu) throw new Error("uploaded spec is not on the menu");
+  const field = n => menu.fields.find(f => f.field === n) ?? (() => { throw new Error(`spec has no field "${n}"`); })();
+  if (field(DESCRIBE).kind !== "text") throw new Error(`"${DESCRIBE}" is not a text field`);
+  const verdictOpts = field(VERDICT).options, undoOpts = field(UNDO).options;
+  if (!verdictOpts.includes(PASS)) throw new Error(`"${PASS}" is not a ${VERDICT} option`);
+  if (undoOpts === undefined) throw new Error(`"${UNDO}" is not a choice field`);
+  const questions = menu.fields.filter(f => f.kind === "choice").map(f => ({ field: f.field }));
+  const read = async (input, facts) => {
+    const state = facts === undefined ? { input } : { input, facts: FACTS(facts) };
+    const r = await api("/v1/opinion", { spec: reg.id, state, questions, use_cache: true });
+    const answer = f => r.answers.find(a => a.field === f);
+    return { wrote: Object.fromEntries(r.described.map(d => [d.field, d.value])),
+             verdict: Object.fromEntries(answer(VERDICT).options.map(o => [o.option, o.prob])),
+             undo: Object.fromEntries(answer(UNDO).options.map(o => [o.option, o.prob])),
+             mass: Math.min(...r.answers.map(a => Math.exp(a.first_token_mass))) };
+  };
+  const cases = [];
+  for (const [i, c] of set.cases.entries()) {
+    $("gatemsg").textContent = `reading ${set.cases.length} commands in ${1 + c.worlds.length} worlds… ${i + 1}`;
+    cases.push({ input: c.input, facts: c.worlds, bare: await read(c.input), worlds: await Promise.all(c.worlds.map(f => read(c.input, f))) });
+  }
+  D = { info: await api("/v1/adjudicator"), spec: reg.id, verdictOpts, cases,
+        mass: Math.min(...cases.flatMap(c => [c.bare.mass, ...c.worlds.map(w => w.mass)])) };
+}
+
+// --- sound ---
+let ac, master;
+function audioInit() { ac = new AudioContext(); const c = ac.createDynamicsCompressor(); master = ac.createGain(); master.gain.value = 0.9; master.connect(c); c.connect(ac.destination); }
+function tone(freq, type, gain, dur, at = 0) {
+  if (MUTE || !ac) return; const t = ac.currentTime + 0.005 + at, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function tick() {
+  if (MUTE || !ac) return; const n = ac.sampleRate * 0.02, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 6);
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = b; f.type = "highpass"; f.frequency.value = 2400; g.gain.value = SOUND.tick; s.connect(f); f.connect(g); g.connect(master); s.start();
+}
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+function verdictChord(pAllow, at) {   // major when it would pass, a low minor second when it would stop
+  const root = 57 + Math.round(pAllow * 7);
+  const iv = pAllow >= 0.5 ? [0, 4, 7, 12] : [0, 1, 6];
+  iv.forEach((k, j) => tone(midi(root + k), pAllow >= 0.5 ? "sine" : "triangle", SOUND.chord, 1.6, at + j * 0.03));
+}
+
+// --- picture ---
+async function caption(main, sub) {
+  $("caption").style.opacity = 0; await sleep(380);
+  $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1;
+}
+async function typeInto(els, texts, ms, sound) {
+  const n = Math.max(...texts.map(t => [...t].length)), chars = texts.map(t => [...t]);
+  for (let i = 0; i < n; i++) {
+    els.forEach((el, k) => { if (i < chars[k].length) el.insertAdjacentText("beforeend", chars[k][i]); });
+    if (sound && i % 2 === 0) tick(); await sleep(ms);
+  }
+}
+function worldShell(k) {
+  const el = $("w" + k);
+  el.innerHTML = `<div class="tag">${k === 0 ? "world one" : "world two"}</div><div class="facts"></div>` +
+    `<div class="lab">the model describes it</div><div class="effect"></div><div class="undo"></div>` +
+    `<div class="verdict"><div class="vtop"><div class="vbig">&nbsp;</div><div class="vleg"></div></div>` +
+    `<div class="bar">${D.verdictOpts.map((o, j) => `<span style="background: var(${COLORS[j] ?? "--review"})"></span>`).join("")}</div></div>`;
+  el.classList.remove("show"); return el;
+}
+function fillVerdict(el, v) {
+  const spans = el.querySelectorAll(".bar span");
+  D.verdictOpts.forEach((o, j) => { spans[j].style.width = (100 * (v[o] ?? 0)).toFixed(2) + "%"; });
+  el.querySelector(".vbig").innerHTML = `${pct(v[PASS])}<small>${esc(PASS)}</small>`;
+  el.querySelector(".vleg").innerHTML = D.verdictOpts.filter(o => o !== PASS).map(o => `${esc(o)} ${pct(v[o] ?? 0)}`).join(" · ");
+}
+
+async function playCase(c, n) {
+  $("kicker").textContent = `two worlds · ${n + 1}/${D.cases.length}`;
+  $("bare").classList.remove("show"); $("cmd").innerHTML = "";
+  const w = [worldShell(0), worldShell(1)];
+  await caption(n === 0 ? "An agent wants to run this." : "Next command.", n === 0 ? "Same command, typed into two different worlds." : "");
+  $("cmd").innerHTML = `<span class="p">$ </span><span id="ct"></span><span class="cur"></span>`;
+  await sleep(500);
+  for (const ch of c.input) { $("ct").insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(70); }
+  await sleep(500);
+  $("bare").innerHTML = `with no facts: <b>${pct(c.bare.verdict[PASS])} ${esc(PASS)}</b>`; $("bare").classList.add("show");
+  await sleep(900);
+  w.forEach(el => el.classList.add("show")); await sleep(500);
+  await typeInto(w.map(el => el.querySelector(".facts")), c.facts, 22, true); await sleep(700);
+  await typeInto(w.map(el => el.querySelector(".effect")), c.worlds.map(x => x.wrote[DESCRIBE]), 14, false); await sleep(400);
+  w.forEach((el, k) => { el.querySelector(".undo").innerHTML = `${esc(UNDO)}: wrote <b>${esc(c.worlds[k].wrote[UNDO] ?? "?")}</b>`; });
+  await sleep(700);
+  w.forEach((el, k) => fillVerdict(el, c.worlds[k].verdict));
+  verdictChord(c.worlds[0].verdict[PASS], 0); verdictChord(c.worlds[1].verdict[PASS], 0.9);
+  await sleep(2200);
+  const a = c.worlds[0].verdict[PASS], b = c.worlds[1].verdict[PASS], gap = Math.abs(a - b);
+  if (gap >= 0.25) await caption(`${pct(a)} → ${pct(b)}.`, "Only the facts changed.");
+  else await caption("This one barely moves.", `${pct(a)} → ${pct(b)}. It won't trust “${esc(c.input)}” even in the safe world.`);
+  await sleep(gap >= 0.25 ? 3800 : 5600);
+}
+
+let stageT = "";
+function fit() { const k = Math.min(innerWidth / 540, innerHeight / 960); stageT = `scale(${k})`; $("stage").style.transform = stageT; }
+addEventListener("resize", fit); fit();
+
+(async () => {
+  try { await prepare(); }
+  catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
+  const i = D.info;
+  $("foot").innerHTML = `${esc(i.model_id)} · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo · live /v1/opinion<br>` +
+    `spec ${D.spec.slice(0, 12)} uploaded at load · answer-set mass ≥ ${(100 * D.mass).toFixed(1)}% on every read`;
+  $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
+  if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
+  if (!MUTE) audioInit();
+  $("gate").remove(); await sleep(600);
+  for (let n = FIRST; n < D.cases.length; n++) await playCase(D.cases[n], n);
+  $("end").classList.add("show");
+})();
+</script>
+</body>
+</html>

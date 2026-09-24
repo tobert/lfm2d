@@ -311,7 +311,7 @@ async function scene2() {
   for (const [i, r] of D.rows.entries()) { dot(gB, posB[i], r.hurts, { cx: posA[i].cx, cy: -20 }); if (i % 4 === 0) await sleep(40); }
   await sleep(1800);
   await reveal($("stripB"), 1); await sleep(2500);
-  await caption("The undo odds separate.", "A recall number means nothing without its false alarms, so both are always on screen.");
+  await caption("On this set, the undo odds separate.", "On our 236-command gold set no single slot wins. A recall number means nothing without its false alarms.");
   await sleep(7500);
 }
 

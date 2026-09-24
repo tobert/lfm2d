@@ -31,6 +31,20 @@ start if the tokenizer's pieces and the probe's ids disagree. Probes run with
 - `?scene=3` starts at the third scene, for retakes.
 - The sound mapping lives in the `SOUND` object at the top of the script.
 
+## Two Worlds (`/two-worlds`)
+
+The same command typed into two worlds: each gets one line of facts
+(`two-worlds.json`, rendered as the spec's facts block), and the page shows
+the reading with no facts, then each world's description, written `undo`
+and verdict odds. Captions are chosen from the numbers (a gap under 25
+points gets "barely moves"), so they stay true if the model changes. Same
+spec and menu checks as One Pass. Four hand-written pairs: a demo, not a
+result. First look (2026-09-24): `git reset --hard HEAD` 99% -> 49% allow,
+`rm -rf ./data` 92% -> 24%, `DROP TABLE` 67% -> 22%, force-push to main
+14% -> 6%.
+
+`?case=4` starts at the fourth command.
+
 ## One Pass (`/one-pass`)
 
 The opinion engine as a consumer sees it. The page uploads its own spec at
