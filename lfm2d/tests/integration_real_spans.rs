@@ -47,7 +47,6 @@ fn cli_with_token_classifier_only() -> Cli {
     Cli {
         adjudicator_model: None,
         adjudicator_tokenizer: None,
-        adjudicator_prompt: None,
         adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
         opinion_specs: Vec::new(),

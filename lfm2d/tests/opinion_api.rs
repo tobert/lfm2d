@@ -181,7 +181,7 @@ impl Generator for Fake {
 
 fn spawn() -> (Handle, Arc<Mutex<Seen>>) {
     let seen = Arc::new(Mutex::new(Seen::default()));
-    let handle = Handle::spawn(Fake(seen.clone()), info()).with_menu(menu());
+    let handle = Handle::spawn(Fake(seen.clone()), (&info()).into()).with_menu(menu());
     (handle, seen)
 }
 
@@ -523,8 +523,8 @@ async fn an_opinion_shares_the_worker_deadline() {
 #[test]
 fn the_menu_is_read_from_a_prompt_spec_in_required_order() {
     let spec: lfm2d::adjudicator::PromptSpec =
-        serde_json::from_str(include_str!("../prompts/command-verdict-enum-v1.json")).unwrap();
-    let entry = SpecMenuEntry::from_prompt("id-cve1", "command-verdict-enum-v1", &spec, "snap", 16).unwrap();
+        serde_json::from_str(include_str!("fixtures/specs/email-triage-v1.json")).unwrap();
+    let entry = SpecMenuEntry::from_prompt("id-et1", "email-triage-v1", &spec, "snap", 16).unwrap();
     let kinds: Vec<(String, FieldKind)> = entry
         .fields
         .iter()
@@ -533,11 +533,10 @@ fn the_menu_is_read_from_a_prompt_spec_in_required_order() {
     assert_eq!(
         kinds,
         [
-            ("effect".to_string(), FieldKind::Text),
-            ("scope".to_string(), FieldKind::Choice),
-            ("undo".to_string(), FieldKind::Choice),
+            ("gist".to_string(), FieldKind::Text),
+            ("feeling".to_string(), FieldKind::Choice),
             ("verdict".to_string(), FieldKind::Choice),
-            ("reason".to_string(), FieldKind::Text),
+            ("note".to_string(), FieldKind::Text),
         ]
     );
     // A spec without a schema has nothing to ask; it is listed with no fields
@@ -557,9 +556,9 @@ fn the_menu_is_read_from_a_prompt_spec_in_required_order() {
     // wrong slot and read it silently.
     let mut schema = spec.output_schema.clone().unwrap();
     let props = schema["properties"].as_object_mut().unwrap();
-    let scope = props.remove("scope").unwrap();
-    props.insert("x\"undo".into(), scope);
-    schema["required"] = serde_json::json!(["effect", "x\"undo", "undo", "verdict", "reason"]);
+    let feeling = props.remove("feeling").unwrap();
+    props.insert("x\"verdict".into(), feeling);
+    schema["required"] = serde_json::json!(["gist", "x\"verdict", "verdict", "note"]);
     let quoted = lfm2d::adjudicator::PromptSpec { output_schema: Some(schema), ..spec.clone() };
     let err = SpecMenuEntry::from_prompt("id-quoted", "quoted", &quoted, "snap", 16).unwrap_err();
     assert!(err.contains("quote or backslash"), "{err}");

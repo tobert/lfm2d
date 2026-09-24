@@ -14,9 +14,9 @@
 //! lfm25-chunk-sweep --device rocm \
 //!   --model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
 //!   --tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
-//!   --prompt 'lfm2d/prompts/command-verdict-enum-v1.json' \
-//!   --input 'docker system prune -af' \
-//!   --assistant-prefill '{"effect": "removes unused images", "scope": "system", "undo": "hard", "verdict": "'
+//!   --prompt 'lfm2d/tests/fixtures/specs/email-triage-v1.json' \
+//!   --input 'I was charged twice and want a refund.' \
+//!   --assistant-prefill '{"gist": "wants a refund for a double charge", "feeling": "frustrated", "verdict": "'
 //! ```
 
 use clap::Parser;
@@ -47,7 +47,8 @@ struct Args {
     /// Exact text to read, control tokens and all.
     #[arg(long, conflicts_with_all = ["prompt", "input", "assistant_prefill"])]
     text_file: Option<PathBuf>,
-    /// A prompt spec as the daemon's --adjudicator-prompt takes it.
+    /// A prompt spec file, the same JSON the daemon's --opinion-spec loads
+    /// and `POST /v1/opinion/specs` accepts.
     #[arg(long, requires = "input")]
     prompt: Option<PathBuf>,
     /// The user turn's content, rendered as the daemon renders it.

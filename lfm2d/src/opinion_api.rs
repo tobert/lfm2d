@@ -162,9 +162,9 @@ pub struct SpecMenuEntry {
     /// `POST /v1/adjudicate` accept it wherever they accept `spec`. See
     /// `docs/system1-split-plan.md` "Runtime spec registration".
     pub id: String,
-    /// A boot-time spec's file stem (`--adjudicator-prompt`/
-    /// `--opinion-spec` are named this way and answer to it as well as to
-    /// `id`). An uploaded spec has no file, so this equals `id`.
+    /// A boot-time spec's file stem (`--opinion-spec` specs are named this
+    /// way and answer to it as well as to `id`). An uploaded spec has no
+    /// file, so this equals `id`.
     pub spec: String,
     pub snapshot_id: String,
     /// How many described states the daemon keeps for this spec.

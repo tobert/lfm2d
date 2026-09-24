@@ -301,7 +301,7 @@ fn body_of(p: &PromptSpec) -> String {
 #[tokio::test]
 async fn registering_the_same_bytes_twice_is_idempotent_and_does_no_second_load() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine.clone(), info());
+    let handle = Handle::spawn(engine.clone(), (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     let body = body_of(&prompt("idempotency fixture"));
 
@@ -324,7 +324,7 @@ async fn registering_the_same_bytes_twice_is_idempotent_and_does_no_second_load(
 #[tokio::test]
 async fn field_order_alone_changes_the_id() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine, info());
+    let handle = Handle::spawn(engine, (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     // Same JSON object, semantically, with `system` and `output_schema`
     // swapped in the source text. `serde_json::Value` would sort both to
@@ -344,7 +344,7 @@ async fn field_order_alone_changes_the_id() {
 #[tokio::test]
 async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine, info());
+    let handle = Handle::spawn(engine, (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
 
     let unknown = format!(
@@ -398,7 +398,7 @@ async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again
 async fn deleting_a_boot_spec_is_refused_and_it_stays_loaded() {
     let boot_entry = SpecMenuEntry::from_prompt("boot-id", "boot-name", &prompt("boot"), "snap", 16).unwrap();
     let engine = Fake::new(vec![boot_entry], 8);
-    let handle = Handle::spawn(engine, info()).with_menu(vec![
+    let handle = Handle::spawn(engine, (&info()).into()).with_menu(vec![
         SpecMenuEntry::from_prompt("boot-id", "boot-name", &prompt("boot"), "snap", 16).unwrap(),
     ]);
     let router = lfm2d::adjudicator::router(handle, true);
@@ -418,7 +418,7 @@ async fn deleting_a_boot_spec_by_its_name_is_also_refused_not_404() {
     // just not deletable at runtime.
     let boot_entry = SpecMenuEntry::from_prompt("boot-id-2", "boot-name-2", &prompt("boot"), "snap", 16).unwrap();
     let engine = Fake::new(vec![boot_entry.clone()], 8);
-    let handle = Handle::spawn(engine, info()).with_menu(vec![boot_entry]);
+    let handle = Handle::spawn(engine, (&info()).into()).with_menu(vec![boot_entry]);
     let router = lfm2d::adjudicator::router(handle, true);
     let status = delete(&router, "/v1/opinion/specs/boot-name-2").await;
     assert_eq!(status, 403, "a boot spec's NAME must also be refused, not treated as unknown");
@@ -427,7 +427,7 @@ async fn deleting_a_boot_spec_by_its_name_is_also_refused_not_404() {
 #[tokio::test]
 async fn capacity_plus_one_uploads_evicts_the_lru_and_a_recently_used_one_survives() {
     let engine = Fake::new(vec![], 2);
-    let handle = Handle::spawn(engine, info());
+    let handle = Handle::spawn(engine, (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     let (_, va) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("cap-a"))).await;
     let (_, vb) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("cap-b"))).await;
@@ -462,7 +462,7 @@ async fn capacity_plus_one_uploads_evicts_the_lru_and_a_recently_used_one_surviv
 #[tokio::test]
 async fn a_load_refusal_is_422_with_the_reason_text() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine, info());
+    let handle = Handle::spawn(engine, (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     let (status, v) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt(REFUSE))).await;
     assert_eq!(status, 422, "{v}");
@@ -473,7 +473,7 @@ async fn a_load_refusal_is_422_with_the_reason_text() {
 #[tokio::test]
 async fn an_unparseable_body_is_400_and_never_reaches_the_engine() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine.clone(), info());
+    let handle = Handle::spawn(engine.clone(), (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     // Every body here must be bad -- unlike an earlier version of this
     // test, which included a body that actually parses fine (`system`
@@ -512,7 +512,7 @@ async fn an_unparseable_body_is_400_and_never_reaches_the_engine() {
 async fn a_body_over_the_spec_size_limit_is_413_and_never_reaches_the_engine() {
     const MAX_SPEC_BYTES: usize = 1_048_576;
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine.clone(), info());
+    let handle = Handle::spawn(engine.clone(), (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
 
     // Just over the limit -- exercises the boundary, not just "very big".
@@ -536,7 +536,7 @@ async fn a_body_over_the_spec_size_limit_is_413_and_never_reaches_the_engine() {
 #[tokio::test]
 async fn adjudicate_with_spec_names_the_uploaded_id_to_the_generator() {
     let engine = Fake::new(vec![], 8);
-    let handle = Handle::spawn(engine.clone(), info());
+    let handle = Handle::spawn(engine.clone(), (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     let (_, v) = post_bytes(&router, "/v1/opinion/specs", &body_of(&prompt("adjudicate-by-spec"))).await;
     let id = v["id"].as_str().unwrap().to_string();

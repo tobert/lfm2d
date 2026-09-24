@@ -3,7 +3,7 @@
 //! at boot via `--opinion-spec`.
 //!
 //! `register`'s dedup keys on the exact uploaded BYTES (the content hash),
-//! so registering `demo/specs/email-triage-v1.json`'s own bytes a second
+//! so registering `tests/fixtures/specs/email-triage-v1.json`'s own bytes a second
 //! time — this test's daemon already boot-loaded it — would just return the
 //! boot entry with no new load, which certifies nothing about the runtime
 //! load path. So this test uploads the same PARSED spec with one trailing
@@ -44,13 +44,8 @@ fn cli() -> Cli {
         &model,
         "--adjudicator-tokenizer",
         &tokenizer,
-        "--adjudicator-prompt",
-        &format!(
-            "{}/prompts/command-verdict-enum-v1.json",
-            env!("CARGO_MANIFEST_DIR")
-        ),
         "--opinion-spec",
-        &format!("{}/../demo/specs/email-triage-v1.json", env!("CARGO_MANIFEST_DIR")),
+        &format!("{}/tests/fixtures/specs/email-triage-v1.json", env!("CARGO_MANIFEST_DIR")),
         "--adjudicator-context",
         "4096",
     ])
@@ -71,10 +66,10 @@ fn a_runtime_registered_copy_reads_bit_identical_to_the_boot_loaded_spec() {
         .clone();
 
     let path = format!(
-        "{}/../demo/specs/email-triage-v1.json",
+        "{}/tests/fixtures/specs/email-triage-v1.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    let mut bytes = std::fs::read(&path).expect("read the demo spec");
+    let mut bytes = std::fs::read(&path).expect("read the fixture spec");
     bytes.push(b'\n'); // different bytes, same parsed content — see module docs
     let prompt: lfm2d::adjudicator::PromptSpec =
         serde_json::from_slice(&bytes).expect("still valid JSON with the trailing newline");
@@ -167,4 +162,53 @@ fn a_runtime_registered_copy_reads_bit_identical_to_the_boot_loaded_spec() {
         top(&upload_read, "verdict"),
         top(&upload_read, "feeling"),
     );
+}
+
+/// No spec is privileged, so none is required at boot: the adjudicator loads
+/// with an empty menu (warming its kernels without borrowing a spec's
+/// prefix), refuses to guess when `/v1/adjudicate` names no spec, answers an
+/// unknown one with the upload-and-retry 404, and serves a spec as soon as
+/// one is registered.
+#[test]
+#[ignore = "loads and hashes the 6 GB LFM2.5-8B-A1B GGUF; minutes on a GPU host"]
+fn an_adjudicator_booted_with_no_specs_serves_the_first_upload() {
+    use lfm2d::adjudicator::{AdjudicateRequest, Failure};
+    let mut cli = cli();
+    cli.opinion_specs.clear();
+    cli.validate().expect("model + tokenizer alone is a valid configuration");
+    let mut adjudicator = Adjudicator::load(&cli).expect("load with an empty menu");
+    let ok = || Ok(());
+    assert!(adjudicator.menu().is_empty(), "no --opinion-spec, no menu entries");
+
+    let request = |spec: Option<&str>| -> AdjudicateRequest {
+        let mut body = serde_json::json!({"input": "Hi, what are your store hours?", "max_tokens": 64});
+        if let Some(spec) = spec {
+            body["spec"] = spec.into();
+        }
+        serde_json::from_value(body).unwrap()
+    };
+    match adjudicator.generate(&request(None), &ok) {
+        Err(Failure::BadRequest(message)) => {
+            assert!(message.contains("GET /v1/opinion/specs"), "{message}")
+        }
+        other => panic!("a spec-less request must be a 400, got {other:?}"),
+    }
+    let bytes = std::fs::read(format!(
+        "{}/tests/fixtures/specs/email-triage-v1.json",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let id = lfm2d::hash::sha256_hex_bytes(&bytes);
+    match adjudicator.generate(&request(Some(&id)), &ok) {
+        Err(Failure::NotFound(message)) => assert!(message.contains("POST /v1/opinion/specs"), "{message}"),
+        other => panic!("a spec not yet uploaded must be a 404, got {other:?}"),
+    }
+
+    let prompt: lfm2d::adjudicator::PromptSpec = serde_json::from_slice(&bytes).unwrap();
+    let outcome = adjudicator.register(id.clone(), prompt, &ok).expect("register");
+    assert!(outcome.newly_loaded);
+    assert_eq!(outcome.menu.len(), 1);
+    let response = adjudicator.generate(&request(Some(&id)), &ok).expect("serve the upload");
+    assert_eq!(response.prefix.snapshot_id, outcome.entry.snapshot_id, "the response names the spec it used");
+    assert!(response.completion_tokens > 0);
 }

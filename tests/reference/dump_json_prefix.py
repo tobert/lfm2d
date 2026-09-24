@@ -33,7 +33,12 @@ import argparse, json, subprocess, sys, urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-PROMPT = 'lfm2d/prompts/shell-severity-json-v1.json'
+# A neutral fixture spec, not a served one: the test pins the renderer against
+# the checkpoint's template, and any schema-bearing spec exercises that. Until
+# 2026-09-24 this was lfm2d/prompts/shell-severity-json-v1.json, which left the
+# repo with the shell material, so --verify-against-git only works for
+# revisions from that move onward (older ones have no file at this path).
+PROMPT = 'lfm2d/tests/fixtures/specs/email-triage-v1.json'
 FIXTURE = 'lfm2d/tests/fixtures/lfm25-json-prefix.txt'
 BOS = '<|startoftext|>'
 # Mirror of adjudicator::SCHEMA_KEYS.

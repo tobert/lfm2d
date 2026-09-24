@@ -40,7 +40,8 @@ struct Args {
     /// Exact text to examine, control tokens included.
     #[arg(long, conflicts_with_all = ["prompt", "input", "assistant_prefill"])]
     text_file: Option<PathBuf>,
-    /// A prompt spec as the daemon's --adjudicator-prompt takes it.
+    /// A prompt spec file, the same JSON the daemon's --opinion-spec loads
+    /// and `POST /v1/opinion/specs` accepts.
     #[arg(long)]
     prompt: Option<PathBuf>,
     /// The user turn's content, rendered as the daemon renders it.

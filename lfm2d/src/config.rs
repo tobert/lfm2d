@@ -39,9 +39,6 @@ pub struct Cli {
     /// Matching Hugging Face tokenizer.json (checked against GGUF vocabulary).
     #[arg(long, env="LFM2D_ADJUDICATOR_TOKENIZER")]
     pub adjudicator_tokenizer: Option<PathBuf>,
-    /// JSON {system, output_schema} prompt, prefetched into an immutable hybrid snapshot.
-    #[arg(long, env="LFM2D_ADJUDICATOR_PROMPT")]
-    pub adjudicator_prompt: Option<PathBuf>,
     /// Adjudicator context budget, including output. The initial eager attention path is capped at 8192.
     #[arg(long, default_value_t=4096)]
     pub adjudicator_context: usize,
@@ -49,9 +46,11 @@ pub struct Cli {
     /// 1.0 disables it; 1.05 is the checkpoint author's recommendation.
     #[arg(long, default_value_t = 1.05)]
     pub adjudicator_repeat_penalty: f32,
-    /// Further prompt specs served by `/v1/opinion` beside the adjudicator
-    /// prompt (which is always on the menu). Repeatable; each gets its own
-    /// resident prefix. Named by file stem, so stems must not repeat.
+    /// Prompt specs loaded at boot, each a JSON `{system, output_schema, ...}`
+    /// prefilled into its own resident prefix. Repeatable, and optional: with
+    /// none the menu starts empty and fills through `POST /v1/opinion/specs`.
+    /// No spec is a default; `/v1/opinion` and `/v1/adjudicate` both name
+    /// one. Named by file stem, so stems must not repeat.
     #[arg(long = "opinion-spec", env = "LFM2D_OPINION_SPECS", value_delimiter = ',')]
     pub opinion_specs: Vec<PathBuf>,
     /// How many runtime-uploaded specs (`POST /v1/opinion/specs`) stay
@@ -59,7 +58,7 @@ pub struct Cli {
     /// this is bounded. Past it, the least recently used upload is evicted
     /// (a re-registration or a served request both count as use); its next
     /// request gets a 404 that tells the client to upload it again.
-    /// Boot-time specs (`--adjudicator-prompt`/`--opinion-spec`) are never
+    /// Boot-time specs (`--opinion-spec`) are never
     /// evicted and don't count against this.
     #[arg(long = "opinion-spec-capacity", env = "LFM2D_OPINION_SPEC_CAPACITY", default_value_t = 8)]
     pub opinion_spec_capacity: usize,
@@ -245,15 +244,14 @@ impl Cli {
         if !self.adjudicator_repeat_penalty.is_finite() || !(1.0..=2.0).contains(&self.adjudicator_repeat_penalty) {
             return Err("adjudicator repeat penalty must be finite and in 1.0..=2.0".into());
         }
-        let adjudicator_fields = [self.adjudicator_model.is_some(), self.adjudicator_tokenizer.is_some(), self.adjudicator_prompt.is_some()];
-        if adjudicator_fields.iter().any(|&v|v) && !adjudicator_fields.iter().all(|&v|v) {
-            return Err("--adjudicator-model, --adjudicator-tokenizer and --adjudicator-prompt must be supplied together".into());
+        if self.adjudicator_model.is_some() != self.adjudicator_tokenizer.is_some() {
+            return Err("--adjudicator-model and --adjudicator-tokenizer must be supplied together".into());
         }
         if self.adjudicator_model.is_some() && (!matches!(self.dtype, DtypeArg::F32) || !(128..=8192).contains(&self.adjudicator_context)) {
             return Err("adjudicator requires --dtype f32 and --adjudicator-context 128..=8192".into());
         }
         if !self.opinion_specs.is_empty() && self.adjudicator_model.is_none() {
-            return Err("--opinion-spec needs the adjudicator (--adjudicator-model/--adjudicator-tokenizer/--adjudicator-prompt)".into());
+            return Err("--opinion-spec needs the adjudicator (--adjudicator-model/--adjudicator-tokenizer)".into());
         }
         if self.opinion_spec_capacity == 0 {
             return Err("--opinion-spec-capacity must be at least 1".into());
@@ -286,7 +284,6 @@ mod tests {
         Cli {
             adjudicator_model: None,
             adjudicator_tokenizer: None,
-            adjudicator_prompt: None,
             adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
             opinion_specs: Vec::new(),
@@ -336,7 +333,6 @@ mod tests {
         let cli = Cli {
             adjudicator_model: None,
             adjudicator_tokenizer: None,
-            adjudicator_prompt: None,
             adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
             opinion_specs: Vec::new(),
@@ -380,6 +376,61 @@ mod tests {
     #[test]
     fn log_input_hash_defaults_off() {
         assert!(!base().log_input_hash, "a secrets-detection endpoint must not hash input by default");
+    }
+
+    // ------------------------------------------------------- adjudicator
+    //
+    // The model and tokenizer enable the adjudicator; specs are optional at
+    // boot (the menu can start empty and fill through
+    // `POST /v1/opinion/specs`). There is no `--adjudicator-prompt`: no spec
+    // is privileged, so none is required.
+
+    fn adjudicator_only() -> Cli {
+        Cli {
+            adjudicator_model: Some("/models/lfm25.gguf".into()),
+            adjudicator_tokenizer: Some("/models/tokenizer.json".into()),
+            socket_path: Some("/tmp/lfm2d.sock".into()),
+            ..base()
+        }
+    }
+
+    #[test]
+    fn the_adjudicator_boots_with_zero_specs() {
+        adjudicator_only()
+            .validate()
+            .expect("model + tokenizer with no --opinion-spec is a valid, empty-menu adjudicator");
+    }
+
+    #[test]
+    fn the_adjudicator_needs_both_model_and_tokenizer() {
+        for cli in [
+            Cli { adjudicator_tokenizer: None, ..adjudicator_only() },
+            // A router too, so the refusal is about the adjudicator pair and
+            // not "no models configured".
+            Cli { adjudicator_model: None, router_dir: Some("/tmp/router".into()), ..adjudicator_only() },
+        ] {
+            let err = cli.validate().expect_err("half an adjudicator must be refused");
+            assert!(err.contains("--adjudicator-model") && err.contains("--adjudicator-tokenizer"), "{err}");
+        }
+    }
+
+    #[test]
+    fn an_opinion_spec_without_the_adjudicator_is_refused() {
+        let cli = Cli {
+            router_dir: Some("/tmp/router".into()),
+            socket_path: Some("/tmp/lfm2d.sock".into()),
+            opinion_specs: vec!["/specs/a.json".into()],
+            ..base()
+        };
+        let err = cli.validate().expect_err("a spec with no model to serve it");
+        assert!(err.contains("--opinion-spec"), "{err}");
+    }
+
+    #[test]
+    fn adjudicator_prompt_is_no_longer_a_flag() {
+        let err = Cli::try_parse_from(["lfm2d", "--adjudicator-prompt", "/specs/a.json"])
+            .expect_err("the removed flag must be a parse error, not silently ignored");
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument, "{err}");
     }
 
     // -------------------------------------------- real clap::Parser parsing

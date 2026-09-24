@@ -166,7 +166,12 @@ async fn main() {
         let info = model.info();
         let menu = model.menu();
         tokenizers.insert(info.model_id.clone(), model.tokenizer_clone(), info.tokenizer_hash.clone());
-        tracing::info!(prefix_tokens=info.prefix_tokens, snapshot_id=%info.snapshot_id, backend=%info.backend, specs=menu.len(), "lfm2d: adjudicator prefix ready");
+        tracing::info!(model_id=%info.model_id, backend=%info.backend, specs=menu.len(), "lfm2d: adjudicator ready");
+        // One line per boot spec, each already prefilled by `Adjudicator::load`;
+        // none when the menu starts empty and waits for uploads.
+        for entry in &menu {
+            tracing::info!(spec=%entry.spec, id=%entry.id, snapshot_id=%entry.snapshot_id, "lfm2d: boot opinion spec prefix ready");
+        }
         let handle = lfm2d::adjudicator::Handle::spawn(model, info).with_menu(menu);
         worker_exits.push(handle.exit_signal());
         adjudicator_stop = Some(handle.stop_signal());
