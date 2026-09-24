@@ -7,12 +7,10 @@
 //! weight hashing, the worker thread, the router — actually holds together
 //! end to end.
 //!
-//! Gated the same way `tests/cascade.rs`/`tests/trunk_parity.rs` gate in
-//! the parent crate: FAIL LOUDLY with a fetch/pointer command rather than
-//! silently skip, via `assert!` on the checkpoint file's presence before
-//! ever loading it. `LFM2_SEQ_CLF_DIR`/`LFM2_MODELS_DIR` env vars override
-//! the defaults, matching `tests/cascade.rs`'s own convention exactly (this
-//! is the same `kube_ordinal_v6` checkpoint that file uses).
+//! Gated the same way `tests/trunk_parity.rs` gates in the parent crate:
+//! FAIL LOUDLY with a fetch/pointer command rather than silently skip, via
+//! `assert!` on the checkpoint file's presence before ever loading it.
+//! `LFM2_SEQ_CLF_DIR`/`LFM2_MODELS_DIR` env vars override the defaults.
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -29,8 +27,7 @@ use lfm2d::server::{build_router, AppState};
 use lfm2d::worker::WorkerHandle;
 
 /// `kube_ordinal_v6`'s directory — not under `.models/` (which holds
-/// LiquidAI's own Hub checkpoints), same as `tests/cascade.rs`'s
-/// `classifier_dir`.
+/// LiquidAI's own Hub checkpoints).
 fn classifier_dir() -> PathBuf {
     if let Ok(d) = std::env::var("LFM2_SEQ_CLF_DIR") {
         return PathBuf::from(d);
@@ -45,14 +42,12 @@ fn cli_with_classifier_only() -> Cli {
         dir.join("model.safetensors").is_file(),
         "missing weights at {}\n\n  (point LFM2_SEQ_CLF_DIR at an \
          Lfm2BidirForSequenceClassification checkpoint dir — kube_ordinal_v6's shape, \
-         produced by training/finetune_sequence_classifier.py; tests/cascade.rs in the \
-         parent crate uses this same checkpoint)\n",
+         a fine-tuned checkpoint produced outside this repo)\n",
         dir.display(),
     );
     Cli {
         adjudicator_model: None,
         adjudicator_tokenizer: None,
-        adjudicator_prompt: None,
         adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
         opinion_specs: Vec::new(),
@@ -63,8 +58,6 @@ fn cli_with_classifier_only() -> Cli {
         candidate_classifier_dir: None,
         token_classifier_dir: Vec::new(),
         log_input_hash: false,
-        cascade_routes: Vec::new(),
-        cascade_severe_labels: vec!["mutating".to_string(), "destructive".to_string()],
         socket_path: None,
         bind_addr: None,
         dtype: lfm2d::config::DtypeArg::F32,

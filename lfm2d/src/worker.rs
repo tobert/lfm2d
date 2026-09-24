@@ -49,9 +49,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 use tracing::Span;
 
-use crate::types::{
-    CascadeResponse, ClassifyResult, EmbedKind, LabelScore, ModelInfo, RouteResponse, SpanResult,
-};
+use crate::types::{ClassifyResult, EmbedKind, LabelScore, ModelInfo, RouteResponse, SpanResult};
 
 /// A worker-side failure, already classified into the two HTTP status
 /// families the API contract promises: a caller-supplied problem (400) or
@@ -132,7 +130,6 @@ pub trait InferenceEngine: Send + 'static {
     fn predict(&self, inputs: &[String]) -> Result<PredictOutcome, WorkerError>;
     fn classify(&self, inputs: &[String]) -> Result<Vec<ClassifyResult>, WorkerError>;
     fn route(&self, input: &str, routes: &[String]) -> Result<RouteResponse, WorkerError>;
-    fn cascade(&self, clauses: &[String]) -> Result<CascadeResponse, WorkerError>;
     /// `model` selects which loaded `--token-classifier-dir` head answers
     /// this call — required (as a 400 naming the loaded ids) when 2+ are
     /// loaded, optional (falls back to "the one loaded head") when exactly
@@ -180,11 +177,6 @@ pub(crate) enum WorkerCommand {
         input: String,
         routes: Vec<String>,
         reply: oneshot::Sender<Result<RouteResponse, WorkerError>>,
-        meta: Enqueued,
-    },
-    Cascade {
-        clauses: Vec<String>,
-        reply: oneshot::Sender<Result<CascadeResponse, WorkerError>>,
         meta: Enqueued,
     },
     Spans {
@@ -326,11 +318,6 @@ impl WorkerHandle {
                                 engine.route(&input, &routes)
                             }));
                         }
-                        WorkerCommand::Cascade { clauses, reply, meta } => {
-                            let _ = reply.send(run_timed(meta, &worker_queue_depth, "cascade", || {
-                                engine.cascade(&clauses)
-                            }));
-                        }
                         WorkerCommand::Spans { inputs, model, reply, meta } => {
                             let _ = reply.send(run_timed(meta, &worker_queue_depth, "spans", || {
                                 engine.spans(&inputs, model.as_deref())
@@ -451,13 +438,6 @@ impl WorkerHandle {
         let span = tracing::info_span!("worker_call", operation = "route", queue_wait_ms = tracing::field::Empty, inference_ms = tracing::field::Empty);
         let (tx, rx) = oneshot::channel();
         self.send(WorkerCommand::Route { input, routes, reply: tx, meta: Enqueued { queued_at: Instant::now(), span } })?;
-        Self::recv(rx).await?
-    }
-
-    pub async fn cascade(&self, clauses: Vec<String>) -> Result<CascadeResponse, WorkerError> {
-        let span = tracing::info_span!("worker_call", operation = "cascade", queue_wait_ms = tracing::field::Empty, inference_ms = tracing::field::Empty);
-        let (tx, rx) = oneshot::channel();
-        self.send(WorkerCommand::Cascade { clauses, reply: tx, meta: Enqueued { queued_at: Instant::now(), span } })?;
         Self::recv(rx).await?
     }
 

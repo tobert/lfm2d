@@ -13,8 +13,7 @@
 //! recording it once per input is pure repetition.
 //!
 //! The record carries the prompt text, which may be a corpus row, and corpora
-//! do not live in this repo. So `--out` is required and never defaulted, the
-//! same rule the harnesses in `benchmarks/lfm25/prompts/` follow.
+//! do not live in this repo. So `--out` is required and never defaulted.
 
 use clap::Parser;
 use lfm2d::adjudicator::{Checkpoint, PromptSpec, validate_text};
@@ -41,10 +40,13 @@ struct Args {
     /// Exact text to examine, control tokens included.
     #[arg(long, conflicts_with_all = ["prompt", "input", "assistant_prefill"])]
     text_file: Option<PathBuf>,
-    /// A prompt spec as the daemon's --adjudicator-prompt takes it.
+    /// A prompt spec file, the same JSON the daemon's --opinion-spec loads
+    /// and `POST /v1/opinion/specs` accepts.
     #[arg(long)]
     prompt: Option<PathBuf>,
-    /// The user turn's content, rendered as the daemon renders it.
+    /// The user turn's content, exactly as `/v1/adjudicate`'s `input`: for
+    /// the state an opinion reads, that is `{facts}{input_label}:\n{input}`
+    /// with the spec's own label.
     #[arg(long, requires = "prompt", conflicts_with = "inputs_file")]
     input: Option<String>,
     /// JSON lines of {"name", "input", "assistant_prefill"?}: a batch against

@@ -40,7 +40,6 @@
 //!
 //! [candle]: https://github.com/huggingface/candle
 
-pub mod cascade;
 pub mod config;
 pub mod colbert;
 pub mod embedding;
@@ -60,13 +59,6 @@ pub mod trunk;
 // with identical names and a baffling error message.
 pub use candle_core::{DType, Device};
 
-// `severity_rank_weights` is re-exported alongside its sibling
-// `resolve_severe_labels` because its own docs instruct callers to echo the
-// resolved ranking at startup (naming `lfm2d` as the caller that needs it) —
-// a mitigation that wants the function reachable where callers already look.
-pub use cascade::{
-    aggregate, resolve_severe_labels, severity_rank_weights, Cascade, CascadeVerdict, ClauseVerdict,
-};
 pub use config::{EncoderArch, LayerType, Lfm2EncoderConfig};
 pub use colbert::{ColbertModel, MultiVector};
 pub use embedding::{cosine_similarity, Lfm2Embedding, TextKind};

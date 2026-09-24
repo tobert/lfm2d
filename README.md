@@ -1,16 +1,25 @@
 # lfm2d
 
-LiquidAI's **LFM2.5 bidirectional encoders** on [candle] — pure Rust,
-CPU-first, no Python, no C++.
+A System 1 service built around LiquidAI's **LFM2.5** suite, on [candle] —
+pure Rust, no Python in the serving path.
 
-Two crates in one workspace: **`lfm2-encoder`** (this README — the library,
-at the repo root) and **`lfm2d`** (the HTTP daemon that serves its heads over
-a Unix socket and/or TCP — see [`lfm2d/README.md`](lfm2d/README.md)).
+Two crates in one workspace: **`lfm2-encoder`** (this README — the
+bidirectional encoder library, at the repo root) and **`lfm2d`** (the HTTP
+daemon — see [`lfm2d/README.md`](lfm2d/README.md)). The daemon serves:
 
-This branch also serves **LFM2.5-8B-A1B adjudication on ROCm**, with a resident
-system prefix and reusable complete-input snapshots. See the
-[build, API, and validation guide](docs/lfm25-adjudicator.md) and the
-[latest hardware/cache results](docs/lfm25-qkv-input-cache.md).
+- the **encoder heads** below: embeddings, ColBERT, token classification
+  (PII and secrets), prompt routing, sequence classification;
+- **LFM2.5-8B-A1B** on ROCm as a fast opinion engine: a caller names a
+  prompt spec (loaded at boot or uploaded at runtime, content-addressed), and
+  `/v1/opinion` describes the input under the spec's schema, then reads every
+  option of a choice field in one forward pass, with the raw probability mass
+  beside the renormalised answer. `/v1/adjudicate` continues the same state
+  generatively; `/v1/probe` and `/v1/tokenize` are the instruments. See the
+  [build, API, and validation guide](docs/lfm25-adjudicator.md) and the
+  [engine performance record](docs/lfm25-qkv-input-cache.md).
+
+The daemon knows nothing about any one domain: the questions come from the
+specs its consumers bring.
 
 Upstream candle-transformers implements the *causal* LFM2
 (`models/lfm2.rs`). Nobody implements the encoder branch —
@@ -33,9 +42,8 @@ routing, and sequence classification. The parity suites under `tests/` are
 what keep those claims honest — each compares against activations dumped
 from real weights by the matching script in `tests/reference/`.
 
-Sequence classification is also the substrate for the fine-tuned severity
-heads this repo trains (`training/README.md`), and the heads are served
-over HTTP by the `lfm2d` daemon in this workspace.
+Sequence classification serves any fine-tuned checkpoint of the family;
+the `lfm2d` daemon in this workspace serves the heads over HTTP.
 
 `Lfm2Trunk` reproduces LiquidAI's own
 `modeling_lfm2_bidirectional.py` to max|Δ| ≈ 4.6e-5 on f32 CPU, verified

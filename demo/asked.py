@@ -8,7 +8,7 @@ sense. Narrow the menu and the mass falls by whatever the omitted options
 held, while `prob` renormalises the remainder into a confident-looking
 answer. That is invariant 9 (docs/integration.md) in one screen.
 
-    python3 asked.py --url http://127.0.0.1:18171 --spec command-verdict-enum-v1 --field verdict
+    python3 asked.py --url http://127.0.0.1:18171 --spec email-triage-v1 --field feeling
 
 Each line is an item; by default it is read over the full menu and then
 with each option left out once. `item :: a,b` asks exactly that subset.
@@ -48,6 +48,11 @@ def main():
     if not field or field['kind'] != 'choice':
         sys.exit(f'{a.field!r} is not a choice field of {a.spec!r}')
     options = field['options']
+    if len(options) < 3:
+        # Leaving one option out of two leaves a one-option question, which
+        # the daemon refuses (a question needs at least two options).
+        sys.exit(f'{a.field!r} has {len(options)} options; leave-one-out needs at least 3 '
+                 f'(try a field with more options)')
     print(f'{BOLD}asked — the renormalised answer beside the raw mass it stands on{OFF}')
     print(f'{DIM}spec {a.spec} · {a.field} over {options} · "item :: a,b" asks a subset{OFF}\n')
 
@@ -67,13 +72,16 @@ def main():
             if unknown:
                 print(f'{RED}not on the menu: {sorted(unknown)}{OFF}\n')
                 continue
+            if len(menus[1]) < 2:
+                print(f'{RED}ask at least two options: the daemon refuses a one-option question{OFF}\n')
+                continue
         else:
             item = line
             menus = [options] + [[o for o in options if o != left] for left in options]
         full_top, outcomes = None, []
         t0 = time.perf_counter()
         for i, opts in enumerate(menus):
-            body = {'spec': a.spec, 'state': {'command': item},
+            body = {'spec': a.spec, 'state': {'input': item},
                     'questions': [{'field': a.field, 'options': opts}]}
             try:
                 resp = rpc(a.url, '/v1/opinion', body)

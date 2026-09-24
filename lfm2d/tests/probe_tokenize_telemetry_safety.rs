@@ -201,7 +201,7 @@ async fn run_probe_request() -> (StatusCode, Value, Vec<String>) {
     tracing::subscriber::set_global_default(subscriber)
         .expect("this must be the only test in this binary installing a global default");
 
-    let handle = Handle::spawn(Fake, info());
+    let handle = Handle::spawn(Fake, (&info()).into());
     let router = lfm2d::adjudicator::router(handle, true);
     let (status, body) = post_json(router, "/v1/probe", json!({"text": secret_bearing_text()})).await;
 

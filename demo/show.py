@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""The whole System 1 matinee in one terminal: six acts against one daemon,
+"""The System 1 matinee in one terminal: three acts against one daemon,
 title cards between them, and each act's REPL driven through a pty — so the
-commands echo like someone typed them, the spinners stay alive, and the next
+items echo like someone typed them, the spinners stay alive, and the next
 fed line waits for the child's own prompt however long a row takes.
 
     python3 show.py --url http://127.0.0.1:18171     # pauses for enter between acts
     python3 show.py --auto                           # rehearsals: no pauses
-    python3 show.py --auto --watch-loop              # act four runs forever (Ctrl-C ends it)
 
-Acts: 1 blink (a gut for commands) · 2 cascade (hesitation buys a thought,
---cold prices thinking from scratch) · 3 inbox (any question a schema can
-name) · 4 night watch (a fleet feed; one pass by default, warm and looping
-with --watch-loop) · 5 xray (the distribution under every written field, and
-the exact bytes read; needs a daemon with `rendered: true`) · 6 asked (the
-raw mass beside the renormalised answer). Ctrl-C ends the show.
+Acts: 1 inbox (any question a schema can name) · 2 xray (the distribution
+under every written field, and the exact bytes read) · 3 asked (the raw mass
+beside the renormalised answer). Every act uses the email-triage-v1 spec;
+the daemon needs it on the menu (--opinion-spec, or an upload). Ctrl-C ends
+the show.
 """
 import argparse, json, os, pty, select, subprocess, sys, threading, time, urllib.request
 from pathlib import Path
@@ -95,17 +93,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', default='http://127.0.0.1:18171')
     ap.add_argument('--auto', action='store_true', help='no enter between acts')
-    ap.add_argument('--watch-speed', type=float, default=0.35,
-                    help='seconds between fleet events in act four')
-    ap.add_argument('--watch-loop', action='store_true', help='act four loops forever')
-    ap.add_argument('--acts', default='123456', help='subset of acts, e.g. --acts 14')
+    ap.add_argument('--acts', default='123', help='subset of acts, e.g. --acts 13')
     a = ap.parse_args()
 
     try:
         menu = json.load(urllib.request.urlopen(a.url.rstrip('/') + '/v1/opinion/specs', timeout=5))
     except OSError:
-        sys.exit(f'no daemon on {a.url} — start one first (demo/README.md; the shell spec '
-                 f'must be resident for the escalation acts, email spec on --opinion-spec)')
+        sys.exit(f'no daemon on {a.url} — start one first (demo/README.md)')
+    if 'email-triage-v1' not in {m['spec'] for m in menu}:
+        # By name only: an upload's `spec` is its content hash, never a file
+        # stem, so uploading would not put this name on the menu.
+        sys.exit(f'email-triage-v1 is not on {a.url}\'s boot menu: start the daemon with '
+                 f'--opinion-spec demo/specs/email-triage-v1.json')
     print(f'{B}the system 1 matinee{OFF}  {DIM}{len(menu)} specs on the menu: '
           f'{", ".join(sorted(m["spec"] for m in menu))}{OFF}')
     stop = threading.Event()
@@ -114,46 +113,26 @@ def main():
         return [l.rstrip('\n') for l in open(HERE / path) if l.strip()]
 
     acts = {
-        '1': ('blink — a gut reaction for every command',
-              ['nothing executes; this is judgement, not enforcement',
-               'cold reads land under a second, warm at ~40 ms'],
-              ([sys.executable, 'blink.py', '--url', a.url,
-                '--spec', 'command-verdict-enum-v1', '--pass-option', 'allow'],
-               lines_of('inputs/commands.txt'))),
-        '2': ('cascade — you pay only for hesitation',
-              ['below the gate, system 2 wakes and resumes from the blink state',
-               '--cold re-prices the same thought from scratch'],
-              ([sys.executable, 'cascade.py', '--url', a.url, '--pass-option', 'allow',
-                '--cold'],
-               lines_of('inputs/cascade-script.txt'))),
-        '3': ('inbox — the verdict vocabulary is the app\u2019s',
+        '1': ('inbox — the verdict vocabulary is the app\u2019s',
               ['a support-routing spec written as a prop; same primitive'],
               ([sys.executable, 'blink_anything.py', '--url', a.url,
                 '--spec', 'email-triage-v1', '--field', 'verdict'],
                lines_of('inputs/inbox.txt'))),
-        '4': ('night watch — a fleet on loop',
-              ['first pass maps the cluster; after that every read is ~40 ms',
-               'flags carry a thought with its reason'],
-              ([sys.executable, 'night_watch.py', '--url', a.url, '--pass-option', 'allow',
-                '--speed', str(a.watch_speed)]
-               + (['--repeat'] if a.watch_loop else [])
-               + ['inputs/fleet_feed.txt'], None)),
-        '5': ('xray — what it wrote, and what it wrote it from',
+        '2': ('xray — what it wrote, and what it wrote it from',
               ['every choice field asked; each written value is a greedy pick',
                'then the exact bytes the read continued, checked by sha256'],
-              ([sys.executable, 'xray.py', '--url', a.url,
-                '--spec', 'command-verdict-enum-v1'],
+              ([sys.executable, 'xray.py', '--url', a.url, '--spec', 'email-triage-v1'],
                lines_of('inputs/xray.txt'))),
-        '6': ('asked — was the model even asked?',
+        '3': ('asked — was the model even asked?',
               ['the full menu always holds the mass: the grammar walked it there',
                'narrow the menu and prob renormalises whatever is left'],
               ([sys.executable, 'asked.py', '--url', a.url,
-                '--spec', 'command-verdict-enum-v1', '--field', 'verdict'],
+                '--spec', 'email-triage-v1', '--field', 'feeling'],
                lines_of('inputs/asked.txt'))),
     }
     for key in a.acts:
         if key not in acts:
-            continue
+            sys.exit(f'no act {key!r}: the acts are {", ".join(acts)}')
         title, blurb, act = acts[key]
         card(key, title, blurb)
         run(act, stop)
@@ -162,7 +141,7 @@ def main():
                 input(f'{DIM}── next act (enter) ──{OFF}')
             except EOFError:
                 pass
-    print(f'\n{B}one 8B model · one resident prefix · four kinds of judgement, and the numbers under each.{OFF}')
+    print(f'\n{B}one 8B model · one resident prefix · any question a spec can name, and the numbers under each.{OFF}')
 
 
 if __name__ == '__main__':

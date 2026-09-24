@@ -1,3 +1,12 @@
+# FROZEN (2026-09-24). This is the record of `lfm2d-1`, the encoder pod
+# that still serves the shell severity head (kube_ordinal_v10) and the
+# cascade to the Claude Code advisory hook and kaijutsu's gate.toml. It
+# runs image 0.1.4, built from a tree that had those features; this tree
+# no longer has --cascade-route, --cascade-severe-label or /v1/cascade, so
+# an image built from here will NOT start with these args. Amy: "the old
+# lfm2d service will stay frozen indefinitely." Do not bump its image;
+# the System 1 service is k8s-zorak-system1.yaml.
+#
 # lfm2d — zorak-pinned overlay of k8s.yaml for the tobert.org homelab
 # k3s cluster (brak = control plane, zorak = tainted agent node).
 # Node facts verified live by the zorak Claude session, 2026-08-10:

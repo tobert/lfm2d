@@ -5,7 +5,7 @@
 //! `adjudicator::validate_report` grades a report *after* generation. Measured
 //! on 733 rows through a reference implementation, unconstrained generation
 //! makes the model echo the schema back as its answer; under a grammar the
-//! format-failure rate went to zero (`docs/field-requests.md`). This module
+//! format-failure rate went to zero (`docs/field-requests.md` (git f9ca081)). This module
 //! makes an invalid document unreachable instead of merely detectable: every
 //! decode step masks the logits so only tokens that can continue a document
 //! satisfying the schema survive the greedy selection.
@@ -22,7 +22,7 @@
 //!   (`adjudicator::Reasoning`), which is what keeps the object's first byte
 //!   from being a token the model scores 17.8 to 21.8 nats below its own choice.
 //! - **Key order is the schema's `required` order** and is load-bearing
-//!   (`docs/field-requests.md` decision 2: reading `severity` with no fields
+//!   (`docs/field-requests.md` (git f9ca081) decision 2: reading `severity` with no fields
 //!   in front of it reproduced 17/40 severe rows; after the scaffold fields,
 //!   40/40). `properties` map order is ignored, and the system prompt states
 //!   the schema in that same `required` order — `adjudicator::render_schema`,
@@ -1461,7 +1461,7 @@ mod tests {
         // after `Decoder::sample(&logits)`, to report per-token logprobs and the
         // raw mass held by a named token set. That mass is only meaningful
         // against the FULL-vocabulary denominator: decision 5 of
-        // docs/field-requests.md treats near-zero in-set mass as "the model was
+        // docs/field-requests.md (git f9ca081) treats near-zero in-set mass as "the model was
         // never asked this", which is what distinguishes a real answer from four
         // renormalised near-zero tails.
         //

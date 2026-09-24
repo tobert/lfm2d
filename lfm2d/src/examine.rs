@@ -16,7 +16,7 @@
 //! Position `p` predicts token `p + 1`, as always in a causal model: the lens
 //! row for the final position is the distribution over what comes next.
 //!
-//! Two rules carried over from `docs/field-requests.md` decision 5. Values are
+//! Two rules carried over from `docs/field-requests.md` (git f9ca081) decision 5. Values are
 //! **log-probabilities** over the FULL vocabulary (GGUF padding rows included),
 //! because the interesting end of the scale is saturated in probability space.
 //! And a set's `mass_logprob` is its **raw** mass, never renormalised within

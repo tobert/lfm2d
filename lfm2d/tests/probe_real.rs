@@ -22,14 +22,15 @@
 //! not on this backend: quantized ROCm kernels differ by batch size
 //! (`docs/lfm25-chunk-kernels.md`'s "block size picks the kernel"), so the
 //! two schedules' numbers disagree even with ZERO fields preceding the
-//! asked one. Measured below (never asserted): `command-verdict-opinion-v1`
-//! (verdict is the ONLY field) still disagrees with `/v1/probe` by ~1 nat
-//! at the first-token slot on `cargo clean`, because those last ~5-8
-//! structural tokens are decoded one at a time in production and bulk-forwarded
-//! together with the user turn in `/v1/probe`. `command-verdict-enum-v1`
-//! (three fields precede `verdict`) disagrees more (up to ~0.3 nats on the
-//! options measured), for the same reason plus three whole fields' worth of
-//! single-token decode.
+//! asked one. Measured (never asserted) on the shell specs this file used
+//! until 2026-09-24: a verdict-only spec still disagreed with `/v1/probe` by
+//! ~1 nat at the first-token slot, because those last ~5-8 structural tokens
+//! are decoded one at a time in production and bulk-forwarded together with
+//! the user turn in `/v1/probe`; a spec with three fields before `verdict`
+//! disagreed more, for the same reason plus three whole fields' worth of
+//! single-token decode. The fixtures below have the same two shapes:
+//! `email-verdict-opinion-v1` (verdict is the ONLY field) and
+//! `email-triage-v1` (two fields, a free-text one and a choice, precede it).
 //!
 //! `POST /v1/adjudicate {"opinion": true}` — the OTHER System-1 read
 //! primitive (`Adjudicator::opinion`, `docs/lfm25-adjudicator.md`'s
@@ -51,6 +52,18 @@ use lfm2d::config::Cli;
 use lfm2d::opinion_api::{OpinionRequest, OpinionState, SpecMenuEntry};
 use lfm2d::probe_api::ProbeRequest;
 
+/// Verdict is its only field, and it carries an F8 `opinion` block closing
+/// with `"}`: the zero-preceding-fields shape.
+const VERDICT_ONLY: &str = "email-verdict-opinion-v1";
+/// `gist` (free text) and `feeling` (a choice) are described before the
+/// `verdict` slot: the fields-precede shape.
+const FIELDS_FIRST: &str = "email-triage-v1";
+/// Two neutral inputs, one each side of the verdict.
+const EMAILS: [&str; 2] = [
+    "Hi, what are your store hours on Saturday?",
+    "I was charged twice for order #4471 and I want a refund today, this is ridiculous.",
+];
+
 fn cli() -> Cli {
     let model = std::env::var("LFM2D_ADJUDICATOR_MODEL").unwrap_or_else(|_| {
         "/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf".into()
@@ -71,19 +84,17 @@ fn cli() -> Cli {
         &model,
         "--adjudicator-tokenizer",
         &tokenizer,
-        "--adjudicator-prompt",
-        &format!("{}/prompts/command-verdict-opinion-v1.json", env!("CARGO_MANIFEST_DIR")),
-        // Loaded ONLY to measure (never assert) the `/v1/opinion` drift
-        // when fields precede the asked one.
         "--opinion-spec",
-        &format!("{}/prompts/command-verdict-enum-v1.json", env!("CARGO_MANIFEST_DIR")),
+        &spec_path(&format!("{VERDICT_ONLY}.json")),
+        "--opinion-spec",
+        &spec_path(&format!("{FIELDS_FIRST}.json")),
         "--adjudicator-context",
         "4096",
     ])
 }
 
 fn spec_path(name: &str) -> String {
-    format!("{}/prompts/{name}", env!("CARGO_MANIFEST_DIR"))
+    format!("{}/tests/fixtures/specs/{name}", env!("CARGO_MANIFEST_DIR"))
 }
 
 /// THE key real-model test: `POST /v1/adjudicate {"opinion": true}`'s own
@@ -101,10 +112,9 @@ fn spec_path(name: &str) -> String {
 fn probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm() {
     let cli = cli();
     let mut adjudicator = Adjudicator::load(&cli).expect("load the adjudicator");
-    let prefix_tokens = adjudicator.info().prefix_tokens;
     let menu = adjudicator.menu();
     let entry: &SpecMenuEntry =
-        menu.iter().find(|e| e.spec == "command-verdict-opinion-v1").expect("spec on the menu");
+        menu.iter().find(|e| e.spec == VERDICT_ONLY).expect("spec on the menu");
     let spec_id = entry.id.clone();
     let ok = || Ok(());
 
@@ -118,31 +128,35 @@ fn probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm() {
     // this reconstructs the daemon's own bytes, not a second implementation
     // of them; the sha256 check below proves it.
     let verdict_only_prompt: PromptSpec =
-        serde_json::from_slice(&std::fs::read(spec_path("command-verdict-opinion-v1.json")).unwrap())
+        serde_json::from_slice(&std::fs::read(spec_path(&format!("{VERDICT_ONLY}.json"))).unwrap())
             .unwrap();
     let opinion_spec = verdict_only_prompt.opinion.clone().expect("has an opinion block");
 
-    for command in ["cargo clean", "git push --force origin main"] {
+    for email in EMAILS {
         // ---- F8 read (/v1/adjudicate, opinion: true): bit-identical certification ----
         let f8_req: AdjudicateRequest = serde_json::from_value(serde_json::json!({
-            "input": command,
+            "spec": VERDICT_ONLY,
+            "input": email,
             "opinion": true
         }))
         .unwrap();
         let f8 = adjudicator.generate(&f8_req, &ok).expect("F8 opinion read");
+        // The named spec's own resident prefix length, off the response that
+        // named it: no spec is privileged, so no top-level info carries one.
+        let prefix_tokens = f8.prefix.prefix_tokens;
         let f8_read = f8.opinion.clone().expect("opinion: true always carries an OpinionRead");
 
         let rendered = format!(
             "{}{}",
             verdict_only_prompt.render_prefix().unwrap(),
-            verdict_only_prompt.render_user_turn_with_prefill(command, &opinion_spec.prefill).unwrap()
+            verdict_only_prompt.render_user_turn_with_prefill(email, &opinion_spec.prefill).unwrap()
         );
         assert_eq!(
             lfm2d::hash::sha256_hex_bytes(rendered.as_bytes()),
             f8_read.rendered_sha256,
-            "{command}: reconstructed bytes must match what the daemon actually rendered"
+            "{email}: reconstructed bytes must match what the daemon actually rendered"
         );
-        assert!(rendered.ends_with("{\"verdict\": \""), "{command}: {rendered:?}");
+        assert!(rendered.ends_with("{\"verdict\": \""), "{email}: {rendered:?}");
 
         let continuations: Vec<String> = opinion_spec
             .options
@@ -157,34 +171,34 @@ fn probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm() {
         }))
         .unwrap();
         let warm = adjudicator.probe(&warm_req, &ok).expect("warm probe");
-        assert!(warm.cache.used_cache, "{command}");
-        assert_eq!(warm.cache.resumed_spec.as_deref(), Some(spec_id.as_str()), "{command}");
+        assert!(warm.cache.used_cache, "{email}");
+        assert_eq!(warm.cache.resumed_spec.as_deref(), Some(spec_id.as_str()), "{email}");
         assert_eq!(
             warm.cache.cached_tokens, prefix_tokens,
-            "{command}: cached_tokens must equal the spec's resident prefix length"
+            "{email}: cached_tokens must equal the spec's resident prefix length"
         );
         let warm_options = warm.continuations.as_ref().expect("continuations were asked");
         for (f8_option, probe_option) in f8_read.options.iter().zip(&warm_options.options) {
-            assert!(probe_option.canonical, "{command}: {:?}", f8_option.option);
+            assert!(probe_option.canonical, "{email}: {:?}", f8_option.option);
             assert_eq!(
                 f8_option.tokens, probe_option.tokens,
-                "{command}: {:?} token identity",
+                "{email}: {:?} token identity",
                 f8_option.option
             );
             assert_eq!(
                 f8_option.first_logprob, probe_option.first_logprob,
-                "{command}: {:?} first-token logprob must be BIT-IDENTICAL to the F8 read",
+                "{email}: {:?} first-token logprob must be BIT-IDENTICAL to the F8 read",
                 f8_option.option
             );
             assert_eq!(
                 f8_option.logprob, probe_option.sequence_logprob,
-                "{command}: {:?} sequence logprob must be BIT-IDENTICAL to the F8 read",
+                "{email}: {:?} sequence logprob must be BIT-IDENTICAL to the F8 read",
                 f8_option.option
             );
             let summed: f32 = probe_option.token_logprobs.iter().sum();
             assert!(
                 (summed - probe_option.sequence_logprob).abs() < 1e-5,
-                "{command}: {:?} per-token logprobs must sum to the sequence logprob",
+                "{email}: {:?} per-token logprobs must sum to the sequence logprob",
                 f8_option.option
             );
         }
@@ -197,13 +211,13 @@ fn probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm() {
         }))
         .unwrap();
         let cold = adjudicator.probe(&cold_req, &ok).expect("cold probe");
-        assert!(!cold.cache.used_cache, "{command}");
-        assert_eq!(cold.cache.cached_tokens, 0, "{command}");
+        assert!(!cold.cache.used_cache, "{email}");
+        assert_eq!(cold.cache.cached_tokens, 0, "{email}");
         let cold_options = cold.continuations.as_ref().expect("continuations were asked");
         for (warm_option, cold_option) in warm_options.options.iter().zip(&cold_options.options) {
             let drift = (warm_option.sequence_logprob - cold_option.sequence_logprob).abs();
             eprintln!(
-                "{command:30} cold-vs-warm probe {:>8} warm {:.6} cold {:.6} drift {:.6} nats",
+                "{email:.30} cold-vs-warm probe {:>8} warm {:.6} cold {:.6} drift {:.6} nats",
                 warm_option.text, warm_option.sequence_logprob, cold_option.sequence_logprob, drift
             );
         }
@@ -224,9 +238,9 @@ fn probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm() {
 /// that one function at `chunk_size: 1` is what makes this the SAME
 /// forward call, not a new one shaped to look similar.
 ///
-/// Covers BOTH the zero-described-fields spec (`command-verdict-opinion-v1`)
-/// and the three-fields one (`command-verdict-enum-v1`) that measured a
-/// 3.4-nat gap WITHOUT `decode_from`
+/// Covers BOTH the zero-described-fields spec (`email-verdict-opinion-v1`)
+/// and the fields-first one (`email-triage-v1`) — the shape that measured a
+/// 3.4-nat gap WITHOUT `decode_from` on the shell spec it replaces
 /// (`probe_reproduces_the_f8_opinion_reads_slot_bit_identically_when_warm`'s
 /// module docs) — this test asserts BIT-IDENTICAL parity for both.
 #[test]
@@ -238,21 +252,23 @@ fn probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from() {
     let ok = || Ok(());
 
     let verdict_only_prompt: PromptSpec = serde_json::from_slice(
-        &std::fs::read(spec_path("command-verdict-opinion-v1.json")).unwrap(),
+        &std::fs::read(spec_path(&format!("{VERDICT_ONLY}.json"))).unwrap(),
     )
     .unwrap();
-    let enum_prompt: PromptSpec =
-        serde_json::from_slice(&std::fs::read(spec_path("command-verdict-enum-v1.json")).unwrap()).unwrap();
+    let fields_first_prompt: PromptSpec = serde_json::from_slice(
+        &std::fs::read(spec_path(&format!("{FIELDS_FIRST}.json"))).unwrap(),
+    )
+    .unwrap();
 
-    for command in ["cargo clean", "git push --force origin main"] {
+    for email in EMAILS {
         for (label, spec_name, prompt) in [
-            ("0 fields precede verdict", "command-verdict-opinion-v1", &verdict_only_prompt),
-            ("3 fields precede verdict", "command-verdict-enum-v1", &enum_prompt),
+            ("0 fields precede verdict", VERDICT_ONLY, &verdict_only_prompt),
+            ("2 fields precede verdict", FIELDS_FIRST, &fields_first_prompt),
         ] {
             let entry: &SpecMenuEntry = menu.iter().find(|e| e.spec == spec_name).expect("spec on the menu");
             let opinion_req: OpinionRequest = serde_json::from_value(serde_json::json!({
                 "spec": spec_name,
-                "state": {"command": command},
+                "state": {"input": email},
                 "questions": [{"field": "verdict"}],
                 "rendered": true
             }))
@@ -270,14 +286,19 @@ fn probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from() {
             // (`PromptSpec::render_prefix`/`render_user_turn`), not a
             // second implementation of it.
             // `describe_then_read` renders the user turn from
-            // `state.render()` (`"Command:\n{command}"` with no facts
-            // block), never the bare command string — reuse that exact
-            // rendering, not a hand-written approximation of it.
-            let state = OpinionState { command: command.into(), facts: None };
-            let prompt_text = format!("{}{}", prompt.render_prefix().unwrap(), prompt.render_user_turn(&state.render()));
+            // `state.render(input_label)` (`"Email:\n{input}"` with no facts
+            // block), never the bare input string — reuse that exact
+            // rendering, with the label the menu reports, not a
+            // hand-written approximation of it.
+            let state = OpinionState { input: email.into(), facts: None };
+            let prompt_text = format!(
+                "{}{}",
+                prompt.render_prefix().unwrap(),
+                prompt.render_user_turn(&state.render(&entry.input_label))
+            );
             assert!(
                 rendered.starts_with(&prompt_text),
-                "{label} {command}: reconstructed prompt_text must be a literal prefix of what \
+                "{label} {email}: reconstructed prompt_text must be a literal prefix of what \
                  the daemon rendered\n  prompt_text: {prompt_text:?}\n  rendered: {rendered:?}"
             );
             let decode_from = prompt_text.len();
@@ -296,11 +317,11 @@ fn probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from() {
             assert_eq!(
                 probe_resp.cache.prefill_tokens + probe_resp.cache.stepwise_tokens,
                 probe_resp.input_tokens,
-                "{label} {command}: the schedule must cover every input token exactly once"
+                "{label} {email}: the schedule must cover every input token exactly once"
             );
             assert!(
                 probe_resp.cache.stepwise_tokens > 0,
-                "{label} {command}: decode_from lands before the slot, so SOME tokens (at least \
+                "{label} {email}: decode_from lands before the slot, so SOME tokens (at least \
                  the forced object opening) must replay stepwise"
             );
 
@@ -308,27 +329,27 @@ fn probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from() {
             for (opinion_option, probe_option) in
                 opinion_resp.answers[0].read.options.iter().zip(&probe_options.options)
             {
-                assert!(probe_option.canonical, "{label} {command}: {:?}", opinion_option.option);
+                assert!(probe_option.canonical, "{label} {email}: {:?}", opinion_option.option);
                 assert_eq!(
                     opinion_option.tokens, probe_option.tokens,
-                    "{label} {command}: {:?} token identity",
+                    "{label} {email}: {:?} token identity",
                     opinion_option.option
                 );
                 assert_eq!(
                     opinion_option.first_logprob, probe_option.first_logprob,
-                    "{label} {command}: {:?} first_logprob must be BIT-IDENTICAL to /v1/opinion \
+                    "{label} {email}: {:?} first_logprob must be BIT-IDENTICAL to /v1/opinion \
                      with decode_from set",
                     opinion_option.option
                 );
                 assert_eq!(
                     opinion_option.logprob, probe_option.sequence_logprob,
-                    "{label} {command}: {:?} sequence_logprob must be BIT-IDENTICAL to /v1/opinion \
+                    "{label} {email}: {:?} sequence_logprob must be BIT-IDENTICAL to /v1/opinion \
                      with decode_from set",
                     opinion_option.option
                 );
             }
             eprintln!(
-                "{command:30} [{label}] decode_from={decode_from} prefill_tokens={} \
+                "{email:.30} [{label}] decode_from={decode_from} prefill_tokens={} \
                  stepwise_tokens={} — BIT-IDENTICAL to /v1/opinion",
                 probe_resp.cache.prefill_tokens, probe_resp.cache.stepwise_tokens
             );
@@ -347,21 +368,21 @@ fn probe_reproduces_the_opinion_reads_slot_bit_identically_with_decode_from() {
                 .expect("opine again, after the probe");
             assert_eq!(
                 repeat_opinion.cache.described, "hit",
-                "{label} {command}: the described cache must still be intact after the probe"
+                "{label} {email}: the described cache must still be intact after the probe"
             );
             for (before, after) in
                 opinion_resp.answers[0].read.options.iter().zip(&repeat_opinion.answers[0].read.options)
             {
-                assert_eq!(before.tokens, after.tokens, "{label} {command}: {:?}", before.option);
+                assert_eq!(before.tokens, after.tokens, "{label} {email}: {:?}", before.option);
                 assert_eq!(
                     before.first_logprob, after.first_logprob,
-                    "{label} {command}: {:?} first_logprob changed after an intervening probe — \
+                    "{label} {email}: {:?} first_logprob changed after an intervening probe — \
                      the probe mutated spec state",
                     before.option
                 );
                 assert_eq!(
                     before.logprob, after.logprob,
-                    "{label} {command}: {:?} sequence_logprob changed after an intervening probe",
+                    "{label} {email}: {:?} sequence_logprob changed after an intervening probe",
                     before.option
                 );
             }

@@ -144,7 +144,7 @@ impl Generator for Fake {
 
 fn spawn() -> (Handle, Arc<Mutex<Seen>>) {
     let seen = Arc::new(Mutex::new(Seen::default()));
-    let handle = Handle::spawn(Fake(seen.clone()), info());
+    let handle = Handle::spawn(Fake(seen.clone()), (&info()).into());
     (handle, seen)
 }
 

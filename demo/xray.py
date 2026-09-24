@@ -7,10 +7,10 @@ renormalised prob, the raw first-token logprob, the token ids, the raw mass
 on the answer set. Then it shows the exact bytes the last read continued
 (`rendered: true`) and checks them against the daemon's own sha256.
 
-    python3 xray.py --url http://127.0.0.1:18171 --spec command-verdict-enum-v1
+    python3 xray.py --url http://127.0.0.1:18171 --spec email-triage-v1
 
-Try `git clean -fdx`: the model says it deletes user data, then writes
-`undo: easy`, and its `scope` was a coin flip it wrote as a certainty.
+A written value that looks certain can be a near tie underneath; xray
+flags every field whose top two options sit within --tie.
 Type an item, press enter, nothing runs. Ctrl-D exits.
 """
 import argparse, hashlib, json, math, re, sys, time, urllib.error, urllib.request
@@ -79,7 +79,7 @@ def main():
             continue
         # Every choice field in ONE request: one description, each slot read
         # as the walk passes it; answers come back in emission order.
-        body = {'spec': a.spec, 'state': {'command': item},
+        body = {'spec': a.spec, 'state': {'input': item},
                 'questions': [{'field': f['field']} for f in choices]}
         if not a.no_prompt:
             body['rendered'] = True
@@ -103,7 +103,7 @@ def main():
 
 def render(item, reads, choices, a, total_ms):
     # What the model wrote for a field is in a LATER field's description:
-    # the read for `verdict` describes effect/scope/undo on the way there.
+    # the read for the last choice field describes every field before it.
     last = reads[-1][1]
     written = {d['field']: d['value'] for _, r in reads for d in r['described']}
     for d in last['described']:

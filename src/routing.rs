@@ -807,8 +807,8 @@ impl Lfm2SequenceRouter {
     ///
     /// One trunk pass per clause: this costs `clauses.len()` forward passes,
     /// not one. That is the price of the second intent; a statement's
-    /// clause count is small (the 15 hardest probes in
-    /// `training/router/` decompose to 1–4).
+    /// clause count is small (the 15 hardest probes of the router study
+    /// decomposed to 1–4 clauses each).
     ///
     /// `clauses` must come from a real parser — kaish's
     /// `plan_statement` (`Plan.commands[]`) is what this was built against.

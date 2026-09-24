@@ -10,8 +10,8 @@
 //! `kube_ordinal_v6` is OUR OWN fine-tune (per `sequence_classification.rs`'s
 //! module docs, no LiquidAI checkpoint ships this head) — a 350M
 //! `Lfm2BidirForSequenceClassification` over kubectl-command risk, produced
-//! by `training/finetune_sequence_classifier.py` and quarantined outside the
-//! repo tree per this crate's training-data convention. It is exactly the
+//! outside this repo and kept outside the repo tree per this crate's
+//! training-data convention. It is exactly the
 //! shape `from_trunk` targets: a specialist head trained over an otherwise
 //! frozen trunk.
 //!
@@ -37,15 +37,15 @@ fn checkpoint() -> PathBuf {
         dir.join("model.safetensors").is_file(),
         "missing weights at {}\n\n  (point LFM2_SEQ_CLF_DIR at an \
          Lfm2BidirForSequenceClassification checkpoint dir — kube_ordinal_v6's shape, \
-         produced by training/finetune_sequence_classifier.py)\n",
+         a fine-tuned checkpoint produced outside this repo)\n",
         dir.display(),
     );
     dir
 }
 
 /// Kubectl-command-shaped probes spanning the checkpoint's three classes —
-/// not asserted against a specific label here (that is
-/// `training/eval_kube_classifier.py`'s job); the point is only that BOTH
+/// not asserted against a specific label here (that is the checkpoint's own
+/// eval, which lives with its training); the point is only that BOTH
 /// loading paths agree, whatever they say.
 const PROBES: [&str; 5] = [
     "kubectl get pods -n payments -o wide",

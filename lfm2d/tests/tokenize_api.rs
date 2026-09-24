@@ -194,7 +194,7 @@ fn info() -> PrefixInfo {
 /// of the process.
 #[tokio::test]
 async fn tokenize_answers_while_the_adjudicator_worker_is_stuck_mid_job() {
-    let handle = Handle::spawn(BlockingGenerator, info());
+    let handle = Handle::spawn(BlockingGenerator, (&info()).into());
     let router = lfm2d::adjudicator::router(handle.clone(), true)
         .merge(lfm2d::tokenize_api::router(registry()));
 

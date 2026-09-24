@@ -47,7 +47,6 @@ fn cli_with_token_classifier_only() -> Cli {
     Cli {
         adjudicator_model: None,
         adjudicator_tokenizer: None,
-        adjudicator_prompt: None,
         adjudicator_context: 4096,
             adjudicator_repeat_penalty: 1.05,
         opinion_specs: Vec::new(),
@@ -58,8 +57,6 @@ fn cli_with_token_classifier_only() -> Cli {
         candidate_classifier_dir: None,
         token_classifier_dir: vec![dir],
         log_input_hash: false,
-        cascade_routes: Vec::new(),
-        cascade_severe_labels: vec!["mutating".to_string(), "destructive".to_string()],
         socket_path: None,
         bind_addr: None,
         dtype: lfm2d::config::DtypeArg::F32,

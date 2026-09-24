@@ -1,13 +1,25 @@
 # lfm2d
 
-LFM2.5 bidirectional encoders on candle, plus a resident causal LLM.
+A System 1 service around the LFM2.5 suite, on candle: the bidirectional
+encoder heads, plus a resident LFM2.5-8B-A1B opinion engine.
 `README.md` is the what; this file is the working context.
 
 Workspace of two crates: `lfm2-encoder` (library, repo root) and `lfm2d`
-(HTTP daemon). The daemon serves three encoder heads today: a **severity
-classifier** fine-tuned here, the **Prompt-Router**, and the
-**PII-Detector**. Beside them it runs the **adjudicator**: LFM2.5-8B-A1B
-(MoE, GGUF) with reusable prefix state and schema-validated JSON output.
+(HTTP daemon). The daemon serves whichever encoder heads a deployment
+configures (embedder, ColBERT, sequence classifier, Prompt-Router,
+token classifiers such as the PII-Detector) and, beside them, the
+**opinion engine**: LFM2.5-8B-A1B (MoE, GGUF) with reusable prefix state
+and schema-constrained output. `/v1/opinion` is the fast read,
+`/v1/adjudicate` the generative continuation, `/v1/probe` and
+`/v1/tokenize` the instruments.
+
+**Nothing in lfm2d knows what any one domain is.** The questions come from
+prompt specs, and each spec names its own input (`input_label`). Consumers
+own their specs and upload them at runtime (`POST /v1/opinion/specs`,
+content-addressed). Shell judgement moved out on 2026-09-24: kaijutsu owns
+the shell specs, the gate and the hook; `~/src/kaish-training-data` holds
+the shell training and eval material. Its history is still in this repo's
+git.
 
 ## Where things are
 
@@ -15,18 +27,14 @@ classifier** fine-tuned here, the **Prompt-Router**, and the
 |---|---|
 | consumer contract (numbered invariants, never renumbered) | `docs/integration.md` |
 | daemon API, deploy notes, known problems | `lfm2d/README.md` |
-| the advisory hook and its tests | `lfm2d/hooks/` |
-| deploy examples | `lfm2d/deploy/` — a generic k8s manifest, a quadlet unit, and a host-specific manifest beside them |
-| live training head: numbers and the recipe | `training/v10/README.md` |
-| its design, rulings and labeling rubric | `training/v10/PLAN.md`, `training/v10/rubric.md` |
-| the training tree's map | `training/README.md` |
-| adjudicator: build, API, validation | `docs/lfm25-adjudicator.md` |
-| adjudicator prompt specs (the schema and its field order ship from here) | `lfm2d/prompts/` |
-| opinion API (`/v1/opinion`, describe-then-read): types and menu in `lfm2d/src/opinion_api.rs`, engine in `adjudicator.rs`, demo `benchmarks/lfm25/opinion_demo.py`, F9 arm `benchmarks/lfm25/prompts/describe_read_eval.py` | `docs/lfm25-adjudicator.md` "The opinion API" |
-| what the prompt campaign measured, and what not to cite from it | `docs/lfm25-prompt-experiments.md` |
-| field requests: fields, providers, provenance, the raw-mass rule | `docs/field-requests.md` |
-| prompt and examiner harnesses | `benchmarks/lfm25/` |
+| deploy examples | `lfm2d/deploy/` — a generic k8s manifest, a quadlet unit, and the host-specific manifests beside them |
+| opinion engine: build, API, validation | `docs/lfm25-adjudicator.md` |
+| opinion API types and spec menu | `lfm2d/src/opinion_api.rs`; engine in `adjudicator.rs` |
+| engine performance record | `docs/lfm25-*.md` (kernels, cache, fusion, GQA, prefill), numbers in `benchmarks/lfm25/results/` |
+| lens / routing / knockout tooling | `benchmarks/lfm25/examine/`, bins in `lfm2d/src/bin/` |
+| demos (System 1 acts, search, keyphrases) | `demo/` — the acts run on the `email-triage-v1` prop spec |
 | checkpoint fixtures | `tests/fixtures/` — REAL Hub configs (refresh with curl from `https://huggingface.co/LiquidAI/<model>/raw/main/config.json`) plus the parity references `tests/reference/dump_*.py` regenerates |
+| test specs for the opinion engine | `lfm2d/tests/fixtures/specs/` |
 
 **Adaptation source**: `candle-transformers/src/models/lfm2.rs` in a candle
 checkout (659 lines, the CAUSAL branch — config, blocks and attention are
@@ -38,6 +46,30 @@ after reading whatever AI policy candle has at the time.
 causal one; the bidirectional variants live in each checkpoint's `auto_map`
 custom code on the Hub. READ the checkpoint's own modeling file for head
 shapes before implementing a head — never guess.
+
+## GPU backends
+
+ROCm (gfx1151, zorak) is the only GPU backend we run and measure.
+**NVIDIA (CUDA) and Metal are future ports**; Intel is hypothetical until
+System 1 is dialled in and demoed (Amy, 2026-09-24: maybe "a direct
+backend on whatever Intel's ideal sdk is"). What keeps a port cheap:
+
+- lfm2d itself is backend-neutral: the only backend-gated code is
+  `lfm2d/src/device.rs`. The porting work lives in our candle fork
+  (`tobert/candle`, pinned in `Cargo.toml`).
+- ROCm compiles candle's own `candle-kernels/src/*.cu` through hipcc, so a
+  kernel change goes in the shared source with arch guards
+  (`RDNA2`/`RDNA3`), not in a ROCm-only copy. The generic path stays the
+  default; a vendor fast path is opt-in (e.g. the MoE's grouped prefill
+  behind `supports_grouped`, with `indexed_moe_forward` everywhere else).
+- An unsupported backend fails loudly ("not implemented for …"); the CPU
+  MoE is a reference, never a GPU fallback.
+- The fork's CUDA side has never been compiled by nvcc (zorak has none).
+  The first CUDA step is `cargo build --features cuda` plus the real-model
+  tests (`LFM2D_TEST_GPU=cuda`, `demo/test_devices.sh cuda`) on the DGX
+  Spark (tenchi, arm64).
+- Numbers are per backend: re-measure on the new stack, never carry a
+  threshold across.
 
 ## Checkpoint facts (fixture-verified — trust these over docs)
 
@@ -56,71 +88,39 @@ shapes before implementing a head — never guess.
   (`rope_parameters.rope_theta`) across checkpoints;
   `Lfm2EncoderConfig::rope_theta()` resolves precedence, default 1e6.
 
-## Two rules that keep coming back
+## Read vocabulary at runtime
 
-**Read the label vocabulary at runtime, from `GET /v1/models`.** Never
-hard-code a label name, count, or index anywhere — not in a consumer, not
-in a test fixture's expectations, not in a doc example. The vocabulary has
-changed wholesale between checkpoints and will again. `docs/integration.md`
-invariants 1–3 are the contract version of this.
+Never hard-code a label name, count or index, a spec's field or option
+names, or an `input_label` — not in a consumer, not in a test fixture's
+expectations, not in a doc example. Read them from `GET /v1/models` and
+`GET /v1/opinion/specs`. The vocabulary has changed wholesale between
+checkpoints and specs and will again. `docs/integration.md` is the
+contract version of this.
 
-**The shell severity head judges shell.** Its job is operator and agent
-safety — making it hard for a curious human or an agent to do something
-irreversible by accident — not adversarial defense. Secret detection
-belongs to the PII head and the routing suite, and isolating a context so
-it only sees what it needs is the consuming system's job, not this
-model's. So data-position and exfiltration shapes are out of scope for
-this head; do not open a training slice for them.
+## Measuring the opinion engine
 
-## The classifier and the LLM are different instruments
-
-The classifier answers **what is this** (its label vocabulary). The
-adjudicator answers **is this safe to run** — an action for the harness,
-in a verdict vocabulary that comes from the prompt spec and is read from
-it, never hard-coded. Most commands are benign and the LLM's job is to
-pass them through; a design that flags often is wrong before it is
-measured.
-
-- **Separate data.** The classifier splits (`training/v10/val_*` and
-  kin) were built to slant a classifier on purpose. For the LLM they are
-  a **smoke check** — never its scorecard, never fine-tuning data, and
-  never a source of gold by mapping classifier labels onto verdicts. LLM
-  gold is labelled fresh in its own vocabulary.
-- **Classifier labels are evidence, not vocabulary.** They reach the LLM
-  as a sentence about the command's effect; a bare score beside a label
-  name was measured to be ignored.
-- **Malicious commands are in scope for the LLM only.** A clause
-  classifier cannot tell intent, which is why the rule above keeps them
-  out of the shell head. Accidents and malice are separate families,
-  scored separately.
-- **Two eval instruments, never blended.** A pass-through set shaped
-  like live traffic measures the false-alarm rate; a severe-only
-  challenge set measures recall per family, with benign near-twins.
-  Precision follows from an assumed prevalence and is stated with it. A
-  recall number without its false-alarm count beside it is not a result.
-- **Foundation before context.** Judging over a session transcript
-  (consent, intent that only shows across several steps) is the goal and
-  is deferred. Single-statement judgement, the harnesses and the
-  delivery path get solid first; expect bare-clause numbers to be a
-  floor, and do not tune prompts to lift them past what a clause can
-  carry.
-
-Harness rules the adjudicator work has paid for:
+Rules the adjudicator work paid for; they hold for any spec:
 
 - Measure on **our** stack, per backend. llama.cpp is a cheap
   cross-check; the same GGUF gives different distributions on ROCm, CPU
   and llama.cpp, and prefix-cache results do not transfer.
-- An eval harness renders the prompt **exactly** as the daemon does, and
-  a replay orders fields by the spec's `required`, which is emission
-  order. Hash the rendered prompt into the results.
+- An eval harness renders the prompt **exactly** as the daemon does
+  (`rendered: true`, or `/v1/probe` with `decode_from`), and a replay
+  orders fields by the spec's `required`, which is emission order. Hash the
+  rendered prompt into the results.
 - Log the raw probability mass in the answer set beside every
   constrained read. Near-zero mass means the model was never asked, not
   that it answered badly.
+- A pass-through rate and a recall number are separate instruments; a
+  recall without its false-alarm count beside it is not a result.
 - A looked-at split stops being a test. Confirm on one that was not.
+- Most inputs are ordinary and the engine's job is to pass them through;
+  a spec that flags often is wrong before it is measured.
 
 ## Conventions
 
 Amy's global CLAUDE.md applies (TDD, 改善, loud failures). Verify against
 fixtures, not documentation — the fixtures have contradicted plausible
-assumptions repeatedly, starting on day 0. Training corpora never live in
-the repo; the tools print aggregates, never raw rows.
+assumptions repeatedly, starting on day 0. Corpora never live in the repo;
+tools print aggregates, never raw rows. `CLAUDE.md` is a symlink to this
+file.

@@ -11,19 +11,10 @@
 # ephemeral working notes — never committed (see CLAUDE.md conventions)
 /signoff.md
 
-# Training data NEVER lives in the repo. It is quarantined outside the tree
-# at ~/.local/share/lfm2-training-data (mode 0700, no exec bit on files),
-# handled only by scripts, and never read into an agent's context.
+# Corpora NEVER live in the repo. They are quarantined outside the tree
+# (~/.local/share/lfm2-training-data, mode 0700), handled only by scripts,
+# and never read into an agent's context.
 /data
-/training/data
 *.jsonl
-# synthetic standing probes, no real traffic rows (v10 slice 2)
-!training/v10/benign_probes.jsonl
 __pycache__/
-training/v9/relabel/*.log
 .venv-train/
-# v10 bulk-label chunks: real clause text, local only (bulk_label.py)
-/training/v10/bulk/chunks/
-!training/v10/rm_devfile.jsonl
-!training/v10/severe_forms.jsonl
-!training/v10/short_forms.jsonl

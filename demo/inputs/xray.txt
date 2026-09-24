@@ -1,3 +1,3 @@
-git clean -fdx
-cargo clean
-rm -rf ~
+how do I reset my password? the link in the email expired
+my order 4471 hasnt shipped and the app says "preparing" for six days now, im not mad just confused, thanks
+I've asked three times now. Cancel my plan today or I'm disputing the charge with my bank.

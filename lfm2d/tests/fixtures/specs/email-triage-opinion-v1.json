@@ -11,19 +11,39 @@
       "feeling": {
         "type": "string",
         "description": "The emotional temperature of the email.",
-        "enum": ["calm", "frustrated", "angry"]
+        "enum": [
+          "calm",
+          "frustrated",
+          "angry"
+        ]
       },
       "verdict": {
         "type": "string",
         "description": "What the desk does with the email.",
-        "enum": ["auto_close", "human_read"]
+        "enum": [
+          "auto_close",
+          "human_read"
+        ]
       },
       "note": {
         "type": "string",
         "description": "One sentence for the agent who picks it up."
       }
     },
-    "required": ["gist", "feeling", "verdict", "note"],
+    "required": [
+      "gist",
+      "feeling",
+      "verdict",
+      "note"
+    ],
     "additionalProperties": false
+  },
+  "opinion": {
+    "prefill": "{\"verdict\": \"",
+    "options": [
+      "auto_close",
+      "human_read"
+    ],
+    "close": "\","
   }
 }

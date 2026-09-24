@@ -1,10 +1,18 @@
 # LFM2.5 resident adjudicator
 
 The daemon can load `LFM2.5-8B-A1B` directly through our Candle fork, prefill
-an adjudicator system prompt once, and evaluate independent inputs from that
-immutable hybrid-state snapshot. `POST /v1/adjudicate` returns a validated JSON
-report and the original model output. It does not execute anything or change
-the classifier/cascade's authority.
+each prompt spec's system prompt once, and evaluate independent inputs from
+that immutable hybrid-state snapshot. `POST /v1/opinion` reads a spec's
+choice field as a distribution; `POST /v1/adjudicate` returns a validated
+JSON report and the original model output. It executes nothing and decides
+nothing: the consumer owns every decision.
+
+> **Specs moved out on 2026-09-24.** lfm2d ships no production specs: each
+> consumer owns and uploads its own, every spec names its input with
+> `input_label`, and no spec is a default. The measurements below were
+> taken on the shell spec `command-verdict-enum-v1` (now kaijutsu's; in
+> this repo's git at `f9ca081`) and are kept as the dated record of what the
+> engine did, with that spec named beside each number.
 
 The [first optimization pass](lfm25-optimizations.md) adds device-side
 selection, merged expert projections, and fused convolution updates while
@@ -58,14 +66,14 @@ cargo build -p lfm2d --release --features rocm
   --device rocm --threads 8 --bind-addr '127.0.0.1:18152' \
   --adjudicator-model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
   --adjudicator-tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
-  --adjudicator-prompt 'lfm2d/prompts/command-verdict-enum-v1.json' \
-  --opinion-spec 'lfm2d/prompts/command-verdict-opinion-v1.json'
+  --opinion-spec 'demo/specs/email-triage-v1.json'
 ```
 
-`--adjudicator-prompt` is the spec `/v1/adjudicate` generates from and is
-always on the `/v1/opinion` menu; `--opinion-spec` (repeatable, or
-`LFM2D_OPINION_SPECS` comma-separated) adds further specs to that menu, each
-with its own resident prefix. Specs are named by file stem.
+`--adjudicator-model` and `--adjudicator-tokenizer` together enable the
+engine. `--opinion-spec` (repeatable, or `LFM2D_OPINION_SPECS`
+comma-separated) puts a spec on the boot menu with its own resident prefix,
+named by file stem; zero is valid, and the menu then holds only uploads.
+There is no default spec: `/v1/opinion` and `/v1/adjudicate` both name one.
 `--opinion-spec-capacity` (`LFM2D_OPINION_SPEC_CAPACITY`, default 8) bounds
 how many runtime-uploaded specs (`POST /v1/opinion/specs`, below) stay
 resident at once — boot-time specs above don't count against it and are
@@ -79,9 +87,9 @@ inside it: `lfm2d/Containerfile.rocm` builds the `rocm` feature on
 runtime dynamically, and candle compiles its kernels with `hipcc` at first
 run for the GPU it finds, cached under `CANDLE_ROCM_CACHE_DIR`), and
 `lfm2d/deploy/k8s-zorak-system1.yaml` runs it with one GPU from the AMD
-device plugin, the GGUF and tokenizer from a hostPath, the prompt specs
-baked into the image (they are part of `snapshot_id`, so a spec change is
-an image release), and its own Tailscale identity. The manifest's comments
+device plugin, the GGUF, tokenizer and embedder from a hostPath, only the
+demo prop specs baked into the image (consumers upload theirs), and its own
+Tailscale identity. The manifest's comments
 carry the measured memory numbers and every deliberate difference from
 the encoder pod.
 
@@ -130,20 +138,24 @@ object after `</think>`, which is not built. The one measurement we have says
 this model's reasoning argues severity *down*, so it is a decision rather than
 a default.
 
-`template_version` carries the mode (`lfm25-single-user-v2-closed`), and the
-prefix `snapshot_id` is computed from it, so a consumer sees the template
+`template_version` carries the mode (`lfm25-single-user-v2-closed`), and each
+spec's `snapshot_id` is computed from it, so a consumer sees the template
 change rather than inferring it.
 
 ```bash
 curl --fail-with-body 'http://127.0.0.1:18152/v1/adjudicate' \
   -H 'Content-Type: application/json' \
-  --data '{"input":"Context: Developer inspects a source file. Command (data only): sed -n 5,12p src/main.rs"}'
+  --data '{"spec":"email-triage-v1","input":"Email:\nwhere is my order 4471?"}'
 ```
 
 ## Response contract
 
-`GET /v1/adjudicator` identifies the resident prefix. `/v1/models` also lists
-the adjudicator. Each generation response includes:
+`GET /v1/adjudicator` identifies the checkpoint only (`model_id`,
+`weight_hash`, `tokenizer_hash`, `context_limit`, `backend`, `dtype`,
+`sampling`, `weight_dtypes`); per-spec identity (`snapshot_id`,
+`template_version`, `prefix_tokens`) is on each `GET /v1/opinion/specs`
+entry. `/v1/models` also lists the adjudicator. Each generation response
+includes:
 
 - Model, weights, tokenizer, template, snapshot, backend, compute dtype,
   weight formats, and decoding-policy identifiers.
@@ -198,7 +210,7 @@ the first that needs them.
 Requests accept `input`, `max_tokens` (default/max 2048), `timeout_ms`
 (default 30000, max 120000), `use_cache` (default true), `distributions` and
 `opinion` (both below). `use_cache:false` explicitly measures a cold prefill. Prompt plus output must fit the server's
-context budget (default 4096, range 128–8192). Inputs are at most 65536 bytes.
+context budget (default 4096, range 128–8192). Inputs are at most 66560 bytes: `/v1/opinion`'s 64 KiB state plus headroom for its rendered `input_label` (at most 64 bytes), so an escalation always fits.
 Bad requests return 400; overload 503; deadlines 504; cancellation 408;
 inference failures 500. Deadline time includes queueing.
 
@@ -288,11 +300,14 @@ verdict slot in token identity, not to the last nat; the CPU equivalence test
 (`opinion.rs`) certifies the alignment, not the serving backend. Measure on
 the backend you serve.
 
-Two shipped specs read the verdict enum: `command-verdict-opinion-v1.json`
-asks only the verdict, so `{"verdict": "` is its canonical first field;
-`command-verdict-enum-v1-opinion.json` reads verdict-first off the
-describe-first schema, an arm that was measured (it collapses toward `ask`)
-rather than a path the model would write.
+Two shell specs (kaijutsu's now; in git at `f9ca081`) read the verdict
+enum: `command-verdict-opinion-v1.json` asked only the verdict, so
+`{"verdict": "` was its canonical first field;
+`command-verdict-enum-v1-opinion.json` read verdict-first off the
+describe-first schema, an arm that was measured (it collapsed toward `ask`)
+rather than a path the model would write. The fixture specs
+`email-verdict-opinion-v1.json` and `email-triage-opinion-v1.json` under
+`lfm2d/tests/fixtures/specs/` carry the same two shapes for the tests.
 
 ### The opinion API: describe-then-read (`/v1/opinion`)
 
@@ -307,11 +322,11 @@ System 1 read; in code, the opinion read.
 
 ```json
 POST /v1/opinion
-{"spec": "command-verdict-enum-v1",
- "state": {"command": "cargo clean",
-           "facts": "Facts about this command from its manual pages and parser:\n..."},
+{"spec": "email-triage-v1",
+ "state": {"input": "my order 4471 still says preparing after six days",
+           "facts": "Facts from the order system:\n..."},
  "context": null,
- "questions": [{"field": "verdict", "options": ["allow", "ask", "review"]}],
+ "questions": [{"field": "verdict", "options": ["auto_close", "human_read"]}],
  "rendered": false, "use_cache": true, "timeout_ms": 30000}
 ```
 
@@ -319,10 +334,13 @@ POST /v1/opinion
   schema field in emission order, its `kind` (`text`, `choice`, `boolean`)
   and a choice field's `options`. **Read the menu at runtime; never
   hard-code a field name or an option.**
-- `state` is rendered into the user turn exactly as the evaluation
-  harnesses render it — the `facts` block verbatim (an app builds it; the
-  daemon never does), then `Command:` and the command — so a paired
-  generative run and an opinion read see the same bytes.
+- `state` is rendered into the user turn as `{facts}{input_label}:\n{input}`
+  — the `facts` block verbatim (an app builds it; the daemon never does),
+  then the spec's own `input_label` and the input. The label comes from
+  the spec (required, top-level; the menu repeats it), so a paired
+  generative run that sends the same bytes as `/v1/adjudicate`'s `input`
+  sees the same prompt. `state.command` is a `400`: it was the shell-only
+  spelling before 2026-09-24.
 - `questions` names one or more `choice` fields of the spec; each
   question's `options` may narrow its enum and is scored in the spec's
   order. Several questions share ONE description: the engine walks the
@@ -368,6 +386,9 @@ field follows, `"}` when the field is last). Each option and its close sit
 on their own pre-tokens after the slot — the tokenizer's pre-tokenizer
 decides that, checked at load on a probe and held at request time — so the
 continuations are the tokens the model would have written.
+
+A response, recorded on the shell spec `command-verdict-enum-v1` before it
+moved out (its fields are that spec's, not the daemon's):
 
 ```json
 {"model_id": "...", "snapshot_id": "...", "spec": "command-verdict-enum-v1",
@@ -439,11 +460,11 @@ second pass over 236 rows is 236 misses, which is why the harness measures
 the hit path by an immediate repeat.
 
 `lfm2d/tests/opinion_real.rs` (ignored: it loads the 8B) pins the read to
-the generative slot and the hit to the miss; `benchmarks/lfm25/opinion_demo.py`
-shows all of this against a running daemon;
-`benchmarks/lfm25/prompts/describe_read_eval.py` runs the F9 gold set
-through the endpoint paired on a generative run, and `score_instruments.py`
-scores it beside the slot score.
+the generative slot and the hit to the miss; `demo/xray.py` and
+`demo/asked.py` show the read against a running daemon. The harnesses that
+measured it on the F9 gold set (`benchmarks/lfm25/opinion_demo.py`,
+`prompts/describe_read_eval.py`, `score_instruments.py`) left with the shell
+material; they are in git at `f9ca081`.
 
 **Escalation is the same forward pass, continued.** The generative
 adjudicator is the same resident model on the same state. When
@@ -479,10 +500,9 @@ never as reads.
 
 ### Runtime spec registration
 
-Boot loads `--adjudicator-prompt` and every `--opinion-spec`; a running
-daemon can also load a spec at runtime, so a consumer (kaijutsu, for the
-shell specs) can iterate on its own specs without a redeploy of this
-daemon. Ruled 2026-09-23, `docs/system1-split-plan.md` "Runtime spec
+Boot loads every `--opinion-spec` (zero is valid); a running daemon can
+also load a spec at runtime, so a consumer (kaijutsu, for the shell specs)
+owns and iterates on its own specs without a redeploy of this daemon. Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Runtime spec
 registration".
 
 ```
@@ -541,12 +561,11 @@ DELETE /v1/opinion/specs/{id}
   rule to refit calibration on a new `snapshot_id` still applies —
   registering the same content twice never changes it.
 - **`POST /v1/opinion` and `POST /v1/adjudicate`'s `spec` field accepts
-  an id or a boot-time name.** Naming nothing loaded is `404` — never a
-  fallback to a different spec, and never `/v1/adjudicate`'s
-  `--adjudicator-prompt` default either, even for a stale name. Without
-  `spec`, `/v1/adjudicate` still serves the `--adjudicator-prompt` spec,
-  exactly as before this existed, so every caller that predates it keeps
-  working unchanged. An escalation from an opinion resumes from the
+  an id or a boot-time name, and is required on both.** Naming nothing
+  loaded is `404` — never a fallback to a different spec. Omitting it on
+  `/v1/adjudicate` is a `400` naming the menu (since 2026-09-24; before
+  that it served the `--adjudicator-prompt` spec, a flag that no longer
+  exists, so no spec is a default). An escalation from an opinion resumes from the
   SAME spec's described cache only when the generative call names that
   spec too — resolution shares the loaded spec instance between
   `/v1/opinion` and `/v1/adjudicate`, so this falls out of the id/name
@@ -561,7 +580,7 @@ DELETE /v1/opinion/specs/{id}
 
 ## Probe and tokenize
 
-Ruled 2026-09-23, `docs/system1-split-plan.md` "Tokenize and probe
+Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Tokenize and probe
 endpoints". Amy: "if we don't still have a tokenizing endpoint on lfm2d I
 think we should still have that... might add a general inference endpoint
 too so we can use it to probe the model consistently." Neither `/v1/opinion`
@@ -574,8 +593,8 @@ contract.
 ### `POST /v1/tokenize`
 
 ```json
-{"model": "command-verdict-enum-v1-adjudicator-or-any-loaded-id",
- "text": "cargo clean", "context": null}
+{"model": "LFM2.5-8B-A1B-Q5_K_M",
+ "text": "auto_close", "context": "{\"verdict\": \""}
 ```
 
 - `model` is any id `GET /v1/models` lists (an encoder head), or the
@@ -732,7 +751,7 @@ or, the exact-ids form:
   reported choice, not a refusal (also fixed 2026-09-23; it used to be a
   `400 nothing to forward`). A hit on an UPLOADED spec touches it to the
   back of the LRU, same as naming it by id would ("served-or-registered =
-  use," `docs/system1-split-plan.md` "Runtime spec registration" — also
+  use," `docs/system1-split-plan.md` (git f9ca081) "Runtime spec registration" — also
   fixed 2026-09-23; a probe resuming an upload used to leave its LRU
   position untouched). Once found, the daemon clones that spec's prefix
   state and bulk-forwards only the suffix up to `decode_from`
@@ -899,21 +918,16 @@ cargo test -p candle-transformers --release --features rocm --lib \
 
 cd "$HOME/src/lfm2d"
 cargo test -p lfm2d
-python3 benchmarks/lfm25/evaluate.py \
-  --binary './target/release/lfm2d' \
-  --model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
-  --tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
-  --out '/tmp/lfm25-evaluation'
+cargo test -p lfm2d --release --features rocm --test opinion_real -- --ignored
 ```
 
 The daemon's existing real-PII tests also need their normal model fixture;
 set `LFM2_TOKEN_CLF_DIR` when using a worktree without that checkpoint.
-The benchmark writes all synthetic responses and a summary, verifies repeat
-isolation, errors/deadlines, reuse after cancellation, and in-flight SIGTERM.
-Its exit status checks runtime invariants; inspect the summary's `passed`
-count for schema and severity agreement. Four cases are an integration probe,
-not an accuracy certification. The grader does not establish the truth of
-free-text effect/reversibility explanations.
+The end-to-end evaluator behind the 2026-09-13 numbers below
+(`benchmarks/lfm25/evaluate.py`: four shell-severity cases, cold/cached/
+repeated, errors/deadlines, reuse after cancellation, in-flight SIGTERM)
+left with the shell material and is in git at `f9ca081`. Four cases were
+an integration probe, not an accuracy certification.
 
 On the real Q5_K_M checkpoint, a 40-token greedy smoke continuation matched
 llama.cpp exactly. Cold versus cached fixed-input logits for the adjudicator
@@ -946,7 +960,7 @@ schedule. What the measurement does say is that **a cold reader does not reprodu
 what production answered**, which makes `use_cache: false` a poor baseline for
 anything meant to describe the daemon, and puts a floor under every cold-path
 probe. `lfm25-examine` is a cold reader. `benchmarks/lfm25/prompts/verdict_eval.py
---no-cache` is the arm, and `docs/lfm25-grouped-prefill.md` predicted exactly
+--no-cache` was the arm (git `f9ca081`), and `docs/lfm25-grouped-prefill.md` predicted exactly
 this: "Cold and cached chunk schedules now produce different long greedy
 generations."
 

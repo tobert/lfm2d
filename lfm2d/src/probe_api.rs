@@ -1,12 +1,12 @@
 //! `POST /v1/probe`: raw inference over exact text, on the daemon's own
 //! stack. An INSTRUMENT, not a judgement API — it has no calibration
-//! contract, and `docs/integration.md` invariants 8-10 (about `/v1/opinion`)
-//! do not apply to it. It takes request text by design (exact bytes, or a
+//! contract, and `docs/integration.md` invariants 5 and 8-11 do not apply
+//! to it (invariant 13). It takes request text by design (exact bytes, or a
 //! rendered chat turn), unlike `/v1/opinion`, whose questions come only from
 //! a loaded spec's menu — see that module's docs for why that restriction
 //! exists there and does not here.
 //!
-//! Ruled 2026-09-23, `docs/system1-split-plan.md` "Tokenize and probe
+//! Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Tokenize and probe
 //! endpoints". Types and request validation live here, mirroring
 //! [`crate::opinion_api`]; the engine (rendering, warm-prefix resume,
 //! continuation scoring, greedy generation) lives in `adjudicator.rs`

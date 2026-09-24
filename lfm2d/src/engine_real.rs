@@ -10,8 +10,8 @@
 //! heads that share one checkpoint family. The three heads this daemon
 //! serves (a generic embedder, an arbitrary sequence classifier, the
 //! Prompt-Router) are independently-trained checkpoints in the general
-//! case — `kube_ordinal_v6` and the Prompt-Router do NOT share a trunk (see
-//! `src/cascade.rs`'s module docs) — so there is no trunk-sharing
+//! case — a fine-tuned classifier and the Prompt-Router do NOT share a
+//! trunk — so there is no trunk-sharing
 //! opportunity to take here without assuming a same-trunk deployment this
 //! service's config doesn't promise. Noted as a judgment call, not an
 //! oversight: see `lfm2d/README.md`.
@@ -19,15 +19,15 @@
 use std::path::Path;
 
 use lfm2_encoder::{
-    resolve_severe_labels, Cascade, Lfm2Embedding, Lfm2EncoderConfig,
-    Lfm2SequenceClassifier, Lfm2SequenceRouter, Lfm2TokenClassifier, TextKind,
+    Lfm2Embedding, Lfm2EncoderConfig, Lfm2SequenceClassifier, Lfm2SequenceRouter,
+    Lfm2TokenClassifier, TextKind,
 };
 
 use crate::config::Cli;
 use crate::hash::sha256_hex_file;
 use crate::types::{
-    CascadeClause, CascadeLane, CascadeModelRef, CascadeResponse, CascadeWinner, ClassifyResult,
-    EmbedKind, LabelScore, ModelInfo, ModelKind, RouteResponse, RouteScore, SpanResult,
+    ClassifyResult, EmbedKind, LabelScore, ModelInfo, ModelKind, RouteResponse, RouteScore,
+    SpanResult,
 };
 use crate::worker::{EmbedOutcome, InferenceEngine, PredictOutcome, SpansOutcome, WorkerError};
 
@@ -88,7 +88,7 @@ pub struct RealEngine {
     embedder: Option<(Lfm2Embedding, ModelMeta)>,
     classifier: Option<(Lfm2SequenceClassifier, ModelMeta)>,
     /// SHADOW second classifier, scored alongside `classifier` on every
-    /// `classify`/`cascade` call and immediately discarded after recording
+    /// `classify` call and immediately discarded after recording
     /// an agreement counter (`telemetry::record_candidate_agreement`) —
     /// never returned to a caller, never listed in `list_models`. See
     /// `--candidate-classifier-dir` in `config.rs` for the full contract.
@@ -101,8 +101,6 @@ pub struct RealEngine {
     /// looks these up BY ID, never by position, so load order has no
     /// observable effect beyond that listing order.
     token_classifiers: Vec<(Lfm2TokenClassifier, ModelMeta)>,
-    cascade_routes: Vec<String>,
-    cascade_severe_labels: Vec<String>,
 }
 
 impl RealEngine {
@@ -111,13 +109,6 @@ impl RealEngine {
     /// rather than starting a server that can only serve some of what it
     /// was told to. No lazy loading: every head is fully loaded (weights
     /// mmapped and read once for hashing) before this returns.
-    ///
-    /// If `--cascade-route` is configured, this ALSO validates now (not on
-    /// first request) that both a classifier and a router are loaded and
-    /// that every `--cascade-severe-label` names a real label on the loaded
-    /// classifier — a typo'd severe-label name would otherwise silently
-    /// zero out every clause's severity score on the first real request
-    /// instead of failing at the moment the operator could still fix it.
     pub fn load(cli: &Cli) -> Result<Self, String> {
         // One dtype for every head, deliberately: a mixed-precision set
         // would make the audit story ("this hash, at this precision")
@@ -201,23 +192,6 @@ impl RealEngine {
             }
         }
 
-        if !cli.cascade_routes.is_empty() {
-            let (classifier_model, _) = classifier.as_ref().ok_or_else(|| {
-                "--cascade-route was given but no --classifier-dir was configured: \
-                 /v1/cascade needs both a classifier and a router"
-                    .to_string()
-            })?;
-            if router.is_none() {
-                return Err(
-                    "--cascade-route was given but no --router-dir was configured: \
-                     /v1/cascade needs both a classifier and a router"
-                        .to_string(),
-                );
-            }
-            resolve_severe_labels(classifier_model.labels(), &cli.cascade_severe_labels)
-                .map_err(|e| format!("--cascade-severe-label: {e}"))?;
-        }
-
         let engine = Self {
             adjudicator_meta: None,
             execution,
@@ -227,8 +201,6 @@ impl RealEngine {
             candidate_classifier,
             router,
             token_classifiers,
-            cascade_routes: cli.cascade_routes.clone(),
-            cascade_severe_labels: cli.cascade_severe_labels.clone(),
         };
         engine.smoke_test(dtype)?;
         Ok(engine)
@@ -294,8 +266,7 @@ impl RealEngine {
     /// than one that refuses to start — it passes a rollout's checks and
     /// then breaks production silently.
     ///
-    /// This is the same lesson as `--cascade-severe-label`: a configuration
-    /// that is individually valid at every step can still compose into an
+    /// A configuration that is individually valid at every step can still compose into an
     /// endpoint that refuses everything. Deliberately a real forward rather
     /// than a dtype allowlist, so it stays correct when candle gains or
     /// loses an op — the build in front of us is the authority, not a list
@@ -374,8 +345,7 @@ fn to_wire_span(span: lfm2_encoder::Span) -> SpanResult {
 }
 
 /// Build the full per-label score map plus the argmax `(label, score)` in
-/// one pass — shared by `predict`/`classify`/`cascade`'s per-clause
-/// breakdown, all of which need exactly this from a `probs` vector plus its
+/// one pass — shared by `predict`/`classify`, both of which need exactly this from a `probs` vector plus its
 /// label names.
 fn scores_and_top(labels: &[String], probs: &[f32]) -> (std::collections::BTreeMap<String, f32>, String) {
     let mut map = std::collections::BTreeMap::new();
@@ -392,7 +362,7 @@ fn scores_and_top(labels: &[String], probs: &[f32]) -> (std::collections::BTreeM
 /// One shadow-classifier observation, derived from the candidate head's
 /// forward-pass result.
 ///
-/// Extracted from the shadow passes in `classify`/`cascade` so the
+/// Extracted from the shadow pass in `classify` so the
 /// swallow-vs-record decision has a fast, model-free test rather than one
 /// that needs a checkpoint engineered to fail — the same shape
 /// `worker_thread_outcome_is_a_crash` uses for the crash-vs-clean-exit
@@ -536,69 +506,6 @@ impl InferenceEngine for RealEngine {
             .map(|(route, cosine)| RouteScore { route: route.clone(), cosine })
             .collect();
         Ok(RouteResponse { model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone(), routes })
-    }
-
-    fn cascade(&self, clauses: &[String]) -> Result<CascadeResponse, WorkerError> {
-        let (classifier, classifier_meta) = self.classifier.as_ref().ok_or_else(|| {
-            WorkerError::BadRequest("cascade requires a classifier configured on this server".to_string())
-        })?;
-        let (router, router_meta) = self.router.as_ref().ok_or_else(|| {
-            WorkerError::BadRequest("cascade requires a router configured on this server".to_string())
-        })?;
-        if self.cascade_routes.is_empty() {
-            return Err(WorkerError::BadRequest(
-                "cascade has no routes configured on this server (--cascade-route)".to_string(),
-            ));
-        }
-
-        // Rank-then-route: entirely the library's own aggregation, called
-        // through unmodified — this engine only reshapes the result into
-        // the wire contract below.
-        let verdict = Cascade::new(classifier, router)
-            .run(clauses, &self.cascade_routes, &self.cascade_severe_labels)
-            .map_err(WorkerError::from)?;
-
-        let labels = classifier.labels();
-        let clause_rows: Vec<CascadeClause> = verdict
-            .clauses
-            .iter()
-            .enumerate()
-            .map(|(index, c)| {
-                let (severity_scores, top_severity) = scores_and_top(labels, &c.severity_probs);
-                CascadeClause { index, clause: c.clause.clone(), severity_scores, top_severity }
-            })
-            .collect();
-
-        let winner_row = &verdict.clauses[verdict.winner];
-        let (winner_scores, winner_top) = scores_and_top(labels, &winner_row.severity_probs);
-
-        // SHADOW pass on the winning clause only -- that's the text
-        // cascade's decision actually hinges on. Same discipline as
-        // `classify`: a failure is counted, not propagated, and never
-        // touches the response.
-        if let Some((cand_model, cand_meta)) = &self.candidate_classifier {
-            match shadow_observation(cand_model.labels(), cand_model.predict(&winner_row.clause)) {
-                ShadowObservation::Agreement { candidate_top } => {
-                    crate::telemetry::record_candidate_agreement(&classifier_meta.id, &cand_meta.id, &winner_top, &candidate_top)
-                }
-                ShadowObservation::Failure { error } => {
-                    crate::telemetry::record_candidate_failure(&classifier_meta.id, &cand_meta.id, &error)
-                }
-            }
-        }
-
-        Ok(CascadeResponse {
-            winner: CascadeWinner { index: verdict.winner, clause: winner_row.clause.clone(), severity_scores: winner_scores },
-            lane: CascadeLane {
-                route: self.cascade_routes[verdict.winner_lane].clone(),
-                cosine: winner_row.lane_cosines[verdict.winner_lane],
-            },
-            clauses: clause_rows,
-            models: vec![
-                CascadeModelRef { model_id: classifier_meta.id.clone(), weight_hash: classifier_meta.weight_hash.clone() },
-                CascadeModelRef { model_id: router_meta.id.clone(), weight_hash: router_meta.weight_hash.clone() },
-            ],
-        })
     }
 
     fn spans(&self, inputs: &[String], model: Option<&str>) -> Result<SpansOutcome, WorkerError> {
