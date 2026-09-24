@@ -46,7 +46,7 @@ def main():
             return
         if not item.strip():
             continue
-        body = {'spec': a.spec, 'state': {'command': item}, 'questions': [{'field': a.field}]}
+        body = {'spec': a.spec, 'state': {'input': item}, 'questions': [{'field': a.field}]}
         t0 = time.perf_counter()
         req = urllib.request.Request(a.url.rstrip('/') + '/v1/opinion',
                                      json.dumps(body).encode(),
