@@ -47,6 +47,30 @@ causal one; the bidirectional variants live in each checkpoint's `auto_map`
 custom code on the Hub. READ the checkpoint's own modeling file for head
 shapes before implementing a head — never guess.
 
+## GPU backends
+
+ROCm (gfx1151, zorak) is the only GPU backend we run and measure.
+**NVIDIA (CUDA) and Metal are future ports**; Intel is hypothetical until
+System 1 is dialled in and demoed (Amy, 2026-09-24: maybe "a direct
+backend on whatever Intel's ideal sdk is"). What keeps a port cheap:
+
+- lfm2d itself is backend-neutral: the only backend-gated code is
+  `lfm2d/src/device.rs`. The porting work lives in our candle fork
+  (`tobert/candle`, pinned in `Cargo.toml`).
+- ROCm compiles candle's own `candle-kernels/src/*.cu` through hipcc, so a
+  kernel change goes in the shared source with arch guards
+  (`RDNA2`/`RDNA3`), not in a ROCm-only copy. The generic path stays the
+  default; a vendor fast path is opt-in (e.g. the MoE's grouped prefill
+  behind `supports_grouped`, with `indexed_moe_forward` everywhere else).
+- An unsupported backend fails loudly ("not implemented for …"); the CPU
+  MoE is a reference, never a GPU fallback.
+- The fork's CUDA side has never been compiled by nvcc (zorak has none).
+  The first CUDA step is `cargo build --features cuda` plus the real-model
+  tests (`LFM2D_TEST_GPU=cuda`, `demo/test_devices.sh cuda`) on the DGX
+  Spark (tenchi, arm64).
+- Numbers are per backend: re-measure on the new stack, never carry a
+  threshold across.
+
 ## Checkpoint facts (fixture-verified — trust these over docs)
 
 - Hybrid stack via `layer_types` (conv-heavy, interleaved full_attention).

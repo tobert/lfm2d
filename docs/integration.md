@@ -109,13 +109,14 @@ now `404`, not `400` — the client's cue to upload (or re-upload) and
 retry, never a reason to fall back to a different spec or invent one.
 Uploads are held in memory only, under a bounded least-recently-used
 cache (`--opinion-spec-capacity`); an evicted upload's next request is
-also a clean `404`. Boot-time specs (`--adjudicator-prompt`/
-`--opinion-spec`) are never evicted and cannot be deleted at runtime
-(`DELETE /v1/opinion/specs/{id}` on one is `403`). See
+also a clean `404`. Boot-time specs (`--opinion-spec`) are never
+evicted and cannot be deleted at runtime (`DELETE /v1/opinion/specs/{id}`
+on one is `403`). There is no default spec (2026-09-24): `spec` is
+required on both routes, and `/v1/adjudicate` without it is a `400`. See
 `docs/lfm25-adjudicator.md` "Runtime spec registration" for the wire, and
-`docs/system1-split-plan.md` "Runtime spec registration" for the ruling
-this implements (kaijutsu owns the shell specs and uploads them at
-startup and on change, rather than lfm2d shipping them).
+`docs/system1-split-plan.md` (git f9ca081) "Runtime spec registration" for the ruling
+this implements (each consumer owns its specs and uploads them at
+startup and on change; lfm2d ships only demo props).
 
 **13. `/v1/tokenize` and `/v1/probe` are instruments, not judgement
 APIs — invariants 5 and 8–11 do not apply to either.** Neither returns a
@@ -150,6 +151,21 @@ disabled entirely (`--no-probe`/`LFM2D_PROBE=0`) without affecting
 presence. `/v1/tokenize` carries no invariant beyond the general ones
 (1–3, for whichever model's vocabulary is asked about) — it exposes
 tokenization, not a scored or judged quantity.
+
+**14. A spec names its own input; send `state.input` and read the label
+from the menu.** Every spec carries a required top-level `input_label`
+(2026-09-24), and `/v1/opinion` renders the user turn as
+`{facts}{input_label}:\n{input}` from `state: {"input", "facts"?}`. The
+menu entry repeats `input_label`; never hard-code it (invariant 11). The
+label is part of the spec's bytes, so it changes the spec's `id`, and it
+is part of `snapshot_id`: adding the field changed every spec's
+`snapshot_id` once, including a spec labelled `Command` whose rendered
+bytes did not change, so a consumer refits once (invariant 8). To escalate
+with a warm resume, send those same state bytes,
+`{facts}{input_label}:\n{input}` with the label read from the menu, as
+`/v1/adjudicate`'s `input` (it wraps `input` in the same user turn); any
+other bytes are a cold start, not an error. The old
+`state.command` is a `400`, with no alias.
 
 ## Operational numbers (measured, dated — re-measure before designing on them)
 

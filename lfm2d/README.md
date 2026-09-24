@@ -94,15 +94,13 @@ CLI flags, each with an env-var fallback (`clap`'s `env` feature):
 | Flag | Env var | Meaning |
 | --- | --- | --- |
 | `--embedder-dir` | `LFM2D_EMBEDDER_DIR` | `Lfm2Embedding`-shaped checkpoint dir; backs `/embed` |
-| `--classifier-dir` | `LFM2D_CLASSIFIER_DIR` | `Lfm2SequenceClassifier`-shaped checkpoint dir; backs `/predict`, `/v1/classify`, `/v1/cascade` |
-| `--router-dir` | `LFM2D_ROUTER_DIR` | Prompt-Router checkpoint dir; backs `/v1/route`, `/v1/cascade` |
+| `--classifier-dir` | `LFM2D_CLASSIFIER_DIR` | `Lfm2SequenceClassifier`-shaped checkpoint dir; backs `/predict`, `/v1/classify` |
+| `--router-dir` | `LFM2D_ROUTER_DIR` | Prompt-Router checkpoint dir; backs `/v1/route` |
 | `--token-classifier-dir` (repeatable) | `LFM2D_TOKEN_CLASSIFIER_DIR` (comma-separated) | `Lfm2TokenClassifier`-shaped checkpoint dir(s) — REPEATABLE, unlike the three heads above; backs `/v1/spans`, `/v1/spans/credentials` |
-| `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify` and `/v1/cascade`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter (or, on a failed candidate pass, a failure counter) and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
+| `--candidate-classifier-dir` | `LFM2D_CANDIDATE_CLASSIFIER_DIR` | A SECOND classifier scored shadow-only beside `--classifier-dir` on every `/v1/classify`. Never listed in `/v1/models`, never changes a response byte; it records an agreement counter (or, on a failed candidate pass, a failure counter) and discards the verdict. This is how a candidate head is measured against live traffic without serving it |
 | `--dtype` | `LFM2D_DTYPE` | `f32` (default), `f16` or `bf16`, for every head. Read the flag's own help before reaching for `f16`: these checkpoints ship f32 natively, so f16 is a real loss of resolution at ~1.6× latency, and `LFM2.5-Embedding-350M` ships bf16, where bf16→f16 can produce inf/0 rather than rounding. It is a memory lever, not a speed one |
 | `--device` | `LFM2D_DEVICE` | `auto` (default), `cpu`, `rocm`, `cuda`, or `metal`; requires corresponding compiled GPU feature |
 | `--device-index` | `LFM2D_DEVICE_INDEX` | GPU ordinal (default `0`); values exceeding the driver's signed 32-bit range are refused |
-| `--cascade-route` (repeatable) | `LFM2D_CASCADE_ROUTES` (comma-separated) | Candidate routes for `/v1/cascade` — server-side config, not a request field |
-| `--cascade-severe-label` (repeatable) | `LFM2D_CASCADE_SEVERE_LABELS` (comma-separated) | Which classifier labels count toward the severity ranking, **in ascending severity order — position is ordinal rank**. Default `mutating,destructive`, which is an old checkpoint's vocabulary; the deploy manifests pass `situation-normal,data-critical`. Duplicates are refused, and the resolved ranking is echoed at startup |
 | `--log-input-hash` | `LFM2D_LOG_INPUT_HASH` | `true`/`false`, must be spelled out (not a bare flag); default `false`. Attaches a hash of `/v1/spans`/`/v1/spans/credentials` request text — never the text itself — to that call's trace/log span; see "Observability" below |
 | `--socket-path` | `LFM2D_SOCKET_PATH` | Unix domain socket to serve on |
 | `--bind-addr` | `LFM2D_BIND_ADDR` | TCP address to serve on, e.g. `127.0.0.1:8088` |
@@ -143,7 +141,6 @@ POST /embed                   TEI-compat  {"inputs": str|[str], "kind"?: documen
 POST /predict                 TEI-compat  {"inputs": str|[str]}
 POST /v1/classify             {"inputs": str|[str]}
 POST /v1/route                {"input": str, "routes": [str]}  -> RAW cosines
-POST /v1/cascade              {"clauses": [str]}
 POST /v1/spans                {"inputs": str|[str], "model"?: str}
 POST /v1/spans/credentials    same shape; credential.* entities only
 POST /v1/tokenize             {"model": str, "text": str, "context"?: str}
@@ -186,36 +183,6 @@ takes singular `input` because it scores one text against many routes.
   ONLY** — this router's softmax is route-count arithmetic and carries no
   confidence information (see `candle_lfm2_encoder::routing`'s module
   docs), so it is never exposed on this endpoint.
-- `POST /v1/cascade` — `{"clauses": [str, ...]}` (pre-decomposed; clause
-  decomposition is the caller's job, e.g. via a kaish `Plan`) →
-  moderations-FLAVORED but with **no `flagged` boolean and no threshold
-  anywhere**:
-  ```json
-  {
-    "winner": {"index": 1, "clause": "rm -rf .", "severity_scores": {"...": 0.9}},
-    "lane": {"route": "shell", "cosine": 0.91},
-    "clauses": [
-      {"index": 0, "clause": "...", "severity_scores": {"...": 0.9}, "top_severity": "informative"},
-      {"index": 1, "clause": "rm -rf .", "severity_scores": {"...": 0.9}, "top_severity": "data-critical"}
-    ],
-    "models": [{"model_id": "...", "weight_hash": "..."}, {"model_id": "...", "weight_hash": "..."}]
-  }
-  ```
-  The label names above are one checkpoint's, shown to make the shape
-  readable — read the real ones from `GET /v1/models` at fire time, never
-  from this file. `models[0]` is always the severity classifier that
-  produced every `severity_scores` map; `models[1]` is the router that
-  produced `lane`.
-  This handler does NOT reimplement `candle_lfm2_encoder::cascade`'s
-  rank-by-severity-route-the-winner aggregation — it calls straight through
-  to the library's `Cascade::run`. **No global severity cutoff exists by
-  measurement** (benign max 0.3415 vs data-critical min 0.3440 — see
-  `src/cascade.rs`'s module docs in the parent crate): consumers must rank
-  clauses WITHIN a statement, never threshold any number here against a
-  fixed cutoff. `routes` and `severe_labels` are `--cascade-route`/
-  `--cascade-severe-label` server config, not request fields — see
-  `src/lib.rs`'s "cascade configuration is server-side" section for why
-  this was a judgment call, not something the spec pinned down explicitly.
 - `POST /v1/spans` — TEI-style, `{"inputs": str | [str]}` plus an OPTIONAL
   `"model"` (which loaded `--token-classifier-dir` head answers; required
   as a 400 naming every loaded id when 2+ are loaded, implicit when
@@ -301,34 +268,18 @@ share a trunk unless they were trained on a common frozen one: the base
 encoder and the shipped Prompt-Router have 0 of 148 trunk tensors in
 common, and a full finetune diverges from both.
 
-**Rank within a request; never threshold across requests.** The score
-ranges of benign and severe clauses overlap by measurement, so no global
-cutoff exists — which is why `/v1/cascade` ships no `flagged` boolean.
-If your policy needs a yes/no, that decision belongs in your code, where
-it is visible as your choice.
-
-**The ordinal rank that picks the winner is not on the wire.**
-`/v1/cascade` returns per-label `severity_scores` and each clause's
-`top_severity`; the ranking number itself (`ClauseVerdict::severity_score`
-in the library) is the expected ordinal rank, `0.0..=n` for n severe
-labels, and is deliberately not repeated in the response. A caller that
-wants it derives it from `severity_scores` and its own severe-label set.
-It was previously a plain sum over the severe labels, which was not
-monotone in severity; recorded values from an older build are on a
-different scale.
-
-**A checkpoint and its severe set travel together.**
-`--cascade-severe-label`'s ORDER is the ordinal scale, ascending, least
-severe first. Reversing it inverts every ranking and raises no error,
-because both names are valid — read the startup line that echoes the
-resolved ranking after any change.
+**Never threshold a score you did not fit.** No endpoint ships a
+`flagged` boolean or a cutoff. The retired shell severity head showed why:
+its benign and severe score ranges overlapped by measurement. If your
+policy needs a yes/no, that decision belongs in your code, fitted on your
+data, where it is visible as your choice.
 
 **Log the `weight_hash` beside any decision you record.** It is the audit
 trail: it ties a verdict to the exact weights that produced it, and it is
 how a rollback is told apart from a regression after the fact.
 
-**Keep failures loud.** An unknown severe label is refused by name; a dead
-worker exits the process rather than serving a healthy-looking 200. Do not
+**Keep failures loud.** An unknown spec is a `404` and a bad one is
+refused by name at load; a dead worker exits the process rather than serving a healthy-looking 200. Do not
 paper over a 5xx with a permissive default — but do not block on the
 daemon either. `docs/integration.md` invariant 6 is the rule: proceed with
 your own baseline controls and record that you skipped.
@@ -342,91 +293,6 @@ only real standard here — is tensor-clunky and was deliberately not
 adopted. The span shape follows the PII-service convention (Presidio,
 Amazon Comprehend, GCP DLP) instead, which is the closest prior art for
 this job.
-
-## The advisory hook (`hooks/`)
-
-`hooks/` holds this repo's reference consumer: a `PreToolUse` Bash hook
-that scores every shell command through `/v1/cascade` and appends the
-comparison to a local JSONL. **It decides nothing.** The regex rules it
-carries make every outcome, byte-for-byte identically to the baseline
-guard it was cloned from — `test_parity.py` gates that on 33 cases, and
-the model's verdict is recorded beside the decision, never enforced.
-The point is to learn where the two disagree, and which one is right when
-they do.
-
-Clause extraction is **plan-first**. `kaish_plan.py` runs
-`kaish --plan-file -` and renders each simple command in the resulting
-plan as one clause: canonically quoted argv, redirect operators and
-targets explicit, heredoc bodies stripped out of argv and tagged by kind,
-pipelines split into their members. `clause_split.py` is the recorded
-fallback for input kaish rejects, and every scored row carries
-`split_path`, so the two populations stay separable and the live fallback
-rate is a count rather than a guess. Compound statements go to
-`/v1/cascade` (ranked within the statement); a single clause goes to
-`/v1/classify`; past a clause budget the row falls back to one batched
-`/v1/classify`, which keeps per-clause truth without inventing a winner
-client-side.
-Each planned clause also carries the **structured facts** behind its text
-— `name` (the verb), `args`, and `redirects` as `{kind, target}` — so a
-caller can decide something about a clause without re-parsing the string
-it was just handed. This exists for the escalation pattern where a static
-check runs *after* the classifier: `echo restored` scoring data-critical
-is dismissible only if the caller can see both that the verb is `echo`
-and that nothing redirects, and `echo restored` vs `echo restored >
-/etc/shadow` differ by exactly that. Matching the rendered text instead
-is the prose-reading mistake the plan path exists to remove. The logged
-row carries `plan.commands[]` (verb + redirects per sent clause, indexed
-the way `heredocs` is); `args` is left out of the log because it is
-already in `text` verbatim and would be most of the added bytes.
-
-One trap the facts handle: an fd-dup like `2>&1` encodes its destination
-in the *kind*, and kaish still emits a placeholder target for it. Passed
-through raw, a consumer would see a redirect that reads as "writes a file
-named `null`". The target is nulled when the kind is an fd-dup (`N>&M`,
-`kaish_plan.is_fd_dup`) — NOT merely when it contains `&`: `&>` writes a
-file and keeps its target — and a real file — `echo hi > null` — keeps its target. The discriminator is the
-kind, never the target's spelling.
-
-`install.sh bootstrap` wires the hook on a machine that has never had one;
-`install.sh install` swaps a compatible existing regex hook for it and
-refuses when there is no baseline to gate parity against. The daemon
-endpoint is written into the installed command string from `LFM2D_URL`;
-the hook's own default is loopback, because a remote daemon is a
-machine's configuration and not the code's.
-
-Run the tests with `python3 lfm2d/hooks/test_<name>.py` — they are plain
-scripts that exit non-zero on failure, not a pytest suite.
-`test_advisory_live.py` needs a reachable daemon and refuses to skip
-rather than reporting green while testing nothing, so point it at one:
-`LFM2D_URL=http://<host>:8088 python3 lfm2d/hooks/test_advisory_live.py`.
-Its defaults are loopback, like the hook's.
-
-### Known gaps
-
-- **The renderer is not pinned.** `LFM2D_KAISH_BIN` defaults to whatever
-  `kaish` is on `PATH`, so a kaish upgrade changes how clauses render
-  mid-stream. That has already happened once, and it changed the argv
-  rendering of a whole flag family. A score floor measured across such a
-  boundary is not comparable with one measured after it: pin
-  `LFM2D_KAISH_BIN`, or re-baseline deliberately once the move is
-  accepted.
-- **The hook emits no OpenTelemetry.** The daemon is fully instrumented;
-  the hook writes only its local JSONL, so the disagreement data — the
-  entire product of the advisory phase — is readable only by opening a
-  file on the machine that produced it.
-- **Command text leaves the machine and is written to disk.** It goes to
-  the daemon over whatever `LFM2D_URL` points at, and to a `0600` local
-  log. Commands can contain secrets; weigh that before installing this
-  in every session on every machine.
-- **The circuit breaker leaves holes.** After repeated failures the hook
-  stops calling for a cooldown. Those skipped calls are logged as
-  `circuit_open` rows rather than omitted, so a quiet stretch is
-  distinguishable from a stretch where nothing was asked — but they are
-  still gaps when the log is mined as training signal.
-- **Enforce mode is deliberately unimplemented.** `LFM2D_HOOK_MODE=enforce`
-  prints a refusal and falls back to advisory. Wiring an untested
-  enforcement path and leaving it reachable is how a "temporary" mode
-  ships.
 
 ## Being a good k8s/k3s container citizen
 
@@ -601,22 +467,9 @@ The task spec left a few things implicit; here's what was decided and why
    `/embed`/`/predict` as bare TEI-compatible arrays with no room for those
    fields. Resolved by putting them in `X-Model-Id`/`X-Model-Weight-Hash`
    response headers for those two endpoints, and directly in the JSON body
-   for `/v1/classify`/`/v1/route`/`/v1/cascade` (which are "our full
-   contract," not TEI-compat).
-2. **`/v1/cascade`'s `routes`/`severe_labels`.** The spec's request shape
-   is `{"clauses": [...]}` only, but the library's `Cascade::run` also
-   needs a route set and a severe-label set. Made these server-side startup
-   config (`--cascade-route`, `--cascade-severe-label`) rather than
-   request fields — a cascade specialist's lane set and severity
-   definition are properties of the deployment, not something each caller
-   should be re-specifying per call.
-3. **`top_severity`'s meaning.** Read as "the classifier's own argmax
-   label for this clause" (mirroring `/v1/classify`'s `top`), NOT the
-   severe-label-set ranking sum (`ClauseVerdict::severity_score` in the
-   library) — the latter isn't exposed as a separate number in v1, since a
-   caller can already derive it from `severity_scores` plus their own
-   knowledge of which labels they consider severe.
-4. **One model per head kind — except token classifiers.** No `/predict`/
+   for `/v1/classify`/`/v1/route` (which are "our full contract," not
+   TEI-compat).
+2. **One model per head kind — except token classifiers.** No `/predict`/
    `/v1/classify`/`/v1/route` request carries a model-selection parameter,
    so this daemon serves at most one embedder, one classifier, one router
    at a time. `/v1/spans`/`/v1/spans/credentials` are the deliberate
@@ -625,7 +478,7 @@ The task spec left a few things implicit; here's what was decided and why
    sidecar" (a general PII head plus a narrower secrets-only head, say) is
    a realistic deployment shape in a way that "N embedders" or "N routers"
    is not for this daemon's current consumers.
-5. **`/v1/spans`'s `score` is the weakest token, not the average.** A
+3. **`/v1/spans`'s `score` is the weakest token, not the average.** A
    span is a conjunction of per-token decisions, so its trustworthiness is
    its weakest token's; averaging would hide the coin-flip token that
    indicates a misplaced boundary. The consequence for a caller is that
@@ -633,7 +486,7 @@ The task spec left a few things implicit; here's what was decided and why
    API section's `/v1/spans` entry and `types::SpanResult::score`'s doc
    comment.
 
-6. **No observe-only endpoint.** Asked for a way to report actions a
+4. **No observe-only endpoint.** Asked for a way to report actions a
    consumer handled WITHOUT scoring them — read-only calls that bypass the
    daemon — so coverage is countable. Deliberately not added: an endpoint
    that records without scoring turns a model server into an event sink,
@@ -647,6 +500,20 @@ The task spec left a few things implicit; here's what was decided and why
 
 ## Problems noted, not fixed
 
+- **`snapshot_id` names the backend, not the GPU or the candle build.**
+  It hashes `"rocm"`/`"cuda"`, so two AMD cards that take different kernel
+  paths (the fork's `RDNA2`/`RDNA3` guards), or two builds of the candle
+  fork, share a `snapshot_id` while their distributions differ. A consumer
+  that refits on `snapshot_id` would miss that. Fix: add the device arch
+  and the candle revision to the identity; the ROCm device does not expose
+  its arch name yet, so it starts in the fork. Carried from the step-5
+  split, 2026-09-24.
+- **Spec registration telemetry has no source address.** The daemon has
+  no `ConnectInfo` wiring, so a registration or eviction log line cannot
+  say who uploaded the spec.
+- **The cancellation check after a spec registration is covered only by a
+  test double** (`handle_menu_tests`), not by a real `Adjudicator` load
+  racing a cancel.
 - Each head loads its own trunk; there is no trunk sharing across heads.
   This is not a gap to close in the general case — the base encoder and
   the shipped Prompt-Router have 0 of 148 trunk tensors in common, and
@@ -720,21 +587,30 @@ reports are available as a development integration. See
 HTTP semantics, measured limitations, and the published Candle dependency.
 
 Beside `/v1/adjudicate` the same worker serves `/v1/opinion`, the System 1
-read: state in, a typed distribution over a spec's choice field out, no
-text generated past the question's slot and no winner named. The guide's
+read: state in (`{"input", "facts"?}`), a typed distribution over a spec's
+choice field out, no text generated past the question's slot and no winner
+named. Each spec names its own input with a required `input_label`, and
+the user turn renders `{facts}{input_label}:\n{input}`; the menu
+(`GET /v1/opinion/specs`) carries the label so a client reads it at
+runtime. The guide's
 "The opinion API" section has the shapes and the numbers;
-`docs/integration.md` invariants 8–12 are its contract. It deploys as its
+`docs/integration.md` invariants 8–14 are its contract. It deploys as its
 own GPU service, `lfm2d-system1` (`Containerfile.rocm`,
 `deploy/k8s-zorak-system1.yaml`), beside this encoder sidecar rather than
 inside it.
 
 A spec can also be registered at runtime — `POST /v1/opinion/specs` (body:
 the spec's bytes) and `DELETE /v1/opinion/specs/{id}` — beside the ones
-loaded at boot via `--adjudicator-prompt`/`--opinion-spec`. An id is the
-content hash of the exact bytes, so re-uploading the same spec is free; an
-unknown or evicted `spec` is `404`, the cue to upload and retry. See the
-guide's "Runtime spec registration" and `docs/integration.md` invariant
-12.
+loaded at boot via `--opinion-spec` (repeatable; zero is valid, and the
+menu then starts empty). An id is the content hash of the exact bytes, so
+re-uploading the same spec is free; an unknown or evicted `spec` is `404`,
+the cue to upload and retry. There is no default spec: `/v1/opinion` and
+`/v1/adjudicate` both require `spec`, and `/v1/adjudicate` without one is
+a `400` naming the menu. `GET /v1/adjudicator` reports the checkpoint
+only (`model_id`, `weight_hash`, `tokenizer_hash`, `context_limit`,
+`backend`, `dtype`, `sampling`, `weight_dtypes`); per-spec identity is
+each menu entry's `snapshot_id`. See the guide's "Runtime spec
+registration" and `docs/integration.md` invariants 12 and 14.
 
 Two more routes are answered without ever entering a spec's judgement
 contract: `POST /v1/tokenize` (any loaded model, encoder head or
