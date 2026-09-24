@@ -72,9 +72,12 @@ spec:
           # Same LAN gitea registry as the encoder image. A real version,
           # never `:latest`.
           #
-          # Running imageID digest for 0.3.0, read back off the pod
-          # 2026-09-24 (4fdfa59: step 5 — no default spec, state.input
-          # under a spec-owned input_label, cascade and shell specs gone):
+          # Running imageID digest for 0.3.1, read back off the pod
+          # 2026-09-24 (252953d: snapshot_id names the device target and the
+          # candle build; /v1/adjudicator reports device
+          # rocm:gfx1151:hip7.2, candle_rev dda984e0):
+          #   sha256:08c5860a11d6d56dabf5a072c7420ea317e58c4ef4332d095f1348ea97ddb3a7
+          # 0.3.0 (4fdfa59, step 5: no default spec, state.input) was
           #   sha256:9e609d9693c1f2470c2ff5d0deba16d8972ca917dc6b608f9d2a4fab9b408fe7
           # 0.2.0 (dd64626, spec registration, tokenize, probe) was
           #   sha256:53b9d0d99cf1db09faabaf5362915883acbea9fcc0bbadd5ca12f64b349da9f7
@@ -90,7 +93,7 @@ spec:
           # to ready including the first-run kernel compile (40 files, 3.1 MB,
           # persisted on the host cache path below). Startup probe budget is
           # 5 min; the pull happens before it starts counting.
-          image: 192.168.1.2:3000/amy/lfm2d-system1:0.3.0
+          image: 192.168.1.2:3000/amy/lfm2d-system1:0.3.1
           imagePullPolicy: IfNotPresent
           args:
             # LFM2.5-8B-A1B Q5_K_M — the checkpoint every F9 number was
