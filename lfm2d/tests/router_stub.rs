@@ -95,22 +95,18 @@ async fn v1_models_lists_every_configured_head_with_hash_and_kind() {
     assert_eq!(status, StatusCode::OK);
     let v: Value = serde_json::from_str(&body).unwrap();
     let models = v.as_array().unwrap();
-    assert_eq!(models.len(), 3, "embedder + classifier + router");
+    assert_eq!(models.len(), 2, "embedder + router");
 
     let kinds: Vec<&str> = models.iter().map(|m| m["kind"].as_str().unwrap()).collect();
     assert!(kinds.contains(&"embedder"));
-    assert!(kinds.contains(&"classifier"));
     assert!(kinds.contains(&"router"));
 
-    let classifier = models.iter().find(|m| m["kind"] == "classifier").unwrap();
-    assert_eq!(
-        classifier["labels"],
-        json!(["destructive", "informative", "mutating"])
-    );
     // weight_hash format: 64 hex chars, even for the fake stub hash.
-    let hash = classifier["weight_hash"].as_str().unwrap();
-    assert_eq!(hash.len(), 64);
-    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    for model in models {
+        let hash = model["weight_hash"].as_str().unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 
     let embedder = models.iter().find(|m| m["kind"] == "embedder").unwrap();
     assert!(embedder.get("labels").is_none(), "an embedder has no fixed label set");
@@ -204,80 +200,6 @@ async fn embed_malformed_json_body_is_400_with_the_error_shape() {
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let v: Value = serde_json::from_slice(&bytes).expect("even a malformed-input error is our JSON shape");
     assert_eq!(v["error"]["type"], "bad_request");
-}
-
-// -------------------------------------------------------------- /predict
-
-#[tokio::test]
-async fn predict_happy_path_covers_every_label_sorted_descending() {
-    let (status, body, headers) = post_json(
-        router_over(StubEngine::fully_configured()),
-        "/predict",
-        json!({"inputs": ["kubectl delete ns prod"]}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    let per_input = body.as_array().unwrap();
-    assert_eq!(per_input.len(), 1);
-    let labels = per_input[0].as_array().unwrap();
-    assert_eq!(labels.len(), 3, "full softmax over ALL labels, never just top-1");
-    let scores: Vec<f64> = labels.iter().map(|l| l["score"].as_f64().unwrap()).collect();
-    assert!(scores.windows(2).all(|w| w[0] >= w[1]), "must be sorted descending: {scores:?}");
-    assert_eq!(headers.get("x-model-id").unwrap(), "stub-classifier");
-}
-
-#[tokio::test]
-async fn predict_rejects_empty_inputs() {
-    let (status, _, _) =
-        post_json(router_over(StubEngine::fully_configured()), "/predict", json!({"inputs": []})).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-// ----------------------------------------------------------- /v1/classify
-
-#[tokio::test]
-async fn v1_classify_carries_scores_top_model_id_and_weight_hash_in_body() {
-    let (status, body, _) = post_json(
-        router_over(StubEngine::fully_configured()),
-        "/v1/classify",
-        json!({"inputs": ["rm -rf /"]}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    let result = &body[0];
-    assert!(result["scores"].as_object().unwrap().len() == 3);
-    assert!(result["top"].is_string());
-    assert_eq!(result["model_id"], "stub-classifier");
-    assert_eq!(result["weight_hash"].as_str().unwrap().len(), 64);
-
-    // Full softmax: scores must sum to ~1.0.
-    let sum: f64 = result["scores"].as_object().unwrap().values().map(|v| v.as_f64().unwrap()).sum();
-    assert!((sum - 1.0).abs() < 1e-3, "sum={sum}");
-}
-
-/// End-to-end counterpart of the serde test: a bare string must reach the
-/// worker and come back as a batch of one, exactly as an array of one does.
-#[tokio::test]
-async fn v1_classify_accepts_a_bare_string_and_answers_with_a_batch_of_one() {
-    let (status, body, _) = post_json(
-        router_over(StubEngine::fully_configured()),
-        "/v1/classify",
-        json!({"inputs": "ls"}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body.as_array().expect("array response").len(), 1);
-    assert!(body[0]["scores"].is_object());
-}
-
-#[tokio::test]
-async fn v1_classify_with_no_classifier_configured_is_400() {
-    let mut engine = StubEngine::fully_configured();
-    engine.classifier = None;
-    let (status, body, _) =
-        post_json(router_over(engine), "/v1/classify", json!({"inputs": ["hi"]})).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(body["error"]["message"].as_str().unwrap().contains("classifier"));
 }
 
 // --------------------------------------------------------------- /v1/route
@@ -533,7 +455,7 @@ async fn a_worker_failure_is_500_with_the_error_shape_never_a_silent_200() {
     engine.fail_with = Some("simulated forward-pass failure".to_string());
     let (status, body, _) = post_json(
         router_over(engine),
-        "/v1/classify",
+        "/embed",
         json!({"inputs": ["hi"]}),
     )
     .await;
@@ -553,7 +475,7 @@ async fn a_worker_thread_panic_is_500_for_the_inflight_request_and_500_after() {
     // The request that triggers the panic: the worker unwinds mid-request,
     // dropping the oneshot sender without replying.
     let (status, body, _) =
-        post_json(router.clone(), "/v1/classify", json!({"inputs": ["hi"]})).await;
+        post_json(router.clone(), "/embed", json!({"inputs": ["hi"]})).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(body["error"]["type"], "internal");
     assert!(
@@ -563,7 +485,7 @@ async fn a_worker_thread_panic_is_500_for_the_inflight_request_and_500_after() {
 
     // The worker thread is dead now; the command channel's receiver is gone.
     // Every later request must still be a loud 500, never a hang or a 200.
-    let (status, body, _) = post_json(router, "/v1/classify", json!({"inputs": ["hi"]})).await;
+    let (status, body, _) = post_json(router, "/embed", json!({"inputs": ["hi"]})).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(body["error"]["type"], "internal");
     assert!(

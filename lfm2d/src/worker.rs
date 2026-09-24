@@ -49,7 +49,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 use tracing::Span;
 
-use crate::types::{ClassifyResult, EmbedKind, LabelScore, ModelInfo, RouteResponse, SpanResult};
+use crate::types::{EmbedKind, ModelInfo, RouteResponse, SpanResult};
 
 /// A worker-side failure, already classified into the two HTTP status
 /// families the API contract promises: a caller-supplied problem (400) or
@@ -58,7 +58,7 @@ use crate::types::{ClassifyResult, EmbedKind, LabelScore, ModelInfo, RouteRespon
 #[derive(Debug, Clone)]
 pub enum WorkerError {
     /// The request itself, or the server's current configuration relative
-    /// to it (e.g. `/predict` called with no classifier loaded), makes this
+    /// to it (e.g. `/embed` called with no embedder loaded), makes this
     /// call impossible to satisfy. Never the model's fault.
     BadRequest(String),
     /// A loaded model failed during inference, or the worker thread itself
@@ -101,14 +101,6 @@ pub struct EmbedOutcome {
     pub weight_hash: String,
 }
 
-/// As [`EmbedOutcome`], for `/predict`.
-#[derive(Debug, Clone)]
-pub struct PredictOutcome {
-    pub per_input: Vec<Vec<LabelScore>>,
-    pub model_id: String,
-    pub weight_hash: String,
-}
-
 /// As [`EmbedOutcome`], for `/v1/spans` and `/v1/spans/credentials` — the
 /// same outcome shape backs both, since "credentials" is just `spans`
 /// filtered server-side to the `credential.*` family (see
@@ -127,8 +119,6 @@ pub struct SpansOutcome {
 pub trait InferenceEngine: Send + 'static {
     fn list_models(&self) -> Vec<ModelInfo>;
     fn embed(&self, inputs: &[String], kind: EmbedKind) -> Result<EmbedOutcome, WorkerError>;
-    fn predict(&self, inputs: &[String]) -> Result<PredictOutcome, WorkerError>;
-    fn classify(&self, inputs: &[String]) -> Result<Vec<ClassifyResult>, WorkerError>;
     fn route(&self, input: &str, routes: &[String]) -> Result<RouteResponse, WorkerError>;
     /// `model` selects which loaded `--token-classifier-dir` head answers
     /// this call — required (as a 400 naming the loaded ids) when 2+ are
@@ -161,16 +151,6 @@ pub(crate) enum WorkerCommand {
         inputs: Vec<String>,
         kind: EmbedKind,
         reply: oneshot::Sender<Result<EmbedOutcome, WorkerError>>,
-        meta: Enqueued,
-    },
-    Predict {
-        inputs: Vec<String>,
-        reply: oneshot::Sender<Result<PredictOutcome, WorkerError>>,
-        meta: Enqueued,
-    },
-    Classify {
-        inputs: Vec<String>,
-        reply: oneshot::Sender<Result<Vec<ClassifyResult>, WorkerError>>,
         meta: Enqueued,
     },
     Route {
@@ -303,16 +283,6 @@ impl WorkerHandle {
                                 engine.embed(&inputs, kind)
                             }));
                         }
-                        WorkerCommand::Predict { inputs, reply, meta } => {
-                            let _ = reply.send(run_timed(meta, &worker_queue_depth, "predict", || {
-                                engine.predict(&inputs)
-                            }));
-                        }
-                        WorkerCommand::Classify { inputs, reply, meta } => {
-                            let _ = reply.send(run_timed(meta, &worker_queue_depth, "classify", || {
-                                engine.classify(&inputs)
-                            }));
-                        }
                         WorkerCommand::Route { input, routes, reply, meta } => {
                             let _ = reply.send(run_timed(meta, &worker_queue_depth, "route", || {
                                 engine.route(&input, &routes)
@@ -417,20 +387,6 @@ impl WorkerHandle {
         let span = tracing::info_span!("worker_call", operation = "embed", queue_wait_ms = tracing::field::Empty, inference_ms = tracing::field::Empty);
         let (tx, rx) = oneshot::channel();
         self.send(WorkerCommand::Embed { inputs, kind, reply: tx, meta: Enqueued { queued_at: Instant::now(), span } })?;
-        Self::recv(rx).await?
-    }
-
-    pub async fn predict(&self, inputs: Vec<String>) -> Result<PredictOutcome, WorkerError> {
-        let span = tracing::info_span!("worker_call", operation = "predict", queue_wait_ms = tracing::field::Empty, inference_ms = tracing::field::Empty);
-        let (tx, rx) = oneshot::channel();
-        self.send(WorkerCommand::Predict { inputs, reply: tx, meta: Enqueued { queued_at: Instant::now(), span } })?;
-        Self::recv(rx).await?
-    }
-
-    pub async fn classify(&self, inputs: Vec<String>) -> Result<Vec<ClassifyResult>, WorkerError> {
-        let span = tracing::info_span!("worker_call", operation = "classify", queue_wait_ms = tracing::field::Empty, inference_ms = tracing::field::Empty);
-        let (tx, rx) = oneshot::channel();
-        self.send(WorkerCommand::Classify { inputs, reply: tx, meta: Enqueued { queued_at: Instant::now(), span } })?;
         Self::recv(rx).await?
     }
 

@@ -5,17 +5,14 @@
 //! (status codes, JSON shape, header passthrough, error mapping) in
 //! milliseconds, independent of whether any checkpoint is present on disk.
 //!
-//! Configuration mirrors what `--embedder-dir`/`--classifier-dir`/
-//! `--router-dir` would produce in production: each head is independently
+//! Configuration mirrors what `--embedder-dir`/`--router-dir`/
+//! `--token-classifier-dir` would produce in production: each head is independently
 //! present-or-absent, so tests can exercise "endpoint called with that head
 //! unconfigured" (→ 400) the same way a misconfigured real deployment
 //! would.
 
-use crate::types::{
-    ClassifyResult, EmbedKind, LabelScore, ModelInfo, ModelKind, RouteResponse, RouteScore,
-    SpanResult,
-};
-use crate::worker::{EmbedOutcome, InferenceEngine, PredictOutcome, SpansOutcome, WorkerError};
+use crate::types::{EmbedKind, ModelInfo, ModelKind, RouteResponse, RouteScore, SpanResult};
+use crate::worker::{EmbedOutcome, InferenceEngine, SpansOutcome, WorkerError};
 
 /// A fake loaded model's identity — same shape as what a real load would
 /// record, without ever touching a file.
@@ -74,11 +71,6 @@ impl StubTokenClassifier {
 #[derive(Debug, Clone, Default)]
 pub struct StubEngine {
     pub embedder: Option<StubModel>,
-    pub classifier: Option<StubModel>,
-    /// Order is the label id order — `predict`/`classify` output follows
-    /// it, same contract as the real
-    /// [`lfm2_encoder::Lfm2SequenceClassifier::labels`].
-    pub classifier_labels: Vec<String>,
     pub router: Option<StubModel>,
     /// Zero, one, or many loaded token-classification heads — mirrors
     /// `--token-classifier-dir` being repeatable. Tests exercise both the
@@ -129,20 +121,14 @@ impl Drop for DropProbe {
 }
 
 impl StubEngine {
-    /// The everything-loaded configuration most router tests want: one of
-    /// each head, three classifier labels (`destructive`/`informative`/
-    /// `mutating` — `kube_ordinal_v6`'s real label set).
+    /// The configuration most router tests want: an embedder and a router.
+    /// No token classifier, deliberately: the `/v1/spans` "none configured"
+    /// tests run against this exact configuration. Tests that want one or
+    /// more build a `StubEngine` directly.
     pub fn fully_configured() -> Self {
         Self {
             embedder: Some(StubModel::new("stub-embedder")),
-            classifier: Some(StubModel::new("stub-classifier")),
-            classifier_labels: vec!["destructive".into(), "informative".into(), "mutating".into()],
             router: Some(StubModel::new("stub-router")),
-            // Deliberately empty: `v1_models_lists_every_configured_head_with_hash_and_kind`
-            // asserts `models.len() == 3` against this exact configuration.
-            // Tests that want a token classifier build a `StubEngine`
-            // directly (same pattern `v1_models_reflects_a_partially_configured_server`
-            // already uses for "only-router").
             token_classifiers: Vec::new(),
             fail_with: None,
             panic_with: None,
@@ -187,7 +173,7 @@ impl StubEngine {
     /// the whole (trimmed) text, whose entity type and score both vary with
     /// `text.len()` — enough spread for tests to assert something specific
     /// without needing real inference. NOT meant to resemble a real BIOES
-    /// decode; `RealEngine`'s tests (`integration_real.rs`) cover that.
+    /// decode; `RealEngine`'s tests (`integration_real_spans.rs`) cover that.
     fn fake_spans(&self, clf: &StubTokenClassifier, text: &str) -> Vec<SpanResult> {
         let trimmed_len = text.trim().len();
         if trimmed_len == 0 {
@@ -215,18 +201,6 @@ impl StubEngine {
         }
         Ok(())
     }
-
-    /// Deterministic, obviously-fake "scores": longer text skews toward the
-    /// last label, shorter toward the first — enough spread that tests can
-    /// assert a specific label wins without needing real inference.
-    fn fake_scores(&self, text: &str) -> Vec<f32> {
-        let n = self.classifier_labels.len().max(1);
-        let bucket = text.len() % n;
-        let mut raw = vec![0.1f32; n];
-        raw[bucket] = 1.0;
-        let sum: f32 = raw.iter().sum();
-        raw.iter().map(|v| v / sum).collect()
-    }
 }
 
 impl InferenceEngine for StubEngine {
@@ -238,15 +212,6 @@ impl InferenceEngine for StubEngine {
                 kind: ModelKind::Embedder,
                 weight_hash: m.weight_hash.clone(),
                 labels: None,
-                hidden_size: m.hidden_size,
-            });
-        }
-        if let Some(m) = &self.classifier {
-            out.push(ModelInfo {
-                id: m.id.clone(),
-                kind: ModelKind::Classifier,
-                weight_hash: m.weight_hash.clone(),
-                labels: Some(self.classifier_labels.clone()),
                 hidden_size: m.hidden_size,
             });
         }
@@ -291,55 +256,6 @@ impl InferenceEngine for StubEngine {
             })
             .collect();
         Ok(EmbedOutcome { vectors, model_id: model.id.clone(), weight_hash: model.weight_hash.clone() })
-    }
-
-    fn predict(&self, inputs: &[String]) -> Result<PredictOutcome, WorkerError> {
-        self.check_fail()?;
-        let model = self.classifier.as_ref().ok_or_else(|| {
-            WorkerError::BadRequest("no classifier configured on this server".to_string())
-        })?;
-        let per_input = inputs
-            .iter()
-            .map(|text| {
-                let scores = self.fake_scores(text);
-                let mut ranked: Vec<LabelScore> = self
-                    .classifier_labels
-                    .iter()
-                    .zip(scores)
-                    .map(|(label, score)| LabelScore { label: label.clone(), score })
-                    .collect();
-                ranked.sort_by(|a, b| b.score.total_cmp(&a.score));
-                ranked
-            })
-            .collect();
-        Ok(PredictOutcome { per_input, model_id: model.id.clone(), weight_hash: model.weight_hash.clone() })
-    }
-
-    fn classify(&self, inputs: &[String]) -> Result<Vec<ClassifyResult>, WorkerError> {
-        self.check_fail()?;
-        let model = self.classifier.as_ref().ok_or_else(|| {
-            WorkerError::BadRequest("no classifier configured on this server".to_string())
-        })?;
-        inputs
-            .iter()
-            .map(|text| {
-                let scores = self.fake_scores(text);
-                let mut map = std::collections::BTreeMap::new();
-                let mut top = (String::new(), f32::NEG_INFINITY);
-                for (label, score) in self.classifier_labels.iter().zip(scores) {
-                    if score > top.1 {
-                        top = (label.clone(), score);
-                    }
-                    map.insert(label.clone(), score);
-                }
-                Ok(ClassifyResult {
-                    scores: map,
-                    top: top.0,
-                    model_id: model.id.clone(),
-                    weight_hash: model.weight_hash.clone(),
-                })
-            })
-            .collect()
     }
 
     fn route(&self, input: &str, routes: &[String]) -> Result<RouteResponse, WorkerError> {

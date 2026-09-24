@@ -12,17 +12,12 @@ use lfm2d::worker::InferenceEngine;
 fn arguments(device: &str) -> Cli {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
     let models = std::env::var_os("LFM2_MODELS_DIR").map(PathBuf::from).unwrap_or(root.join(".models"));
-    let classifier = std::env::var_os("LFM2_SEQ_CLF_DIR").map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(std::env::var_os("HOME").expect("HOME"))
-            .join(".local/share/lfm2-training-data/runs/kube_ordinal_v6")
-    });
     Cli::parse_from([
         "lfm2d".to_string(), "--device".into(), device.into(),
         "--bind-addr=127.0.0.1:0".into(),
         format!("--embedder-dir={}", models.join("LFM2.5-Embedding-350M").display()),
         format!("--router-dir={}", models.join("LFM2.5-Encoder-350M-Prompt-Router").display()),
         format!("--token-classifier-dir={}", models.join("LFM2.5-Encoder-350M-PII-Detector").display()),
-        format!("--classifier-dir={}", classifier.display()),
         "--dtype=f32".into(),
     ])
 }
@@ -56,18 +51,6 @@ fn all_heads_agree_between_cpu_and_explicit_gpu() {
             let similarity = lfm2_encoder::cosine_similarity(a, b);
             assert!(similarity > 0.999, "embedding CPU/GPU cosine {similarity}");
         }
-    }
-    let commands = vec!["kubectl get pods".into(), "kubectl delete namespace staging --wait=false".into()];
-    let a = cpu.classify(&commands).unwrap();
-    let b = gpu.classify(&commands).unwrap();
-    assert_eq!(a.len(), commands.len());
-    assert_eq!(b.len(), commands.len());
-    for (a, b) in a.iter().zip(&b) {
-        assert_eq!(a.weight_hash, b.weight_hash);
-        assert_eq!(a.scores.keys().collect::<Vec<_>>(), b.scores.keys().collect::<Vec<_>>());
-        for (label, &score) in &a.scores { close(score, b.scores[label]); }
-        // Scores, rather than argmax, are the contract here: near-tied labels
-        // can flip between devices. Deployment calibration is a separate gate.
     }
     let routes = vec!["shell".into(), "k8s".into(), "general conversation".into()];
     let a = cpu.route("kubectl get pods", &routes).unwrap();

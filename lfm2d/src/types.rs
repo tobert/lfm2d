@@ -3,7 +3,7 @@
 //! resolves).
 //!
 //! Every map that gets compared as a JSON string in tests
-//! ([`ClassifyResult::scores`]) is a [`BTreeMap`], not a
+//! ([`StepDistribution::set_mass`]) is a [`BTreeMap`], not a
 //! `std::collections::HashMap` — `HashMap`'s iteration order is randomized
 //! per process (a DoS-hardening default), which would make an
 //! exact-JSON-string assertion flaky by construction. A `BTreeMap`
@@ -17,11 +17,16 @@ use serde::{Deserialize, Serialize};
 // --------------------------------------------------------------- shared
 
 /// `{"inputs": "one string"}` or `{"inputs": ["many", "strings"]}` — the
-/// TEI convention both `/embed` and `/predict` accept. Always normalizes to
+/// TEI convention `/embed` and `/v1/spans` accept. Always normalizes to
 /// a `Vec<String>` via [`Self::into_vec`]; the response is always an array
-/// (batch of 1 for a single-string request), matching the endpoint docs'
-/// `→ [[f32,...]]` / `→ [[{label,score},...]]` shape regardless of which
-/// input form was used.
+/// (batch of 1 for a single-string request) regardless of which input form
+/// was used.
+///
+/// Every endpoint that takes `inputs` takes both forms. A removed endpoint
+/// once accepted an array only, reasoning that our own contract owes no
+/// TEI bug-compatibility; a live caller's `{"inputs": "ls"}` then succeeded
+/// on two endpoints and 400'd on the third in one session. An API may be
+/// strict, but not unpredictably strict.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Inputs {
@@ -44,7 +49,6 @@ impl Inputs {
 pub enum ModelKind {
     Adjudicator,
     Embedder,
-    Classifier,
     Router,
     /// A per-token BIOES span-detection head (`POST /v1/spans`,
     /// `POST /v1/spans/credentials`) — the PII detector's shape, but not
@@ -98,58 +102,6 @@ pub struct EmbedRequest {
     pub kind: EmbedKind,
 }
 
-// -------------------------------------------------------------- /predict
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PredictRequest {
-    pub inputs: Inputs,
-}
-
-/// One label's probability — `/predict`'s per-input list covers ALL
-/// labels (full softmax), sorted by `score` descending.
-#[derive(Debug, Clone, Serialize)]
-pub struct LabelScore {
-    pub label: String,
-    pub score: f32,
-}
-
-// ----------------------------------------------------------- /v1/classify
-
-/// Takes the same string-or-array [`Inputs`] as every other endpoint.
-///
-/// This originally accepted an array ONLY, reasoning that `/v1/classify` is
-/// our own contract rather than a TEI-compat shim and so owes no client
-/// bug-compatibility. That reasoning was sound and still produced the wrong
-/// answer, because `/v1/spans` is equally our own contract and accepts the
-/// bare-string form — so the rule wasn't "our endpoints are strict," it was
-/// "this one endpoint is different," which is just an inconsistency wearing
-/// a justification.
-///
-/// The cost was real and measured on a live caller: `{"inputs": "ls"}`
-/// succeeded against `/predict` and `/v1/spans` and returned 400 from
-/// `/v1/classify`, in the same session where the same field name had
-/// already been fumbled once. An API is allowed to be strict, but not
-/// unpredictably strict — a caller should learn the request shape once.
-///
-/// The response is unchanged: always an array, one entry per input, batch
-/// of one for a single string.
-#[derive(Debug, Clone, Deserialize)]
-pub struct ClassifyRequest {
-    pub inputs: Inputs,
-}
-
-/// One input's full result: the full softmax (`scores`, every label), the
-/// argmax (`top`), and the audit pair (`model_id`, `weight_hash`) — see the
-/// crate root docs on why `/v1/classify` carries these in-body while
-/// `/embed`/`/predict` carry them as response headers instead.
-#[derive(Debug, Clone, Serialize)]
-pub struct ClassifyResult {
-    pub scores: BTreeMap<String, f32>,
-    pub top: String,
-    pub model_id: String,
-    pub weight_hash: String,
-}
-
 // -------------------------------------------------------------- /v1/route
 
 /// Singular `input`, not `inputs` — one prompt scored against many routes
@@ -181,7 +133,7 @@ pub struct RouteResponse {
 // -------------------------------------------------------------- /v1/spans
 
 /// `{"inputs": str | [str]}` (TEI-style, same [`Inputs`] normalization as
-/// `/embed`/`/predict`), plus an OPTIONAL `"model"` to pick which loaded
+/// `/embed`), plus an OPTIONAL `"model"` to pick which loaded
 /// token-classification head answers this call. Required only when 2+
 /// `--token-classifier-dir` heads are loaded — see `server::spans`'s doc
 /// comment and the crate root docs' "N token heads" section for the
@@ -196,8 +148,8 @@ pub struct SpansRequest {
 /// One detected span, on the wire. `POST /v1/spans` and
 /// `POST /v1/spans/credentials` respond with `Vec<Vec<SpanResult>>` — a
 /// bare array of arrays (TEI-shaped, no wrapper object; audit pair travels
-/// as `X-Model-Id`/`X-Model-Weight-Hash` headers same as `/embed`/
-/// `/predict` — see the crate root docs' "two response conventions").
+/// as `X-Model-Id`/`X-Model-Weight-Hash` headers same as `/embed` —
+/// see the crate root docs' "two response conventions").
 ///
 /// # NEVER add the matched text to this type
 ///

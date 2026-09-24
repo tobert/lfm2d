@@ -33,10 +33,10 @@ fn wait_for_listening(addr: &str, timeout: Duration) {
 
 /// One real request, so the worker has served before shutdown as it would
 /// in production; the response must be a 200.
-fn classify_once(addr: &str) {
-    let body = br#"{"inputs": ["kubectl get pods"]}"#;
+fn embed_once(addr: &str) {
+    let body = br#"{"inputs": ["the quarterly report is attached"]}"#;
     let request = format!(
-        "POST /v1/classify HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\
+        "POST /embed HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
@@ -45,7 +45,7 @@ fn classify_once(addr: &str) {
     stream.write_all(body).unwrap();
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
-    assert!(response.starts_with("HTTP/1.1 200"), "classify before shutdown failed: {response}");
+    assert!(response.starts_with("HTTP/1.1 200"), "embed before shutdown failed: {response}");
 }
 
 fn wait_for_exit(child: &mut std::process::Child, timeout: Duration) -> std::process::ExitStatus {
@@ -81,7 +81,7 @@ fn sigterm_exits_zero_only_after_the_worker_drops_its_engine() {
         .expect("failed to spawn the lfm2d binary");
 
     wait_for_listening(&addr, Duration::from_secs(10));
-    classify_once(&addr);
+    embed_once(&addr);
     assert!(!marker.exists(), "the engine must still be alive while serving");
 
     let kill = Command::new("kill").args(["-TERM", &child.id().to_string()]).status().expect("run kill");

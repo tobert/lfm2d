@@ -69,35 +69,15 @@ pub struct Cli {
     #[arg(long, env = "LFM2D_EMBEDDER_DIR")]
     pub embedder_dir: Option<PathBuf>,
 
-    /// Directory holding an `Lfm2SequenceClassifier`-shaped checkpoint.
-    /// Backs `/predict` and `/v1/classify`.
-    #[arg(long, env = "LFM2D_CLASSIFIER_DIR")]
-    pub classifier_dir: Option<PathBuf>,
-
     /// Directory holding an `Lfm2SequenceRouter`-shaped checkpoint (the
     /// Prompt-Router). Backs `/v1/route`.
     #[arg(long, env = "LFM2D_ROUTER_DIR")]
     pub router_dir: Option<PathBuf>,
 
-    /// Directory holding a SECOND `Lfm2SequenceClassifier`-shaped
-    /// checkpoint, scored SHADOW-only alongside `--classifier-dir` on every
-    /// `/v1/classify` call. Purely observational: never
-    /// listed in `/v1/models`, never influences a response body, byte, or
-    /// status code — see `engine_real.rs`'s `classify` for where
-    /// the shadow score is computed and immediately discarded after being
-    /// recorded (agreement counter only, never the raw verdict pair or
-    /// input text as a label — unbounded per-input cardinality would wreck
-    /// VictoriaMetrics, same reasoning as `--log-input-hash` above).
-    /// Optional; omitting it is a no-op, zero behavior or latency change
-    /// (2026-08-15, evaluating `kube_ordinal_v9` candidates against live
-    /// traffic without touching what `kube_ordinal_v8` serves).
-    #[arg(long, env = "LFM2D_CANDIDATE_CLASSIFIER_DIR")]
-    pub candidate_classifier_dir: Option<PathBuf>,
-
     /// Directory holding an `Lfm2TokenClassifier`-shaped checkpoint —
     /// REPEATABLE (pass `--token-classifier-dir` once per head, or a
     /// comma-separated list via `LFM2D_TOKEN_CLASSIFIER_DIR`), unlike
-    /// `--embedder-dir`/`--classifier-dir`/`--router-dir` which each take
+    /// `--embedder-dir`/`--router-dir` which each take
     /// at most one. Each registers under a model id derived from its
     /// directory basename, exactly like every other head — fully generic,
     /// no checkpoint-specific logic anywhere (the PII detector is not
@@ -208,24 +188,32 @@ pub struct Cli {
     pub probe: bool,
 }
 
-/// Env vars whose flags were removed. clap ignores an env var it has no
-/// argument for, so a deployment that still sets one would start without
-/// the behaviour it asked for; startup refuses instead.
-pub const RETIRED_ENV: &[&str] = &[
-    "LFM2D_ADJUDICATOR_PROMPT",
-    "LFM2D_CASCADE_ROUTES",
-    "LFM2D_CASCADE_SEVERE_LABELS",
+/// Why a removed flag's env var is refused, shared by the flags one
+/// removal retired together.
+const NO_DEFAULT_SPEC: &str = "no spec is a default and the cascade is gone. Unset it; boot specs \
+    are --opinion-spec, and /v1/opinion and /v1/adjudicate name a spec per request";
+const NO_CLASSIFIER: &str = "the daemon no longer serves a sequence classifier (/predict, \
+    /v1/classify). Unset it; the head remains a library type, \
+    lfm2_encoder::Lfm2SequenceClassifier, for a consumer that embeds it";
+
+/// Env vars whose flags were removed, each with why and what to do
+/// instead. clap ignores an env var it has no argument for, so a
+/// deployment that still sets one would start without the behaviour it
+/// asked for; startup refuses instead. The flags themselves need no entry:
+/// clap rejects an unknown argument on its own.
+pub const RETIRED_ENV: &[(&str, &str)] = &[
+    ("LFM2D_ADJUDICATOR_PROMPT", NO_DEFAULT_SPEC),
+    ("LFM2D_CASCADE_ROUTES", NO_DEFAULT_SPEC),
+    ("LFM2D_CASCADE_SEVERE_LABELS", NO_DEFAULT_SPEC),
+    ("LFM2D_CLASSIFIER_DIR", NO_CLASSIFIER),
+    ("LFM2D_CANDIDATE_CLASSIFIER_DIR", NO_CLASSIFIER),
 ];
 
 /// Refuses a retired env var by name. `is_set` is the environment lookup,
 /// injected so the check is testable without touching the process env.
 pub fn refuse_retired_env(is_set: impl Fn(&str) -> bool) -> Result<(), String> {
-    match RETIRED_ENV.iter().find(|name| is_set(name)) {
-        Some(name) => Err(format!(
-            "{name} is set, but its flag was removed (2026-09-24): no spec is a default \
-             and the cascade is gone. Unset it; boot specs are --opinion-spec, and \
-             /v1/opinion and /v1/adjudicate name a spec per request"
-        )),
+    match RETIRED_ENV.iter().find(|(name, _)| is_set(name)) {
+        Some((name, why)) => Err(format!("{name} is set, but its flag was removed (2026-09-24): {why}")),
         None => Ok(()),
     }
 }
@@ -238,8 +226,8 @@ impl Cli {
     /// # Errors
     /// - neither `--socket-path` nor `--bind-addr` given: nothing to serve
     ///   on.
-    /// - none of `--embedder-dir`/`--classifier-dir`/`--router-dir`/
-    ///   `--token-classifier-dir` given: nothing to load, so this process
+    /// - none of `--embedder-dir`/`--router-dir`/`--token-classifier-dir`/
+    ///   `--adjudicator-model` given: nothing to load, so this process
     ///   would serve `/healthz` and nothing else — almost certainly a
     ///   misconfiguration, not a deliberate deployment.
     pub fn validate(&self) -> Result<(), String> {
@@ -251,15 +239,14 @@ impl Cli {
             );
         }
         if self.embedder_dir.is_none()
-            && self.classifier_dir.is_none()
             && self.router_dir.is_none()
             && self.token_classifier_dir.is_empty()
             && self.adjudicator_model.is_none()
         {
             return Err(
-                "no models configured: pass at least one of --embedder-dir/--classifier-dir/\
-                 --router-dir/--token-classifier-dir/--adjudicator-model (env LFM2D_EMBEDDER_DIR/LFM2D_CLASSIFIER_DIR/\
-                 LFM2D_ROUTER_DIR/LFM2D_TOKEN_CLASSIFIER_DIR)"
+                "no models configured: pass at least one of --embedder-dir/--router-dir/\
+                 --token-classifier-dir/--adjudicator-model (env LFM2D_EMBEDDER_DIR/\
+                 LFM2D_ROUTER_DIR/LFM2D_TOKEN_CLASSIFIER_DIR/LFM2D_ADJUDICATOR_MODEL)"
                     .to_string(),
             );
         }
@@ -311,9 +298,7 @@ mod tests {
             opinion_specs: Vec::new(),
             opinion_spec_capacity: 8,
             embedder_dir: None,
-            classifier_dir: None,
             router_dir: None,
-            candidate_classifier_dir: None,
             token_classifier_dir: Vec::new(),
             log_input_hash: false,
             socket_path: None,
@@ -360,9 +345,7 @@ mod tests {
             opinion_specs: Vec::new(),
             opinion_spec_capacity: 8,
             embedder_dir: Some("/tmp/e".into()),
-            classifier_dir: Some("/tmp/c".into()),
             router_dir: Some("/tmp/r".into()),
-            candidate_classifier_dir: None,
             token_classifier_dir: vec!["/tmp/t".into()],
             log_input_hash: true,
             socket_path: Some("/tmp/lfm2d.sock".into()),
@@ -402,12 +385,34 @@ mod tests {
 
     #[test]
     fn a_retired_env_var_is_refused_by_name() {
-        for name in RETIRED_ENV {
+        for (name, _) in RETIRED_ENV {
             let err = refuse_retired_env(|k| k == *name).expect_err("a retired env var must stop startup");
             assert!(err.contains(name), "the refusal must name {name}: {err}");
         }
         refuse_retired_env(|k| k == "LFM2D_BIND_ADDR").expect("a live env var is not refused");
         refuse_retired_env(|_| false).expect("an empty environment is not refused");
+    }
+
+    /// The sequence-classifier head left the daemon (2026-09-24). A
+    /// deployment still pointing at a classifier must stop at startup and
+    /// be told where the head went, not boot serving nothing it expected.
+    #[test]
+    fn the_retired_classifier_env_vars_are_refused_with_directions() {
+        for name in ["LFM2D_CLASSIFIER_DIR", "LFM2D_CANDIDATE_CLASSIFIER_DIR"] {
+            let err = refuse_retired_env(|k| k == name).expect_err("a retired classifier env var must stop startup");
+            assert!(err.contains(name), "the refusal must name {name}: {err}");
+            assert!(err.contains("/v1/classify"), "the refusal must name the removed surface: {err}");
+            assert!(err.contains("Lfm2SequenceClassifier"), "the refusal must say where the head lives now: {err}");
+        }
+    }
+
+    #[test]
+    fn the_retired_classifier_flags_are_refused_by_the_parser() {
+        for flag in ["--classifier-dir", "--candidate-classifier-dir"] {
+            let err = Cli::try_parse_from(["lfm2d", "--bind-addr", "127.0.0.1:0", flag, "/tmp/c"])
+                .expect_err("a retired classifier flag must not parse");
+            assert!(err.to_string().contains(flag), "the parse error must name {flag}: {err}");
+        }
     }
 
     // ------------------------------------------------------- adjudicator

@@ -20,7 +20,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
 use crate::shutdown::{ShutdownHandle, ShutdownSignal};
 use crate::types::{
-    ApiError, ClassifyRequest, ClassifyResult, EmbedRequest, ModelInfo, PredictRequest, RouteRequest, RouteResponse, SpansRequest,
+    ApiError, EmbedRequest, ModelInfo, RouteRequest, RouteResponse, SpansRequest,
 };
 use crate::worker::{WorkerError, WorkerHandle};
 
@@ -46,8 +46,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .route("/v1/models", get(list_models))
         .route("/embed", post(embed))
-        .route("/predict", post(predict))
-        .route("/v1/classify", post(classify))
         .route("/v1/route", post(route))
         .route("/v1/spans", post(spans))
         .route("/v1/spans/credentials", post(spans_credentials))
@@ -167,7 +165,7 @@ fn map_worker_error(err: WorkerError) -> ApiErrorResponse {
 
 /// Stamp the audit pair onto a response as headers — see the crate root
 /// docs' "two response conventions on purpose" section for why `/embed`
-/// and `/predict` carry `model_id`/`weight_hash` here instead of in the
+/// and `/v1/spans` carry `model_id`/`weight_hash` here instead of in the
 /// JSON body.
 fn attach_audit_headers(resp: &mut Response, model_id: &str, weight_hash: &str) {
     let headers = resp.headers_mut();
@@ -203,7 +201,7 @@ async fn readyz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 /// `GET /v1/models` — every loaded model's identity, kind, weight hash,
-/// and (classifier only) label set.
+/// and (token classifiers only) label set.
 async fn list_models(State(state): State<Arc<AppState>>) -> Result<Json<Vec<ModelInfo>>, ApiErrorResponse> {
     state.worker.list_models().await.map(Json).map_err(map_worker_error)
 }
@@ -227,41 +225,6 @@ async fn embed(
     Ok(resp)
 }
 
-/// `POST /predict` — TEI-ish sequence classification: `{"inputs": ...}` →
-/// per input, a list of `{"label", "score"}` covering ALL labels (full
-/// softmax, never just top-1), sorted by score descending. Audit pair in
-/// headers, same as `/embed`.
-async fn predict(
-    State(state): State<Arc<AppState>>,
-    ValidJson(req): ValidJson<PredictRequest>,
-) -> Result<Response, ApiErrorResponse> {
-    let inputs = req.inputs.into_vec();
-    if inputs.is_empty() {
-        return Err(bad_request("inputs must not be empty"));
-    }
-    let outcome = state.worker.predict(inputs).await.map_err(map_worker_error)?;
-    let mut resp = Json(outcome.per_input).into_response();
-    attach_audit_headers(&mut resp, &outcome.model_id, &outcome.weight_hash);
-    Ok(resp)
-}
-
-/// `POST /v1/classify` — our full contract: `{"inputs": [...]}` → per input
-/// `{scores: {label: prob}, top, model_id, weight_hash}`. Not TEI-compat,
-/// so the audit pair lives directly in the body here (see the crate root
-/// docs).
-async fn classify(
-    State(state): State<Arc<AppState>>,
-    ValidJson(req): ValidJson<ClassifyRequest>,
-) -> Result<Json<Vec<ClassifyResult>>, ApiErrorResponse> {
-    // `Inputs` normalizes the string-or-array forms; a bare string is
-    // always one input, so only the explicit-empty-array case can be empty.
-    let inputs = req.inputs.into_vec();
-    if inputs.is_empty() {
-        return Err(bad_request("inputs must not be empty"));
-    }
-    state.worker.classify(inputs).await.map(Json).map_err(map_worker_error)
-}
-
 /// `POST /v1/route` — `{"input": str, "routes": [str,...]}` → per route
 /// `{"route", "cosine"}`. RAW COSINE ONLY: this router's softmax is
 /// route-count arithmetic and carries no confidence information (see
@@ -283,7 +246,7 @@ async fn route(
 /// `POST /v1/spans` — TEI-style `{"inputs": ...}`, optional `"model"` to
 /// pick a loaded token-classification head → `[[{"start","end","entity",
 /// "score"}, ...], ...]`, one span list per input, BARE array-of-arrays
-/// (no wrapper object) same as `/embed`/`/predict`. Audit pair travels as
+/// (no wrapper object) same as `/embed`. Audit pair travels as
 /// `X-Model-Id`/`X-Model-Weight-Hash` headers, same convention, same
 /// reason (see the crate root docs' "two response conventions").
 ///

@@ -37,13 +37,13 @@ fn wait_for_listening(addr: &str, timeout: Duration) {
     }
 }
 
-/// Send one raw HTTP POST to `/v1/classify` and discard the response —
+/// Send one raw HTTP POST to `/embed` and discard the response —
 /// the stub panics on every call, so all this needs to do is get the
 /// request onto the wire; the response (if any) doesn't matter here.
 fn fire_one_request(addr: &str) {
     let body = br#"{"inputs": ["trigger the panic"]}"#;
     let request = format!(
-        "POST /v1/classify HTTP/1.1\r\n\
+        "POST /embed HTTP/1.1\r\n\
          Host: localhost\r\n\
          Content-Type: application/json\r\n\
          Content-Length: {}\r\n\

@@ -108,7 +108,6 @@ fn model_kind_attr(kind: ModelKind) -> &'static str {
     match kind {
         ModelKind::Adjudicator => "adjudicator",
         ModelKind::Embedder => "embedder",
-        ModelKind::Classifier => "classifier",
         ModelKind::Router => "router",
         ModelKind::TokenClassifier => "token_classifier",
     }
@@ -289,7 +288,7 @@ pub fn record_request(route: &str, method: &str, status: u16, elapsed: Duration)
 }
 
 /// Inference duration histogram, recorded once per worker-thread command by
-/// `worker`'s command loop — `operation` is `embed`/`predict`/`classify`/
+/// `worker`'s command loop — `operation` is `embed`/
 /// `route`/`spans`/`spans_credentials`/`list_models`.
 pub fn record_inference_duration(operation: &'static str, elapsed: Duration) {
     let attrs = [KeyValue::new("operation", operation)];
@@ -299,60 +298,6 @@ pub fn record_inference_duration(operation: &'static str, elapsed: Duration) {
         .with_unit("ms")
         .build()
         .record(elapsed.as_secs_f64() * 1000.0, &attrs);
-}
-
-/// Shadow-classifier agreement counter, recorded once per `classify`
-/// call when `--candidate-classifier-dir` is configured
-/// (`engine_real.rs`). Labels are the two model ids plus BOTH verdicts —
-/// each is one of the classifier's own small label set (3 in this
-/// checkpoint family), so cardinality is bounded at `ids × labels²`, not
-/// per-request. Deliberately never carries the input text or a per-request
-/// identifier — same reasoning `--log-input-hash`'s doc comment gives for
-/// keeping unbounded values out of metric labels entirely.
-pub fn record_candidate_agreement(primary_id: &str, candidate_id: &str, primary_top: &str, candidate_top: &str) {
-    let attrs = [
-        KeyValue::new("primary_model", primary_id.to_string()),
-        KeyValue::new("candidate_model", candidate_id.to_string()),
-        KeyValue::new("primary_top", primary_top.to_string()),
-        KeyValue::new("candidate_top", candidate_top.to_string()),
-        KeyValue::new("agree", primary_top == candidate_top),
-    ];
-    meter()
-        .u64_counter("lfm2d.candidate.agreement")
-        .with_description("Shadow-classifier verdict agreement, by primary/candidate top label")
-        .build()
-        .add(1, &attrs);
-}
-
-/// Shadow-classifier forward passes that FAILED, counted separately from
-/// [`record_candidate_agreement`].
-///
-/// The candidate's verdict is still discarded and the caller's response is
-/// still byte-identical — but the failure is not silent, because an
-/// agreement count without the denominator it was computed over is not a
-/// measurement. A candidate that fails systematically would otherwise read
-/// as high agreement over a quietly shrinking set of successes, and that is
-/// the number a checkpoint-promotion decision rests on.
-///
-/// The error string is LOGGED, never used as a metric attribute — an error
-/// message is unbounded cardinality, the same reasoning `--log-input-hash`
-/// gives for keeping unbounded values out of labels.
-pub fn record_candidate_failure(primary_id: &str, candidate_id: &str, error: &str) {
-    tracing::warn!(
-        primary_model = %primary_id,
-        candidate_model = %candidate_id,
-        error = %error,
-        "shadow classifier forward pass failed; candidate verdict discarded, primary response unaffected"
-    );
-    let attrs = [
-        KeyValue::new("primary_model", primary_id.to_string()),
-        KeyValue::new("candidate_model", candidate_id.to_string()),
-    ];
-    meter()
-        .u64_counter("lfm2d.candidate.failure")
-        .with_description("Shadow-classifier forward passes that failed; these are MISSING from lfm2d.candidate.agreement")
-        .build()
-        .add(1, &attrs);
 }
 
 /// Register the queue-depth observable gauge over `queue_depth` — called

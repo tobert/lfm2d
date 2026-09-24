@@ -7,11 +7,10 @@
 //!
 //! No trunk sharing: each head loads its own trunk via `from_dir`, even
 //! though the library supports `Lfm2Trunk::load_shared` + `from_trunk` for
-//! heads that share one checkpoint family. The three heads this daemon
-//! serves (a generic embedder, an arbitrary sequence classifier, the
-//! Prompt-Router) are independently-trained checkpoints in the general
-//! case — a fine-tuned classifier and the Prompt-Router do NOT share a
-//! trunk — so there is no trunk-sharing
+//! heads that share one checkpoint family. The heads this daemon serves (an
+//! embedder, the Prompt-Router, token classifiers) are independently-trained
+//! checkpoints in the general case — the base encoder and the Prompt-Router
+//! do NOT share a trunk — so there is no trunk-sharing
 //! opportunity to take here without assuming a same-trunk deployment this
 //! service's config doesn't promise. Noted as a judgment call, not an
 //! oversight: see `lfm2d/README.md`.
@@ -19,17 +18,13 @@
 use std::path::Path;
 
 use lfm2_encoder::{
-    Lfm2Embedding, Lfm2EncoderConfig, Lfm2SequenceClassifier, Lfm2SequenceRouter,
-    Lfm2TokenClassifier, TextKind,
+    Lfm2Embedding, Lfm2EncoderConfig, Lfm2SequenceRouter, Lfm2TokenClassifier, TextKind,
 };
 
 use crate::config::Cli;
 use crate::hash::sha256_hex_file;
-use crate::types::{
-    ClassifyResult, EmbedKind, LabelScore, ModelInfo, ModelKind, RouteResponse, RouteScore,
-    SpanResult,
-};
-use crate::worker::{EmbedOutcome, InferenceEngine, PredictOutcome, SpansOutcome, WorkerError};
+use crate::types::{EmbedKind, ModelInfo, ModelKind, RouteResponse, RouteScore, SpanResult};
+use crate::worker::{EmbedOutcome, InferenceEngine, SpansOutcome, WorkerError};
 
 /// A loaded checkpoint's audit identity, computed once at load time.
 #[derive(Debug, Clone)]
@@ -45,7 +40,7 @@ struct ModelMeta {
 }
 
 /// Directory basename as the model id (`LFM2.5-Embedding-350M`,
-/// `kube_ordinal_v6`, ...) — falls back to the full path if the directory
+/// `LFM2.5-Encoder-350M-PII-Detector`, ...) — falls back to the full path if the directory
 /// has no basename component (e.g. `/`), which should never happen for a
 /// real checkpoint dir but must not panic if it somehow does.
 fn model_id_from_dir(dir: &Path) -> String {
@@ -53,12 +48,12 @@ fn model_id_from_dir(dir: &Path) -> String {
 }
 
 /// `hidden_size` is read directly from `config.json` rather than from any
-/// loaded head object: none of [`Lfm2Embedding`]/[`Lfm2SequenceClassifier`]/
-/// [`Lfm2SequenceRouter`]/[`lfm2_encoder::Lfm2Trunk`] exposes it
+/// loaded head object: none of [`Lfm2Embedding`]/[`Lfm2SequenceRouter`]/
+/// [`Lfm2TokenClassifier`]/[`lfm2_encoder::Lfm2Trunk`] exposes it
 /// uniformly (`Lfm2Embedding::dim` exists; the others don't), and every
 /// head's checkpoint carries this same `config.json` regardless of which
 /// head it is, so reading it directly is both simpler and uniform across
-/// all three head kinds.
+/// every head kind.
 fn read_hidden_size(dir: &Path) -> Result<usize, String> {
     let cfg_path = dir.join("config.json");
     let bytes = std::fs::read(&cfg_path).map_err(|e| format!("reading {}: {e}", cfg_path.display()))?;
@@ -86,13 +81,6 @@ pub struct RealEngine {
     execution: crate::device::ExecutionDevice,
     dtype: lfm2_encoder::DType,
     embedder: Option<(Lfm2Embedding, ModelMeta)>,
-    classifier: Option<(Lfm2SequenceClassifier, ModelMeta)>,
-    /// SHADOW second classifier, scored alongside `classifier` on every
-    /// `classify` call and immediately discarded after recording
-    /// an agreement counter (`telemetry::record_candidate_agreement`) —
-    /// never returned to a caller, never listed in `list_models`. See
-    /// `--candidate-classifier-dir` in `config.rs` for the full contract.
-    candidate_classifier: Option<(Lfm2SequenceClassifier, ModelMeta)>,
     router: Option<(Lfm2SequenceRouter, ModelMeta)>,
     /// Zero, one, or many — mirrors `--token-classifier-dir` being
     /// repeatable, unlike every other head. Order is load order (the
@@ -129,15 +117,6 @@ impl RealEngine {
             }
             None => None,
         };
-        let classifier = match &cli.classifier_dir {
-            Some(dir) => {
-                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &execution.device)
-                    .map_err(|e| format!("loading classifier at {}: {e}", dir.display()))?;
-                let meta = load_meta(dir)?;
-                Some((model, meta))
-            }
-            None => None,
-        };
         let router = match &cli.router_dir {
             Some(dir) => {
                 let model = Lfm2SequenceRouter::from_dir_with(dir, dtype, &execution.device)
@@ -147,19 +126,6 @@ impl RealEngine {
             }
             None => None,
         };
-        // Shadow classifier: same loading discipline (fail loudly, fully
-        // loaded before serving) as every other head, but never surfaced —
-        // see the struct field doc and --candidate-classifier-dir.
-        let candidate_classifier = match &cli.candidate_classifier_dir {
-            Some(dir) => {
-                let model = Lfm2SequenceClassifier::from_dir_with(dir, dtype, &execution.device)
-                    .map_err(|e| format!("loading candidate classifier at {}: {e}", dir.display()))?;
-                let meta = load_meta(dir)?;
-                Some((model, meta))
-            }
-            None => None,
-        };
-
         // Load every `--token-classifier-dir` in order. Same fail-first
         // discipline as every other head above — a bad checkpoint in the
         // Nth directory must not start a server that only serves the first
@@ -197,8 +163,6 @@ impl RealEngine {
             execution,
             dtype,
             embedder,
-            classifier,
-            candidate_classifier,
             router,
             token_classifiers,
         };
@@ -226,16 +190,10 @@ impl RealEngine {
     /// unchanged. `main.rs` calls this BEFORE handing `self` to
     /// [`crate::worker::WorkerHandle::spawn_crash_on_panic`], which moves
     /// it into the encoder worker thread — same reason
-    /// `Adjudicator::tokenizer_clone` is called before `Handle::spawn`. The
-    /// shadow `--candidate-classifier-dir` head is deliberately excluded —
-    /// it is never listed in `/v1/models` either (see that field's doc
-    /// comment), and this endpoint answers to the same id space.
+    /// `Adjudicator::tokenizer_clone` is called before `Handle::spawn`.
     pub fn tokenizers(&self) -> Vec<(String, tokenizers::Tokenizer, String)> {
         let mut out = Vec::new();
         if let Some((model, meta)) = &self.embedder {
-            out.push((meta.id.clone(), model.tokenizer().clone(), meta.tokenizer_hash.clone()));
-        }
-        if let Some((model, meta)) = &self.classifier {
             out.push((meta.id.clone(), model.tokenizer().clone(), meta.tokenizer_hash.clone()));
         }
         if let Some((model, meta)) = &self.router {
@@ -283,12 +241,6 @@ impl RealEngine {
 
         if let Some((m, _)) = &self.embedder {
             m.embed(PROBE, TextKind::Document).map_err(|e| fail("embedder", e.to_string()))?;
-        }
-        if let Some((m, _)) = &self.classifier {
-            m.predict(PROBE).map_err(|e| fail("classifier", e.to_string()))?;
-        }
-        if let Some((m, _)) = &self.candidate_classifier {
-            m.predict(PROBE).map_err(|e| fail("candidate classifier", e.to_string()))?;
         }
         if let Some((m, _)) = &self.router {
             m.route_cosines(PROBE, &["a"]).map_err(|e| fail("router", e.to_string()))?;
@@ -344,43 +296,6 @@ fn to_wire_span(span: lfm2_encoder::Span) -> SpanResult {
     SpanResult { start: span.start, end: span.end, entity: span.label, score: span.score }
 }
 
-/// Build the full per-label score map plus the argmax `(label, score)` in
-/// one pass — shared by `predict`/`classify`, both of which need exactly this from a `probs` vector plus its
-/// label names.
-fn scores_and_top(labels: &[String], probs: &[f32]) -> (std::collections::BTreeMap<String, f32>, String) {
-    let mut map = std::collections::BTreeMap::new();
-    let mut top = (String::new(), f32::NEG_INFINITY);
-    for (label, &score) in labels.iter().zip(probs) {
-        if score > top.1 {
-            top = (label.clone(), score);
-        }
-        map.insert(label.clone(), score);
-    }
-    (map, top.0)
-}
-
-/// One shadow-classifier observation, derived from the candidate head's
-/// forward-pass result.
-///
-/// Extracted from the shadow pass in `classify` so the
-/// swallow-vs-record decision has a fast, model-free test rather than one
-/// that needs a checkpoint engineered to fail — the same shape
-/// `worker_thread_outcome_is_a_crash` uses for the crash-vs-clean-exit
-/// decision. The `Err` arm must produce a [`ShadowObservation::Failure`],
-/// never nothing: see `candidate_failure_is_observed_not_swallowed`.
-#[derive(Debug, PartialEq, Eq)]
-enum ShadowObservation {
-    Agreement { candidate_top: String },
-    Failure { error: String },
-}
-
-fn shadow_observation<E: std::fmt::Display>(labels: &[String], probs: Result<Vec<f32>, E>) -> ShadowObservation {
-    match probs {
-        Ok(probs) => ShadowObservation::Agreement { candidate_top: scores_and_top(labels, &probs).1 },
-        Err(e) => ShadowObservation::Failure { error: e.to_string() },
-    }
-}
-
 impl InferenceEngine for RealEngine {
     fn list_models(&self) -> Vec<ModelInfo> {
         let mut out = Vec::new();
@@ -390,15 +305,6 @@ impl InferenceEngine for RealEngine {
                 kind: ModelKind::Embedder,
                 weight_hash: meta.weight_hash.clone(),
                 labels: None,
-                hidden_size: meta.hidden_size,
-            });
-        }
-        if let Some((model, meta)) = &self.classifier {
-            out.push(ModelInfo {
-                id: meta.id.clone(),
-                kind: ModelKind::Classifier,
-                weight_hash: meta.weight_hash.clone(),
-                labels: Some(model.labels().to_vec()),
                 hidden_size: meta.hidden_size,
             });
         }
@@ -440,60 +346,6 @@ impl InferenceEngine for RealEngine {
         Ok(EmbedOutcome { vectors, model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone() })
     }
 
-    fn predict(&self, inputs: &[String]) -> Result<PredictOutcome, WorkerError> {
-        let (model, meta) = self.classifier.as_ref().ok_or_else(|| {
-            WorkerError::BadRequest("no classifier configured on this server".to_string())
-        })?;
-        let per_input = inputs
-            .iter()
-            .map(|text| {
-                let probs = model.predict(text).map_err(WorkerError::from)?;
-                let mut ranked: Vec<LabelScore> = model
-                    .labels()
-                    .iter()
-                    .zip(probs)
-                    .map(|(label, score)| LabelScore { label: label.clone(), score })
-                    .collect();
-                ranked.sort_by(|a, b| b.score.total_cmp(&a.score));
-                Ok(ranked)
-            })
-            .collect::<Result<Vec<_>, WorkerError>>()?;
-        Ok(PredictOutcome { per_input, model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone() })
-    }
-
-    fn classify(&self, inputs: &[String]) -> Result<Vec<ClassifyResult>, WorkerError> {
-        let (model, meta) = self.classifier.as_ref().ok_or_else(|| {
-            WorkerError::BadRequest("no classifier configured on this server".to_string())
-        })?;
-        let out: Result<Vec<ClassifyResult>, WorkerError> = inputs
-            .iter()
-            .map(|text| {
-                let probs = model.predict(text).map_err(WorkerError::from)?;
-                let (scores, top) = scores_and_top(model.labels(), &probs);
-                Ok(ClassifyResult { scores, top, model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone() })
-            })
-            .collect();
-        // SHADOW pass: scores the same inputs against candidate_classifier
-        // (if configured) purely for local counters, never touching `out`.
-        // A candidate forward-pass failure is not propagated -- an
-        // experimental second head must never turn into a caller-visible
-        // error the primary classifier didn't have -- but it IS counted,
-        // because agreement without its denominator is not a measurement.
-        if let (Ok(primary), Some((cand_model, cand_meta))) = (&out, &self.candidate_classifier) {
-            for (text, result) in inputs.iter().zip(primary) {
-                match shadow_observation(cand_model.labels(), cand_model.predict(text)) {
-                    ShadowObservation::Agreement { candidate_top } => {
-                        crate::telemetry::record_candidate_agreement(&meta.id, &cand_meta.id, &result.top, &candidate_top)
-                    }
-                    ShadowObservation::Failure { error } => {
-                        crate::telemetry::record_candidate_failure(&meta.id, &cand_meta.id, &error)
-                    }
-                }
-            }
-        }
-        out
-    }
-
     fn route(&self, input: &str, routes: &[String]) -> Result<RouteResponse, WorkerError> {
         let (model, meta) = self
             .router
@@ -524,38 +376,5 @@ impl InferenceEngine for RealEngine {
             .map(|text| Ok(clf.credentials(text).map_err(WorkerError::from)?.into_iter().map(to_wire_span).collect()))
             .collect::<Result<Vec<_>, WorkerError>>()?;
         Ok(SpansOutcome { per_input, model_id: meta.id.clone(), weight_hash: meta.weight_hash.clone() })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn labels() -> Vec<String> {
-        ["informative", "situation-normal", "data-critical"].iter().map(|s| s.to_string()).collect()
-    }
-
-    /// The regression this guards: the shadow pass was
-    /// `if let Ok(probs) = cand_model.predict(text)`, so a candidate
-    /// forward-pass failure produced NO record at all. The agreement
-    /// counter then measures agreement over the candidate's SUCCESSES, and
-    /// a candidate failing systematically reads as high agreement over a
-    /// silently shrinking denominator — which is exactly the number a
-    /// checkpoint-promotion decision would rest on. An `Err` must produce
-    /// an observation.
-    #[test]
-    fn candidate_failure_is_observed_not_swallowed() {
-        let obs = shadow_observation::<String>(&labels(), Err("tensor shape mismatch".to_string()));
-        assert_eq!(
-            obs,
-            ShadowObservation::Failure { error: "tensor shape mismatch".to_string() },
-            "a failed candidate forward pass must be recorded, never dropped"
-        );
-    }
-
-    #[test]
-    fn candidate_success_names_the_top_label() {
-        let obs = shadow_observation::<String>(&labels(), Ok(vec![0.1, 0.2, 0.7]));
-        assert_eq!(obs, ShadowObservation::Agreement { candidate_top: "data-critical".to_string() });
     }
 }

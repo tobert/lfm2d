@@ -37,15 +37,15 @@
 //! Every model load computes a weight hash (sha256 over its
 //! `model.safetensors`, hex) and every inference response is required to
 //! carry `{model_id, weight_hash}` — an audit requirement from the kaish
-//! approval-chain rulings. But `/embed` and `/predict` are specified as
-//! TEI-compatible-ish: a bare `[[f32,...]]` / `[[{label,score},...]]` array,
-//! matching what existing TEI clients already parse. Putting `model_id`/
+//! approval-chain rulings. But `/embed` is specified as TEI-compatible-ish: a
+//! bare `[[f32,...]]` array, matching what existing TEI clients already
+//! parse. Putting `model_id`/
 //! `weight_hash` IN that body would break TEI wire compatibility for no
 //! reason; leaving them out entirely would violate the audit requirement.
-//! This crate's resolution: `/embed` and `/predict` carry `X-Model-Id` and
+//! This crate's resolution: `/embed` and `/v1/spans` carry `X-Model-Id` and
 //! `X-Model-Weight-Hash` response headers (inspectable, satisfies "every
-//! response carries," never touches the JSON body), while `/v1/classify`
-//! and `/v1/route` — "our full contract," not TEI-compat —
+//! response carries," never touches the JSON body), while `/v1/route` —
+//! "our full contract," not TEI-compat —
 //! carry the same pair directly in the JSON body, per the API spec's own
 //! text. See `server::attach_audit_headers` and each handler's doc comment.
 //!

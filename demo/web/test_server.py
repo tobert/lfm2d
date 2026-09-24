@@ -73,7 +73,7 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(FakeUpstream.seen, [("POST", "/v1/probe", b'{"text": "x"}')])
 
     def test_unlisted_path_never_reaches_upstream(self):
-        for method, path in (("POST", "/api/v1/classify"), ("GET", "/api/readyz"),
+        for method, path in (("POST", "/api/v1/spans"), ("GET", "/api/readyz"),
                              ("POST", "/api/v1/opinion/specs/../../probe")):
             with self.subTest(path=path):
                 status, _ = self.call(method, path, {} if method == "POST" else None)
