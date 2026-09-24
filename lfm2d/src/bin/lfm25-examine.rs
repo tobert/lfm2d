@@ -231,6 +231,8 @@ fn run(args: Args) -> Result<(), String> {
         "tokenizer_hash": checkpoint.tokenizer_hash,
         "weight_dtypes": checkpoint.weight_dtypes,
         "backend": checkpoint.execution.backend.as_str(),
+        "device": checkpoint.execution.identity,
+        "candle_rev": lfm2d::adjudicator::CANDLE_REV,
     });
     let positions = |args: &[String], n: usize| -> Result<Vec<usize>, String> {
         args.iter().map(|p| position(p, n)).collect()

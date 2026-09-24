@@ -17,8 +17,11 @@ fn main() {
 }
 
 /// The git commit after `#` for a git source, or `crates.io:<version>` for a
-/// registry one. The first `candle-core` package wins; the workspace has one.
+/// registry one. Two `candle-core` packages in one lockfile would make "the
+/// build" ambiguous, so that is a build failure rather than a first-wins pick.
 fn candle_rev(lock: &str) -> Option<String> {
+    let found = lock.split("[[package]]").filter(|b| b.lines().any(|l| l == "name = \"candle-core\"")).count();
+    assert!(found <= 1, "Cargo.lock holds {found} candle-core packages; snapshot_id cannot name one build");
     for block in lock.split("[[package]]") {
         let field = |key: &str| {
             block.lines().find_map(|l| l.strip_prefix(&format!("{key} = \""))?.strip_suffix('"').map(str::to_string))

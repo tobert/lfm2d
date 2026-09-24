@@ -76,7 +76,8 @@ fn run(args: Args) -> Result<(), String> {
     let weights = sha256_hex_file(&args.model).map_err(|e| io(e, &args.model))?;
     let tokenizer_hash = sha256_hex_file(&args.tokenizer).map_err(|e| io(e, &args.tokenizer))?;
     let probes_hash = sha256_hex_file(&args.probes).map_err(|e| io(e, &args.probes))?;
-    let backend = lfm2d::device::ExecutionDevice::select(args.device, args.device_index)?.backend;
+    let execution = lfm2d::device::ExecutionDevice::select(args.device, args.device_index)?;
+    let (backend, device) = (execution.backend, execution.identity);
     let key = cache_key(&[
         ("schema", SCHEMA),
         ("weights", &weights),
@@ -88,6 +89,10 @@ fn run(args: Args) -> Result<(), String> {
         // built from the other mode.
         ("template", spec.template_version()),
         ("backend", backend.as_str()),
+        // Kernels branch on the GPU target and change with the candle build,
+        // so a map from another card or fork revision is a different map.
+        ("device", &device),
+        ("candle", lfm2d::adjudicator::CANDLE_REV),
         ("probes", &probes_hash),
         ("follow", &args.follow.join(",")),
     ]);
@@ -146,6 +151,8 @@ fn run(args: Args) -> Result<(), String> {
             "prefix_sha256": sha256_hex_bytes(prefix.as_bytes()),
             "template_version": spec.template_version(),
             "backend": backend.as_str(),
+            "device": device,
+            "candle_rev": lfm2d::adjudicator::CANDLE_REV,
             "probes_sha256": probes_hash,
         },
         "follow": args.follow.iter().zip(&followed).map(|(word, &id)| serde_json::json!({
@@ -181,7 +188,13 @@ mod tests {
 
     #[test]
     fn the_key_moves_when_anything_it_names_moves_and_only_then() {
-        let base = [("schema", "s"), ("weights", "w"), ("backend", "rocm")];
+        let base = [
+            ("schema", "s"),
+            ("weights", "w"),
+            ("backend", "rocm"),
+            ("device", "rocm:gfx1151:hip7.2"),
+            ("candle", "rev"),
+        ];
         assert_eq!(cache_key(&base), cache_key(&base));
         for i in 0..base.len() {
             let mut changed = base;

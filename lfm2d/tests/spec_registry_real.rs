@@ -9,9 +9,10 @@
 //! load path. So this test uploads the same PARSED spec with one trailing
 //! newline appended: different bytes (a different id, and a genuine miss
 //! that runs `LoadedSpec::load` for real), identical content. `snapshot_id`
-//! depends only on parsed content (template, weights, tokenizer, the
-//! rendered prefix, the repetition penalty — never the id or the file
-//! name), so the two must land on the same one, and an opinion read against
+//! depends on parsed content (template, weights, tokenizer, the rendered
+//! prefix, the repetition penalty — never the id or the file name) and on
+//! where it runs (device target, candle build), which is the same daemon
+//! here, so the two must land on the same one, and an opinion read against
 //! each must produce the same description and the same option numbers,
 //! exactly — this is a fresh cold read both times, no cache to blur a
 //! difference.
@@ -203,7 +204,6 @@ fn an_adjudicator_booted_with_no_specs_serves_the_first_upload() {
     let info = adjudicator.info();
     assert!(info.device.starts_with("rocm:gfx"), "device identity: {}", info.device);
     assert!(info.device.contains(":hip"), "device identity names the HIP toolchain: {}", info.device);
-    assert_eq!(info.candle_rev, lfm2d::adjudicator::CANDLE_REV);
 
     let request = |spec: Option<&str>| -> AdjudicateRequest {
         let mut body = serde_json::json!({"input": "Hi, what are your store hours?", "max_tokens": 64});

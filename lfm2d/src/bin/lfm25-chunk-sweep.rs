@@ -129,6 +129,8 @@ fn run(args: Args) -> Result<(), String> {
         "weight_hash": checkpoint.weight_hash,
         "tokenizer_hash": checkpoint.tokenizer_hash,
         "backend": checkpoint.execution.backend.as_str(),
+        "device": checkpoint.execution.identity,
+        "candle_rev": lfm2d::adjudicator::CANDLE_REV,
         "n_tokens": tokens.len(),
         "prompt_sha256": sha256_hex_bytes(rendered.as_bytes()),
         "reference": "one block of every token",

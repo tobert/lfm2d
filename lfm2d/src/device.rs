@@ -89,9 +89,10 @@ impl ExecutionDevice {
         crate::telemetry::ExecutionMetadata {
             device_type: if self.device.is_cpu() { "cpu" } else { "gpu" }.into(),
             backend: self.backend.as_str().into(),
-            // Candle does not expose a portable hardware name. Avoid reporting
-            // the host's installed GPU as though it were necessarily selected.
-            device_name: None,
+            // The selected device's own identity, only where it names more
+            // than the backend (ROCm today); never the host's installed GPU
+            // read some other way, which need not be the one selected.
+            device_name: (self.identity != self.backend.as_str()).then(|| self.identity.clone()),
             dtype: format!("{dtype:?}").to_lowercase(),
         }
     }
@@ -138,6 +139,10 @@ mod tests {
         assert_eq!(metadata.device_type, "cpu");
         assert_eq!(metadata.backend, "cpu");
         assert_eq!(metadata.dtype, "f16");
+        // The identity snapshot_id hashes. On CPU it says no more than the
+        // backend, so telemetry gets no device_name rather than a repeat.
+        assert_eq!(execution.identity, "cpu");
+        assert_eq!(metadata.device_name, None);
     }
 
     #[test]

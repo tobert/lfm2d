@@ -441,8 +441,10 @@ Resource attributes: `service.name`
 `main.rs`, AFTER models finish loading (weight hashes aren't known any
 earlier; see `src/telemetry.rs`'s module docs). The same resource is attached
 to traces, metrics, and logs. Device metadata comes from the loaded engine,
-not host hardware inventory; optional `lfm2d.execution.device_name` is omitted
-until a hardware name is available through the backend interface. Metrics:
+not host hardware inventory; `lfm2d.execution.device_name` carries the
+selected device's identity where the backend can name its target (ROCm:
+`rocm:gfx1151:hip7.2`) and is omitted elsewhere, and `lfm2d.candle_rev` names
+the candle build. Metrics:
 `lfm2d.worker.queue_depth` (observable gauge over an `AtomicUsize`,
 incremented on send, decremented when the worker picks a command up),
 `lfm2d.request.duration` (histogram, by route+status),
