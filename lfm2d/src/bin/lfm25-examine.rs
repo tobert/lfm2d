@@ -13,8 +13,7 @@
 //! recording it once per input is pure repetition.
 //!
 //! The record carries the prompt text, which may be a corpus row, and corpora
-//! do not live in this repo. So `--out` is required and never defaulted, the
-//! same rule the harnesses in `benchmarks/lfm25/prompts/` follow.
+//! do not live in this repo. So `--out` is required and never defaulted.
 
 use clap::Parser;
 use lfm2d::adjudicator::{Checkpoint, PromptSpec, validate_text};

@@ -42,7 +42,7 @@ fn cli_with_classifier_only() -> Cli {
         dir.join("model.safetensors").is_file(),
         "missing weights at {}\n\n  (point LFM2_SEQ_CLF_DIR at an \
          Lfm2BidirForSequenceClassification checkpoint dir — kube_ordinal_v6's shape, \
-         produced by training/finetune_sequence_classifier.py)\n",
+         a fine-tuned checkpoint produced outside this repo)\n",
         dir.display(),
     );
     Cli {
