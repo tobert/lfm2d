@@ -44,25 +44,10 @@
 //! reason; leaving them out entirely would violate the audit requirement.
 //! This crate's resolution: `/embed` and `/predict` carry `X-Model-Id` and
 //! `X-Model-Weight-Hash` response headers (inspectable, satisfies "every
-//! response carries," never touches the JSON body), while `/v1/classify`,
-//! `/v1/route`, and `/v1/cascade` — "our full contract," not TEI-compat —
+//! response carries," never touches the JSON body), while `/v1/classify`
+//! and `/v1/route` — "our full contract," not TEI-compat —
 //! carry the same pair directly in the JSON body, per the API spec's own
 //! text. See `server::attach_audit_headers` and each handler's doc comment.
-//!
-//! # Cascade configuration is server-side, not per-request
-//!
-//! `POST /v1/cascade` takes only `{"clauses": [...]}`. The library's
-//! [`lfm2_encoder::Cascade::run`] additionally needs `routes` (the
-//! candidate lanes) and `severe_labels` (which of the classifier's own
-//! labels count toward the ranking sum) — this daemon takes both as
-//! **startup** configuration (`--cascade-route` repeatable, matching
-//! `examples/cascade.rs --routes-file`'s route-string convention;
-//! `--cascade-severe-label`, defaulting to `mutating,destructive` — the
-//! same default `examples/cascade.rs` uses for `kube_ordinal_v6`), not as
-//! request fields. A cascade specialist's lane set and severity definition
-//! are properties of how the service is deployed, not something each
-//! caller should be re-specifying (and re-trusting) per call. This is a
-//! judgment call the task spec left implicit; see `lfm2d/README.md`.
 //!
 //! # `/v1/spans` never returns the matched text
 //!

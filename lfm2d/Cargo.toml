@@ -3,7 +3,7 @@ name = "lfm2d"
 version = "0.0.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "HTTP sidecar serving LFM2.5 encoder heads (embed/classify/route/cascade) over a Unix socket and/or TCP — one serial inference worker thread, weight-hashed audit trail"
+description = "HTTP sidecar serving LFM2.5 encoder heads (embed/classify/route/spans) and the LFM2.5 opinion engine over a Unix socket and/or TCP — one serial inference worker thread, weight-hashed audit trail"
 
 [features]
 default = []

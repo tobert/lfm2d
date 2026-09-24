@@ -287,7 +287,7 @@ pub fn record_request(route: &str, method: &str, status: u16, elapsed: Duration)
 
 /// Inference duration histogram, recorded once per worker-thread command by
 /// `worker`'s command loop — `operation` is `embed`/`predict`/`classify`/
-/// `route`/`cascade`/`spans`/`spans_credentials`/`list_models`.
+/// `route`/`spans`/`spans_credentials`/`list_models`.
 pub fn record_inference_duration(operation: &'static str, elapsed: Duration) {
     let attrs = [KeyValue::new("operation", operation)];
     meter()
@@ -298,8 +298,8 @@ pub fn record_inference_duration(operation: &'static str, elapsed: Duration) {
         .record(elapsed.as_secs_f64() * 1000.0, &attrs);
 }
 
-/// Shadow-classifier agreement counter, recorded once per `classify`/
-/// `cascade` call when `--candidate-classifier-dir` is configured
+/// Shadow-classifier agreement counter, recorded once per `classify`
+/// call when `--candidate-classifier-dir` is configured
 /// (`engine_real.rs`). Labels are the two model ids plus BOTH verdicts —
 /// each is one of the classifier's own small label set (3 in this
 /// checkpoint family), so cardinality is bounded at `ids × labels²`, not

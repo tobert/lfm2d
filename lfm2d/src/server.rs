@@ -20,8 +20,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
 use crate::shutdown::{ShutdownHandle, ShutdownSignal};
 use crate::types::{
-    ApiError, CascadeRequest, CascadeResponse, ClassifyRequest, ClassifyResult, EmbedRequest,
-    ModelInfo, PredictRequest, RouteRequest, RouteResponse, SpansRequest,
+    ApiError, ClassifyRequest, ClassifyResult, EmbedRequest, ModelInfo, PredictRequest, RouteRequest, RouteResponse, SpansRequest,
 };
 use crate::worker::{WorkerError, WorkerHandle};
 
@@ -50,7 +49,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/predict", post(predict))
         .route("/v1/classify", post(classify))
         .route("/v1/route", post(route))
-        .route("/v1/cascade", post(cascade))
         .route("/v1/spans", post(spans))
         .route("/v1/spans/credentials", post(spans_credentials))
         .with_state(Arc::new(state))
@@ -280,32 +278,6 @@ async fn route(
         return Err(bad_request("routes must not be empty"));
     }
     state.worker.route(req.input, req.routes).await.map(Json).map_err(map_worker_error)
-}
-
-/// `POST /v1/cascade` — `{"clauses": [...]}` (pre-decomposed; clause
-/// decomposition is the caller's job via kaish `Plan`) →
-/// moderations-FLAVORED but with NO `flagged` boolean and NO threshold
-/// anywhere: `{winner, lane, clauses, models}`. This handler does NOT
-/// reimplement `lfm2_encoder::cascade`'s rank-by-severity-route-the-
-/// winner aggregation — it calls straight through
-/// [`WorkerHandle::cascade`] → the library's `Cascade::run`. `routes` and
-/// `severe_labels` are NOT request fields; they are fixed server-side
-/// configuration (`--cascade-route`/`--cascade-severe-label`) — see the
-/// crate root docs' "cascade configuration is server-side" section.
-///
-/// **No global severity cutoff exists by measurement** (benign max 0.3415
-/// vs data-critical min 0.3440 — see `src/cascade.rs`'s module docs).
-/// Consumers must rank clauses WITHIN a statement (`winner`, `clauses[].
-/// severity_scores`) rather than threshold any number in this response
-/// against a fixed cutoff; this API deliberately provides no such cutoff.
-async fn cascade(
-    State(state): State<Arc<AppState>>,
-    ValidJson(req): ValidJson<CascadeRequest>,
-) -> Result<Json<CascadeResponse>, ApiErrorResponse> {
-    if req.clauses.is_empty() {
-        return Err(bad_request("clauses must not be empty"));
-    }
-    state.worker.cascade(req.clauses).await.map(Json).map_err(map_worker_error)
 }
 
 /// `POST /v1/spans` — TEI-style `{"inputs": ...}`, optional `"model"` to

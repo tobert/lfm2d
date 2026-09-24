@@ -13,8 +13,7 @@
 use std::collections::BTreeMap;
 
 use lfm2d::types::{
-    ApiError, CascadeClause, CascadeLane, CascadeModelRef, CascadeRequest, CascadeResponse,
-    CascadeWinner, ClassifyRequest, ClassifyResult, EmbedRequest, Inputs, LabelScore, ModelInfo,
+    ApiError, ClassifyRequest, ClassifyResult, EmbedRequest, Inputs, LabelScore, ModelInfo,
     ModelKind, PredictRequest, RouteRequest, RouteResponse, RouteScore, SpanResult, SpansRequest,
 };
 
@@ -222,86 +221,6 @@ fn route_response_carries_model_id_weight_hash_and_raw_cosines_only() {
     assert!((approx(&v["routes"][0]["cosine"]) - 0.978).abs() < 1e-5);
     assert_eq!(v["model_id"], "LFM2.5-Encoder-350M-Prompt-Router");
     assert_eq!(v["weight_hash"], "d".repeat(64));
-}
-
-// ------------------------------------------------------------- /v1/cascade
-
-#[test]
-fn cascade_request_takes_only_clauses() {
-    let req: CascadeRequest =
-        serde_json::from_str(r#"{"clauses": ["cd vendor/legacy-plugin", "rm -rf ."]}"#)
-            .expect("parse");
-    assert_eq!(req.clauses, vec!["cd vendor/legacy-plugin".to_string(), "rm -rf .".to_string()]);
-}
-
-#[test]
-fn cascade_response_matches_the_moderations_flavored_contract_exactly() {
-    let mut severity = BTreeMap::new();
-    severity.insert("destructive".to_string(), 0.9f32);
-    severity.insert("informative".to_string(), 0.02f32);
-    severity.insert("mutating".to_string(), 0.08f32);
-
-    let resp = CascadeResponse {
-        winner: CascadeWinner {
-            index: 1,
-            clause: "rm -rf .".to_string(),
-            severity_scores: severity.clone(),
-        },
-        lane: CascadeLane { route: "shell".to_string(), cosine: 0.91 },
-        clauses: vec![
-            CascadeClause {
-                index: 0,
-                clause: "cd vendor/legacy-plugin".to_string(),
-                severity_scores: {
-                    let mut m = BTreeMap::new();
-                    m.insert("destructive".to_string(), 0.01f32);
-                    m.insert("informative".to_string(), 0.95f32);
-                    m.insert("mutating".to_string(), 0.04f32);
-                    m
-                },
-                top_severity: "informative".to_string(),
-            },
-            CascadeClause {
-                index: 1,
-                clause: "rm -rf .".to_string(),
-                severity_scores: severity,
-                top_severity: "destructive".to_string(),
-            },
-        ],
-        models: vec![
-            CascadeModelRef {
-                model_id: "kube_ordinal_v6".to_string(),
-                weight_hash: "e".repeat(64),
-            },
-            CascadeModelRef {
-                model_id: "LFM2.5-Encoder-350M-Prompt-Router".to_string(),
-                weight_hash: "f".repeat(64),
-            },
-        ],
-    };
-
-    let v = serde_json::to_value(&resp).unwrap();
-    // No "flagged" boolean, no threshold-shaped field, anywhere.
-    assert!(v.get("flagged").is_none());
-    assert!(v.get("threshold").is_none());
-    for clause in v["clauses"].as_array().unwrap() {
-        assert!(clause.get("flagged").is_none());
-    }
-
-    assert_eq!(v["winner"]["index"], 1);
-    assert_eq!(v["winner"]["clause"], "rm -rf .");
-    assert!((approx(&v["winner"]["severity_scores"]["destructive"]) - 0.9).abs() < 1e-5);
-    // winner has no "top_severity" field — only per-clause entries do.
-    assert!(v["winner"].get("top_severity").is_none());
-
-    assert_eq!(v["lane"]["route"], "shell");
-    assert!((approx(&v["lane"]["cosine"]) - 0.91).abs() < 1e-5);
-
-    assert_eq!(v["clauses"][0]["top_severity"], "informative");
-    assert_eq!(v["clauses"][1]["top_severity"], "destructive");
-
-    assert_eq!(v["models"][0]["model_id"], "kube_ordinal_v6");
-    assert_eq!(v["models"][1]["model_id"], "LFM2.5-Encoder-350M-Prompt-Router");
 }
 
 // -------------------------------------------------------------- /v1/spans

@@ -3,8 +3,7 @@
 //! resolves).
 //!
 //! Every map that gets compared as a JSON string in tests
-//! ([`ClassifyResult::scores`], [`CascadeWinner::severity_scores`],
-//! [`CascadeClause::severity_scores`]) is a [`BTreeMap`], not a
+//! ([`ClassifyResult::scores`]) is a [`BTreeMap`], not a
 //! `std::collections::HashMap` — `HashMap`'s iteration order is randomized
 //! per process (a DoS-hardening default), which would make an
 //! exact-JSON-string assertion flaky by construction. A `BTreeMap`
@@ -177,70 +176,6 @@ pub struct RouteResponse {
     pub model_id: String,
     pub weight_hash: String,
     pub routes: Vec<RouteScore>,
-}
-
-// ------------------------------------------------------------ /v1/cascade
-
-/// `{"clauses": [...]}` only — no `routes`, no `severe_labels` in the
-/// request body. Both are fixed server-side configuration (`--cascade-route`
-/// / `--cascade-severe-label`), not per-request input; see the crate root
-/// docs' "cascade configuration is server-side" section for why.
-#[derive(Debug, Clone, Deserialize)]
-pub struct CascadeRequest {
-    pub clauses: Vec<String>,
-}
-
-/// The winning (highest-severity) clause. NO `top_severity` field here —
-/// unlike [`CascadeClause`] — because "winner" already names which clause
-/// won; adding a second "top" concept at this level would just be noise.
-#[derive(Debug, Clone, Serialize)]
-pub struct CascadeWinner {
-    pub index: usize,
-    pub clause: String,
-    pub severity_scores: BTreeMap<String, f32>,
-}
-
-/// The winning clause's argmax route — the cascade's single "route this
-/// statement to X" answer.
-#[derive(Debug, Clone, Serialize)]
-pub struct CascadeLane {
-    pub route: String,
-    pub cosine: f32,
-}
-
-/// One clause's full per-label breakdown, plus which single label scored
-/// highest (`top_severity`) — the ranking SUM used to pick the winner
-/// (`severity_score` in [`lfm2_encoder::ClauseVerdict`], the caller's
-/// configured severe-label set summed) is deliberately not repeated here;
-/// see the crate root docs.
-#[derive(Debug, Clone, Serialize)]
-pub struct CascadeClause {
-    pub index: usize,
-    pub clause: String,
-    pub severity_scores: BTreeMap<String, f32>,
-    pub top_severity: String,
-}
-
-/// One model's audit identity — `/v1/cascade`'s `models` array carries one
-/// entry per head involved (classifier, router).
-#[derive(Debug, Clone, Serialize)]
-pub struct CascadeModelRef {
-    pub model_id: String,
-    pub weight_hash: String,
-}
-
-/// Moderations-FLAVORED but with NO `flagged` boolean and NO threshold
-/// anywhere — see the crate root docs and `src/cascade.rs`'s module docs on
-/// why: no global severity cutoff exists by measurement (benign max 0.3415
-/// vs data-critical min 0.3440), so a caller ranks clauses WITHIN a
-/// statement rather than gating on an absolute number this API would
-/// otherwise seem to bless.
-#[derive(Debug, Clone, Serialize)]
-pub struct CascadeResponse {
-    pub winner: CascadeWinner,
-    pub lane: CascadeLane,
-    pub clauses: Vec<CascadeClause>,
-    pub models: Vec<CascadeModelRef>,
 }
 
 // -------------------------------------------------------------- /v1/spans
