@@ -159,7 +159,9 @@ class PageTests(unittest.TestCase):
         self.assertEqual(len({c["input"] for c in cases}), len(cases))
         for c in cases:
             self.assertEqual(len(c["worlds"]), 2)
-            self.assertTrue(all(w.strip() and "\n" not in w for w in c["worlds"]))
+            for w in c["worlds"]:
+                self.assertTrue(w["name"].strip())
+                self.assertTrue(w["facts"].strip() and "\n" not in w["facts"])
 
 
 if __name__ == "__main__":

@@ -22,29 +22,33 @@
   .kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
   #caption { margin-top: 12px; font-size: 28px; line-height: 1.18; font-weight: 600; min-height: 92px; transition: opacity .45s; }
   #caption small { display: block; font-size: 16px; font-weight: 400; color: var(--mid); margin-top: 7px; line-height: 1.38; }
-  #cmd { position: absolute; top: 178px; left: 32px; right: 32px; font-family: var(--mono); font-size: 23px; font-weight: 600; min-height: 32px; }
+  #cmd { position: absolute; top: 176px; left: 32px; right: 32px; font-family: var(--mono); font-size: 23px; font-weight: 600; min-height: 32px; }
   #cmd .p { color: var(--dim); } #cmd .cur { display: inline-block; width: .55em; height: 1em; background: var(--ink); vertical-align: -3px; margin-left: 2px; animation: blink 1s steps(1) infinite; }
-  #bare { position: absolute; top: 216px; left: 32px; right: 32px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); opacity: 0; transition: opacity .5s; }
-  #bare.show { opacity: 1; } #bare b { color: var(--mid); font-weight: 600; }
   @keyframes blink { 50% { opacity: 0; } }
-  .world { position: absolute; left: 32px; right: 32px; height: 318px; padding: 16px 18px; border-radius: 12px;
-           border: 1px solid var(--faint); background: #0b0d14; opacity: 0; transform: translateY(10px); transition: opacity .5s, transform .5s; }
+  #bare { position: absolute; top: 214px; left: 32px; right: 32px; font-family: var(--mono); font-size: 13px; color: var(--dim); min-height: 18px; }
+  #bare b { font-weight: 600; }
+  .world { position: absolute; left: 32px; right: 32px; height: 322px; padding: 14px 18px; border-radius: 12px;
+           border: 1px solid var(--faint); background: #0b0d14; opacity: 0; transform: translateY(10px);
+           transition: opacity .5s, transform .5s, border-color .5s; }
   .world.show { opacity: 1; transform: none; }
-  #w0 { top: 248px; } #w1 { top: 584px; }
-  .tag { font-family: var(--mono); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; }
-  #w0 .tag { color: var(--a); } #w1 .tag { color: var(--b); }
-  .facts { margin-top: 6px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: var(--ink); min-height: 63px; }
-  .lab { margin-top: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
-  .effect { margin-top: 3px; font-size: 16px; line-height: 1.38; color: var(--mid); height: 66px; overflow: hidden; }
-  .undo { margin-top: 8px; font-family: var(--mono); font-size: 13px; color: var(--dim); min-height: 18px; }
+  #w0 { top: 244px; } #w1 { top: 580px; }
+  #w0.live { border-color: color-mix(in srgb, var(--a) 55%, transparent); } #w1.live { border-color: color-mix(in srgb, var(--b) 55%, transparent); }
+  .tag { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  .name { margin-top: 2px; font-size: 27px; font-weight: 600; line-height: 1.15; }
+  #w0 .name { color: var(--a); } #w1 .name { color: var(--b); }
+  .facts { margin-top: 5px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--mid); min-height: 36px; }
+  .effect { margin-top: 10px; font-size: 14px; line-height: 1.38; color: var(--dim); height: 58px; overflow: hidden; font-style: italic; }
+  .undo { margin-top: 4px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); min-height: 18px; }
   .undo b { color: var(--ink); font-weight: 600; }
-  .verdict { position: absolute; left: 18px; right: 18px; bottom: 16px; }
+  .verdict { position: absolute; left: 18px; right: 18px; bottom: 14px; }
   .vtop { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); }
-  .vbig { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--allow); }
+  .vbig { font-size: 38px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .vbig small { font-size: 13px; color: var(--dim); font-weight: 400; margin-left: 6px; }
-  .vleg { font-size: 11.5px; color: var(--dim); }
-  .bar { margin-top: 6px; height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; display: flex; }
+  .clock { font-size: 12px; color: var(--dim); text-align: right; line-height: 1.45; font-variant-numeric: tabular-nums; }
+  .clock b { color: var(--ink); font-weight: 600; }
+  .bar { margin-top: 5px; height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; display: flex; }
   .bar span { display: block; height: 100%; width: 0; transition: width .9s cubic-bezier(.2,.8,.2,1); }
+  .vleg { margin-top: 5px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
   footer { position: absolute; bottom: 12px; left: 32px; right: 32px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); line-height: 1.5; }
   #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
          background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
@@ -67,7 +71,7 @@
   <footer id="foot">LFM2.5-8B-A1B · candle · ROCm on Strix Halo</footer>
   <div id="end">
     <h1>Same command.<br>Different world.<br>Different odds.</h1>
-    <p>The harness hands lfm2d one line of facts. LFM2.5-8B-A1B describes the command in that world, then every answer's odds are read from the same pass.</p>
+    <p>The harness hands lfm2d one line of facts. LFM2.5-8B-A1B describes the command in that world, then every answer's odds are read from the same pass. Every call you saw was live.</p>
     <p class="url">github.com/tobert/lfm2d</p>
   </div>
   <div id="gate"><h1>Two Worlds</h1><div id="gatemsg">registering the spec…</div></div>
@@ -76,11 +80,12 @@
 "use strict";
 // A consumer page: it owns its spec and uploads it at load. The names below are
 // this spec's; prepare() checks them against the daemon's menu before anything plays.
+// Every read happens on screen, live, with its latency.
 const SPEC_FILE = "/command-verdict-enum-v1.json", CASES_FILE = "/two-worlds.json";
 const DESCRIBE = "effect", UNDO = "undo", VERDICT = "verdict", PASS = "allow";
 const FACTS = line => `Facts from the harness:\n- ${line}\n\n`;
 const COLORS = ["--allow", "--ask", "--review"];   // by the verdict's option order on the menu
-const SOUND = { tick: 0.045, chord: 0.08 };
+const SOUND = { tick: 0.045, chord: 0.08, pulse: 0.025 };
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -97,7 +102,7 @@ async function api(path, body, raw = false) {
   return j;
 }
 
-let D;
+let D, minMass = 1;
 async function prepare() {
   const spec = await (await fetch(SPEC_FILE)).text(), set = await (await fetch(CASES_FILE)).json();
   const reg = await api("/v1/opinion/specs", spec, true);
@@ -105,26 +110,35 @@ async function prepare() {
   if (!menu) throw new Error("uploaded spec is not on the menu");
   const field = n => menu.fields.find(f => f.field === n) ?? (() => { throw new Error(`spec has no field "${n}"`); })();
   if (field(DESCRIBE).kind !== "text") throw new Error(`"${DESCRIBE}" is not a text field`);
-  const verdictOpts = field(VERDICT).options, undoOpts = field(UNDO).options;
-  if (!verdictOpts.includes(PASS)) throw new Error(`"${PASS}" is not a ${VERDICT} option`);
-  if (undoOpts === undefined) throw new Error(`"${UNDO}" is not a choice field`);
-  const questions = menu.fields.filter(f => f.kind === "choice").map(f => ({ field: f.field }));
-  const read = async (input, facts) => {
-    const state = facts === undefined ? { input } : { input, facts: FACTS(facts) };
-    const r = await api("/v1/opinion", { spec: reg.id, state, questions, use_cache: true });
+  if (field(UNDO).kind !== "choice") throw new Error(`"${UNDO}" is not a choice field`);
+  const verdictOpts = field(VERDICT).options;
+  if (!verdictOpts?.includes(PASS)) throw new Error(`"${PASS}" is not a ${VERDICT} option`);
+  D = { info: await api("/v1/adjudicator"), spec: reg.id, verdictOpts, cases: set.cases,
+        questions: menu.fields.filter(f => f.kind === "choice").map(f => ({ field: f.field })) };
+}
+
+// One live read, with a clock that ticks on screen while the daemon works.
+async function read(input, facts, clockEl) {
+  const state = facts === undefined ? { input } : { input, facts: FACTS(facts) };
+  const t0 = performance.now();
+  let live = true;
+  (async () => { let n = 0; while (live) { clockEl.innerHTML = `reading… <b>${Math.round(performance.now() - t0)} ms</b>`; if (n++ % 6 === 0) pulse(); await sleep(33); } })();
+  try {
+    const r = await api("/v1/opinion", { spec: D.spec, state, questions: D.questions, use_cache: true });
+    const wall = performance.now() - t0, daemon = r.queue_ms + r.prefill_ms + r.describe_ms + r.read_ms;
     const answer = f => r.answers.find(a => a.field === f);
-    return { wrote: Object.fromEntries(r.described.map(d => [d.field, d.value])),
-             verdict: Object.fromEntries(answer(VERDICT).options.map(o => [o.option, o.prob])),
-             undo: Object.fromEntries(answer(UNDO).options.map(o => [o.option, o.prob])),
-             mass: Math.min(...r.answers.map(a => Math.exp(a.first_token_mass))) };
-  };
-  const cases = [];
-  for (const [i, c] of set.cases.entries()) {
-    $("gatemsg").textContent = `reading ${set.cases.length} commands in ${1 + c.worlds.length} worlds… ${i + 1}`;
-    cases.push({ input: c.input, facts: c.worlds, bare: await read(c.input), worlds: await Promise.all(c.worlds.map(f => read(c.input, f))) });
-  }
-  D = { info: await api("/v1/adjudicator"), spec: reg.id, verdictOpts, cases,
-        mass: Math.min(...cases.flatMap(c => [c.bare.mass, ...c.worlds.map(w => w.mass)])) };
+    const mass = Math.min(...r.answers.map(a => Math.exp(a.first_token_mass)));
+    minMass = Math.min(minMass, mass); footer();
+    return { wall, daemon, cached: r.cache.described === "hit",
+             wrote: Object.fromEntries(r.described.map(d => [d.field, d.value])),
+             verdict: Object.fromEntries(answer(VERDICT).options.map(o => [o.option, o.prob])) };
+  } finally { live = false; }
+}
+const clockText = r => `<b>${Math.round(r.wall)} ms</b> round trip<br>${Math.round(r.daemon)} ms in the daemon · ${r.cached ? "reused description" : "fresh read"}`;
+function footer() {
+  const i = D.info;
+  $("foot").innerHTML = `${esc(i.model_id)} · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo · live /v1/opinion over the tailnet<br>` +
+    `spec ${D.spec.slice(0, 12)} uploaded at load` + (minMass < 1 ? ` · answer-set mass ≥ ${(100 * minMass).toFixed(1)}% so far` : "");
 }
 
 // --- sound ---
@@ -142,10 +156,14 @@ function tick() {
   s.buffer = b; f.type = "highpass"; f.frequency.value = 2400; g.gain.value = SOUND.tick; s.connect(f); f.connect(g); g.connect(master); s.start();
 }
 const midi = m => 440 * Math.pow(2, (m - 69) / 12);
-function verdictChord(pAllow, at) {   // major when it would pass, a low minor second when it would stop
-  const root = 57 + Math.round(pAllow * 7);
-  const iv = pAllow >= 0.5 ? [0, 4, 7, 12] : [0, 1, 6];
-  iv.forEach((k, j) => tone(midi(root + k), pAllow >= 0.5 ? "sine" : "triangle", SOUND.chord, 1.6, at + j * 0.03));
+const pulse = () => tone(midi(81), "sine", SOUND.pulse, 0.08);
+function verdictChord(pAllow) {   // major when it would pass, a low minor second when it would stop
+  const root = 57 + Math.round(pAllow * 7), iv = pAllow >= 0.5 ? [0, 4, 7, 12] : [0, 1, 6];
+  iv.forEach((k, j) => tone(midi(root + k), pAllow >= 0.5 ? "sine" : "triangle", SOUND.chord, 1.6, j * 0.03));
+}
+function allowColour(p) {   // blue when it would pass, amber when it would stop
+  const a = [111, 183, 255], b = [245, 165, 75], k = Math.min(Math.max((p - 0.2) / 0.6, 0), 1);
+  return `rgb(${b.map((v, j) => Math.round(v + (a[j] - v) * k)).join(",")})`;
 }
 
 // --- picture ---
@@ -153,51 +171,60 @@ async function caption(main, sub) {
   $("caption").style.opacity = 0; await sleep(380);
   $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1;
 }
-async function typeInto(els, texts, ms, sound) {
-  const n = Math.max(...texts.map(t => [...t].length)), chars = texts.map(t => [...t]);
-  for (let i = 0; i < n; i++) {
-    els.forEach((el, k) => { if (i < chars[k].length) el.insertAdjacentText("beforeend", chars[k][i]); });
-    if (sound && i % 2 === 0) tick(); await sleep(ms);
-  }
-}
-function worldShell(k) {
+async function typeText(el, text, ms, sound) { for (const ch of text) { el.insertAdjacentText("beforeend", ch); if (sound && ch !== " ") tick(); await sleep(ms); } }
+function worldShell(k, world) {
   const el = $("w" + k);
-  el.innerHTML = `<div class="tag">${k === 0 ? "world one" : "world two"}</div><div class="facts"></div>` +
-    `<div class="lab">the model describes it</div><div class="effect"></div><div class="undo"></div>` +
-    `<div class="verdict"><div class="vtop"><div class="vbig">&nbsp;</div><div class="vleg"></div></div>` +
-    `<div class="bar">${D.verdictOpts.map((o, j) => `<span style="background: var(${COLORS[j] ?? "--review"})"></span>`).join("")}</div></div>`;
-  el.classList.remove("show"); return el;
+  el.className = "world";
+  el.innerHTML = `<div class="tag">world ${k === 0 ? "one" : "two"}</div><div class="name">${esc(world.name)}</div><div class="facts"></div>` +
+    `<div class="effect"></div><div class="undo"></div>` +
+    `<div class="verdict"><div class="vtop"><div class="vbig">&nbsp;</div><div class="clock"></div></div>` +
+    `<div class="bar">${D.verdictOpts.map((o, j) => `<span style="background: var(${COLORS[j] ?? "--review"})"></span>`).join("")}</div><div class="vleg">&nbsp;</div></div>`;
+  return el;
 }
 function fillVerdict(el, v) {
   const spans = el.querySelectorAll(".bar span");
   D.verdictOpts.forEach((o, j) => { spans[j].style.width = (100 * (v[o] ?? 0)).toFixed(2) + "%"; });
-  el.querySelector(".vbig").innerHTML = `${pct(v[PASS])}<small>${esc(PASS)}</small>`;
-  el.querySelector(".vleg").innerHTML = D.verdictOpts.filter(o => o !== PASS).map(o => `${esc(o)} ${pct(v[o] ?? 0)}`).join(" · ");
+  const big = el.querySelector(".vbig"); big.innerHTML = `${pct(v[PASS])}<small>${esc(PASS)}</small>`; big.style.color = allowColour(v[PASS]);
+  el.querySelector(".vleg").textContent = D.verdictOpts.filter(o => o !== PASS).map(o => `${o} ${pct(v[o] ?? 0)}`).join(" · ");
+}
+
+async function playWorld(el, c, k) {
+  el.classList.add("live");
+  const res = await read(c.input, c.worlds[k].facts, el.querySelector(".clock"));
+  el.querySelector(".clock").innerHTML = clockText(res);
+  await typeText(el.querySelector(".effect"), `“${res.wrote[DESCRIBE]}”`, 9, false);
+  el.querySelector(".undo").innerHTML = `${esc(UNDO)}: wrote <b>${esc(res.wrote[UNDO] ?? "?")}</b>`;
+  await sleep(350);
+  fillVerdict(el, res.verdict); verdictChord(res.verdict[PASS]);
+  el.classList.remove("live");
+  return res;
 }
 
 async function playCase(c, n) {
   $("kicker").textContent = `two worlds · ${n + 1}/${D.cases.length}`;
-  $("bare").classList.remove("show"); $("cmd").innerHTML = "";
-  const w = [worldShell(0), worldShell(1)];
-  await caption(n === 0 ? "An agent wants to run this." : "Next command.", n === 0 ? "Same command, typed into two different worlds." : "");
+  $("bare").innerHTML = ""; $("cmd").innerHTML = "";
+  const w = c.worlds.map((world, k) => worldShell(k, world));
+  await caption(n === 0 ? "An agent wants to run this." : "Next command.", n === 0 ? "One model reads it in two different worlds. Every call is live." : "");
   $("cmd").innerHTML = `<span class="p">$ </span><span id="ct"></span><span class="cur"></span>`;
-  await sleep(500);
-  for (const ch of c.input) { $("ct").insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(70); }
-  await sleep(500);
-  $("bare").innerHTML = `with no facts: <b>${pct(c.bare.verdict[PASS])} ${esc(PASS)}</b>`; $("bare").classList.add("show");
-  await sleep(900);
-  w.forEach(el => el.classList.add("show")); await sleep(500);
-  await typeInto(w.map(el => el.querySelector(".facts")), c.facts, 22, true); await sleep(700);
-  await typeInto(w.map(el => el.querySelector(".effect")), c.worlds.map(x => x.wrote[DESCRIBE]), 14, false); await sleep(400);
-  w.forEach((el, k) => { el.querySelector(".undo").innerHTML = `${esc(UNDO)}: wrote <b>${esc(c.worlds[k].wrote[UNDO] ?? "?")}</b>`; });
+  await sleep(400);
+  for (const ch of c.input) { $("ct").insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(60); }
+  await sleep(300);
+  const bareClock = document.createElement("span"); $("bare").innerHTML = "with no facts: "; $("bare").append(bareClock);
+  const bare = await read(c.input, undefined, bareClock);
+  $("bare").innerHTML = `with no facts: <b style="color:${allowColour(bare.verdict[PASS])}">${pct(bare.verdict[PASS])} ${esc(PASS)}</b> · ${Math.round(bare.wall)} ms`;
   await sleep(700);
-  w.forEach((el, k) => fillVerdict(el, c.worlds[k].verdict));
-  verdictChord(c.worlds[0].verdict[PASS], 0); verdictChord(c.worlds[1].verdict[PASS], 0.9);
-  await sleep(2200);
-  const a = c.worlds[0].verdict[PASS], b = c.worlds[1].verdict[PASS], gap = Math.abs(a - b);
-  if (gap >= 0.25) await caption(`${pct(a)} → ${pct(b)}.`, "Only the facts changed.");
-  else await caption("This one barely moves.", `${pct(a)} → ${pct(b)}. It won't trust “${esc(c.input)}” even in the safe world.`);
-  await sleep(gap >= 0.25 ? 3800 : 5600);
+  for (const [k, el] of w.entries()) {
+    el.classList.add("show"); await sleep(350);
+    await typeText(el.querySelector(".facts"), c.worlds[k].facts, 12, true);
+  }
+  await sleep(600);
+  const res = [];
+  for (const [k, el] of w.entries()) { res.push(await playWorld(el, c, k)); await sleep(900); }
+  const a = res[0].verdict[PASS], b = res[1].verdict[PASS], gap = Math.abs(a - b);
+  if (gap >= 0.25) await caption("Only the facts changed.", `${esc(c.worlds[0].name)}: <b>${pct(a)}</b> ${esc(PASS)} · ${esc(c.worlds[1].name)}: <b>${pct(b)}</b> ${esc(PASS)}`);
+  else await caption("This one barely moves.", `${pct(a)} → ${pct(b)}. It won't trust “${esc(c.input)}” even when ${esc(c.worlds[0].name)}.`);
+  await sleep(gap >= 0.25 ? 4200 : 5600);
+  w.forEach(el => el.classList.remove("show")); await sleep(500);
 }
 
 let stageT = "";
@@ -207,14 +234,13 @@ addEventListener("resize", fit); fit();
 (async () => {
   try { await prepare(); }
   catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
-  const i = D.info;
-  $("foot").innerHTML = `${esc(i.model_id)} · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo · live /v1/opinion<br>` +
-    `spec ${D.spec.slice(0, 12)} uploaded at load · answer-set mass ≥ ${(100 * D.mass).toFixed(1)}% on every read`;
+  footer();
   $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
   if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
   if (!MUTE) audioInit();
   $("gate").remove(); await sleep(600);
-  for (let n = FIRST; n < D.cases.length; n++) await playCase(D.cases[n], n);
+  try { for (let n = FIRST; n < D.cases.length; n++) await playCase(D.cases[n], n); }
+  catch (e) { await caption("A call failed.", esc(String(e.message ?? e))); throw e; }
   $("end").classList.add("show");
 })();
 </script>
