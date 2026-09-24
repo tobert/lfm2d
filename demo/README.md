@@ -92,23 +92,13 @@ dominate cost; caching unchanged block results and tuning the candidate budget
 are the next levers. Per-token embeddings might reduce repeated forwards, but
 would need a new service representation and quality evaluation.
 
-The current Kaijutsu implementation has separate problems this isolated demo
-avoids: synthesis admits system/tool/excluded/ephemeral blocks, then truncates
-the first 50 n-grams **before** semantic scoring while enumeration puts all
-unigrams first. Search's combined context projection also admits system and
-excluded/ephemeral text and can fill its early byte budget with instructions.
-Fix selection and candidate budgeting in Kaijutsu before tuning top-k. Its
-current synthesis executes in Rust; the old comment describing Rhai is stale.
-No Kaijutsu source or running configuration was changed for this experiment.
-Its `Lfm2dEmbedder` also currently sends plain reqwest requests without injecting
-the current trace context. The service now honors incoming W3C headers; connecting
-Kaijutsu's caller span requires client injection as a separate consumer change.
-
 ## Thinking-block previews: separate generation endpoint
 
-lfm2d serves bidirectional encoders; it has no generation endpoint. Our local
-LFM2.5-8B-A1B runs in llama-server on port 2031. Start that service separately
-if needed; this demo neither starts it nor changes its configuration.
+lfm2d's own generation path, `/v1/adjudicate`, continues a spec's state; it
+is not a free-form summarizer. This demo calls a separate OpenAI-compatible
+server instead (llama-server running LFM2.5-8B-A1B, `--generator`, default
+`http://127.0.0.1:2031`). Start that service yourself; this demo neither
+starts it nor changes its configuration.
 
 ```sh
 # One sentence, at most 30 whitespace-delimited words
@@ -246,7 +236,7 @@ spec on its boot menu:
 
 ```sh
 target/release/lfm2d \
-  --adjudicator-model /tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf \
+  --adjudicator-model .models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf \
   --adjudicator-tokenizer .models/LFM2.5-8B-A1B/tokenizer.json \
   --opinion-spec demo/specs/email-triage-v1.json \
   --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
@@ -279,7 +269,7 @@ upload's `spec` is its content hash, never a file stem.
   field with at least three options (`feeling`; `verdict` has two, and the
   daemon refuses a one-option question). The grammar walks the model to
   the slot, so high full-menu mass proves the question was put, not that
-  the input made sense. Measured 2026-09-24 on lfm2d-system1 0.3.0 with
+  the input made sense. Measured 2026-09-24 on the author's lfm2d-system1 deployment (image 0.3.0) with
   `feeling` over `inputs/asked.txt` (n=4): three emoji 100.0%, "what is
   the capital of France?" 93.3%, the cancellation email 99.3%, and the
   store-hours email 82.1% — a real email read lower than emoji. On the

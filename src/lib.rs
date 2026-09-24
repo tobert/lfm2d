@@ -36,7 +36,7 @@
 //! Design intents: CPU-first (consumers embed this in long-lived server
 //! processes — kaijutsu's kernel, kaibo — where a 350M encoder pass is
 //! tens of milliseconds); no C++ in the dependency tree; weights loaded
-//! from a local dir by default (`hub` feature adds Hub download).
+//! from a local directory (fetch them with `hf download`; see the README).
 //!
 //! [candle]: https://github.com/huggingface/candle
 

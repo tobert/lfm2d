@@ -52,19 +52,19 @@ replacing the sibling Cargo overrides with the published dependency.
 
 Clone the `main` branch of
 [tobert/lfm2d](https://github.com/tobert/lfm2d).
-Cargo pins the published Candle fork at `fb1ae62a378bb8bd9b9f95cb448dca083e500b30`
-on [lfm25-trace](https://github.com/tobert/candle/tree/lfm25-trace): the seven
-optimization passes plus the read-only observer and per-call steering seams. No sibling checkout or local Cargo
-patches are required. The ROCm build requires the
-ROCm development toolchain and a supported AMD GPU. Model paths below are
-examples; download the GGUF and matching tokenizer to your own paths.
+Cargo pins a revision of the published Candle fork on
+[lfm25-trace](https://github.com/tobert/candle/tree/lfm25-trace) (the rev is
+in `Cargo.toml`; `GET /v1/adjudicator` reports it as `candle_rev`): the seven
+optimization passes plus the read-only observer and per-call steering seams.
+No sibling checkout or local Cargo patches are required. The ROCm build
+requires the ROCm development toolchain and a supported AMD GPU. Fetch the
+GGUF and the tokenizer as the root README's "Getting started" shows:
 
 ```bash
-cd "$HOME/src/lfm2d"
 cargo build -p lfm2d --release --features rocm
 ./target/release/lfm2d \
   --device rocm --threads 8 --bind-addr '127.0.0.1:18152' \
-  --adjudicator-model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
+  --adjudicator-model '.models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf' \
   --adjudicator-tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
   --opinion-spec 'demo/specs/email-triage-v1.json'
 ```
@@ -211,7 +211,7 @@ the first that needs them.
 Requests accept `input`, `max_tokens` (default/max 2048), `timeout_ms`
 (default 30000, max 120000), `use_cache` (default true), `distributions` and
 `opinion` (both below). `use_cache:false` explicitly measures a cold prefill. Prompt plus output must fit the server's
-context budget (default 4096, range 128–8192). Inputs are at most 66560 bytes: `/v1/opinion`'s 64 KiB state plus headroom for its rendered `input_label` (at most 64 bytes), so an escalation always fits.
+context budget (default 4096, range 128–8192). Inputs are at most 66560 bytes: `/v1/opinion`'s 64 KiB state plus 1 KiB of headroom for what the opinion render adds around it (the `input_label` itself is capped at 64 bytes), so an escalation always fits.
 Bad requests return 400; overload 503; deadlines 504; cancellation 408;
 inference failures 500. Deadline time includes queueing.
 
@@ -244,7 +244,7 @@ put on those ids.
 read before the output grammar's mask and before the repetition penalty. A set's
 mass is never renormalised over the set. Low mass means the model was never
 steered toward that vocabulary — *unasked*, not *wrong* — and it is the only
-thing that tells those apart (`docs/field-requests.md`, decision 5). Read
+thing that tells those apart (`docs/field-requests.md` (git f9ca081), decision 5). Read
 logprobs, not `prob`: values saturate, and the ordering survives only in the log.
 
 `constrained: true` adds a `constrained` object to each step, describing what
@@ -438,7 +438,8 @@ moved out (its fields are that spec's, not the daemon's):
 
 Measured 2026-09-22 on ROCm, warm, `command-verdict-enum-v1`, over the F9
 gold set (236 rows, inputs with facts blocks) paired on the F9 generative
-run, `~/exomemory/lfm2d/lfm25-opinion-api-2026-09-22/`:
+run (the shell gold and run logs are in the author's private notes, not
+published):
 
 | | PT false alarms /96 | recall /74 | twin FA /61 | AUC (challenge) |
 |---|---|---|---|---|
@@ -912,19 +913,20 @@ to check transactional commit. A separate explicitly requested ROCm test
 checks packed Q5K/Q6K expert operations against dequantized reference math.
 
 ```bash
-cd "$HOME/src/wt/candle-lfm25"
+# in a checkout of the fork's lfm25-trace branch
 cargo test -p candle-transformers --lib 'models::quantized_lfm2_moe'
 cargo test -p candle-transformers --test lfm2_moe
 cargo test -p candle-transformers --release --features rocm --lib \
   'rocm_quantized_experts_match_dequantized_reference' -- --ignored
 
-cd "$HOME/src/lfm2d"
+# in this repo
 cargo test -p lfm2d
 cargo test -p lfm2d --release --features rocm --test opinion_real -- --ignored
 ```
 
-The daemon's existing real-PII tests also need their normal model fixture;
-set `LFM2_TOKEN_CLF_DIR` when using a worktree without that checkpoint.
+The daemon's real-PII tests also need the PII-Detector checkpoint (root
+README, "Getting started"); set `LFM2_TOKEN_CLF_DIR` when using a worktree
+without `.models/`.
 The end-to-end evaluator behind the 2026-09-13 numbers below
 (`benchmarks/lfm25/evaluate.py`: four shell-severity cases, cold/cached/
 repeated, errors/deadlines, reuse after cancellation, in-flight SIGTERM)

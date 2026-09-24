@@ -12,7 +12,7 @@
 //!
 //! ```bash
 //! lfm25-chunk-sweep --device rocm \
-//!   --model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
+//!   --model '.models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf' \
 //!   --tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
 //!   --prompt 'lfm2d/tests/fixtures/specs/email-triage-v1.json' \
 //!   --input $'Email:\nI was charged twice and want a refund.' \

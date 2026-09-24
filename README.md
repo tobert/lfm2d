@@ -7,8 +7,9 @@ Two crates in one workspace: **`lfm2-encoder`** (this README — the
 bidirectional encoder library, at the repo root) and **`lfm2d`** (the HTTP
 daemon — see [`lfm2d/README.md`](lfm2d/README.md)). The daemon serves:
 
-- the **encoder heads** below: embeddings, ColBERT, token classification
-  (PII and secrets), prompt routing, sequence classification;
+- **encoder heads**: embeddings, token classification (PII and secrets),
+  and prompt routing. ColBERT and sequence classification are in the
+  library, not served;
 - **LFM2.5-8B-A1B** on ROCm as a fast opinion engine: a caller names a
   prompt spec (loaded at boot or uploaded at runtime, content-addressed), and
   `/v1/opinion` describes the input under the spec's schema, then reads every
@@ -28,22 +29,70 @@ Upstream candle-transformers implements the *causal* LFM2
 | checkpoint | head | why we want it |
 |---|---|---|
 | `LFM2.5-Embedding-350M` | pooled embedding (1024-dim) | text embeddings in-process |
+| `LFM2.5-ColBERT-350M` | late interaction (128-dim per token, MaxSim) | retrieval that resists hard negatives |
 | `LFM2.5-Encoder-350M-PII-Detector` | token classification (BIOES, 161 labels **including credentials/secrets**) | boundary screening of foreign prose & outbound payloads |
-| `LFM2.5-Encoder-350M-Policy-Linter` | token classification | same lane, policy flavor |
 | `LFM2.5-Encoder-350M-Prompt-Router` | sequence **routing** (`rule_proj_dim` — scores prompts against rule projections, zero-shot-shaped) | dynamic model-lane routing |
-| `LFM2.5-Encoder-230M/350M` | masked-LM bases | fine-tune substrate |
+| your own fine-tune | sequence classification (`Lfm2BidirForSequenceClassification`) | a specialist head over a shared trunk |
+| `LFM2.5-Encoder-230M/350M` | masked-LM bases (the trunk loads; no MLM head) | fine-tune substrate |
+| `LFM2.5-Encoder-350M-Policy-Linter` | per-token **rule matching** — config parses, head **not implemented** | — |
 
 ## Status
 
-**Every head in the table above runs, and each has a parity test against
-the reference implementation**: the trunk, pooled embedding, ColBERT late
-interaction, token classification (PII and credential spans), sequence
-routing, and sequence classification. The parity suites under `tests/` are
-what keep those claims honest — each compares against activations dumped
-from real weights by the matching script in `tests/reference/`.
+**Every implemented head has a parity test against the reference
+implementation**: the trunk, pooled embedding, ColBERT late interaction,
+token classification (PII and credential spans) and sequence routing. Each
+parity suite under `tests/` compares against activations dumped from real
+weights by the matching script in `tests/reference/`. Sequence
+classification loads any fine-tuned checkpoint of the family; no
+LiquidAI checkpoint ships that head, so its tests
+(`tests/sequence_classification_guards.rs`) run on synthetic weights.
 
-Sequence classification serves any fine-tuned checkpoint of the family;
-the `lfm2d` daemon in this workspace serves the heads over HTTP.
+## Getting started
+
+Build (CPU is the default; ROCm is the one GPU backend we run and measure.
+The `cuda` and `metal` features exist but have not been ported or
+measured — see `lfm2d/README.md`):
+
+```sh
+cargo build --release                    # library + examples, CPU
+cargo build --release -p lfm2d           # the daemon, CPU
+cargo build --release -p lfm2d --features rocm
+```
+
+A C compiler is needed: candle-core pulls in oniguruma through
+`tokenizers`.
+
+Checkpoints are never downloaded at runtime. Fetch them into `.models/`
+(gitignored) with the Hugging Face CLI:
+
+```sh
+for m in LFM2.5-Embedding-350M LFM2.5-ColBERT-350M \
+         LFM2.5-Encoder-350M-PII-Detector LFM2.5-Encoder-350M-Prompt-Router; do
+  hf download "LiquidAI/$m" --local-dir ".models/$m"
+done
+# the opinion engine: the GGUF, plus the tokenizer from the base repo
+hf download LiquidAI/LFM2.5-8B-A1B-GGUF LFM2.5-8B-A1B-Q5_K_M.gguf \
+  --local-dir .models/LFM2.5-8B-A1B
+hf download LiquidAI/LFM2.5-8B-A1B tokenizer.json --local-dir .models/LFM2.5-8B-A1B
+```
+
+Tests that need weights **fail loudly** with the download command rather
+than skipping, so a plain `cargo test --workspace` wants all of the above
+except the GGUF:
+
+| weights | tests |
+|---|---|
+| none | config parsing, guards, the daemon's API/stub/shutdown suites |
+| `LFM2.5-Embedding-350M` | `trunk_parity`, `embedding_parity`, `retrieval_quality` |
+| `LFM2.5-ColBERT-350M` | `colbert_parity` |
+| `LFM2.5-Encoder-350M-PII-Detector` | `pii_parity`, `lfm2d/tests/integration_real_spans` |
+| `LFM2.5-Encoder-350M-Prompt-Router` | `router_parity` |
+| `LFM2.5-8B-A1B/tokenizer.json` | `lfm2d/tests/tokenize_api`, `probe_tokenize_telemetry_safety` |
+| the GGUF (`#[ignore]`d; minutes on a GPU, hours on CPU) | `opinion_real`, `probe_real`, `spec_registry_real`, `constrained_decoding` |
+
+`LFM2_MODELS_DIR` and `LFM2_TOKEN_CLF_DIR` point the tests elsewhere
+(a git worktree has no `.models/`). `demo/test_devices.sh <rocm|cuda|metal>`
+runs the CPU-vs-GPU agreement gate on a GPU host.
 
 `Lfm2Trunk` reproduces LiquidAI's own
 `modeling_lfm2_bidirectional.py` to max|Δ| ≈ 4.6e-5 on f32 CPU, verified
@@ -98,8 +147,8 @@ Measured on 32 cores, per 350M checkpoint (`examples/bench_memory.rs`,
 
 **f16 halves memory for free**: cosine 0.999996 against f32, with
 identical rankings — and it contends *less* than f32, so it scales better
-as you add models. `bf16`, despite being the checkpoints' own storage
-dtype, is unsupported for `matmul` on candle CPU.
+as you add models. `bf16` (the Embedding checkpoint's storage dtype; the
+others ship f32) is unsupported for `matmul` on candle CPU.
 
 ### ColBERT: late interaction, and it wins
 
@@ -161,8 +210,8 @@ than silently treating pad tokens as content.
 
 - **CPU-first.** Consumers embed this in long-lived server processes.
   Measured on a 32-core Strix Halo: **~81 ms** per short text, f32,
-  including tokenization. GPU (CUDA/Metal via candle features) is a
-  bonus, never a requirement.
+  including tokenization. A GPU (the `rocm` feature; `cuda` and `metal`
+  are unported) is a bonus for the encoders, never a requirement.
 
   Getting there needed one non-obvious change: LFM2's short conv is
   *depthwise* (`groups = hidden_size = 1024`), and candle's grouped
@@ -172,10 +221,11 @@ than silently treating pad tokens as content.
   evaluates the conv as `k` shifted per-channel multiply-adds instead:
   identical arithmetic, ~23× faster end to end, parity unchanged. See
   `cargo run --release --example bench_ops`.
-- **Pure Rust.** No C++ toolchain in the dependency tree.
-- **Local weights by default.** Point at a directory holding
-  `model.safetensors` + `tokenizer.json` + `config.json`; the optional
-  `hub` feature adds Hub download.
+- **Rust, no C++.** Our own tokenizer use is pure Rust (`fancy-regex`,
+  not oniguruma); candle-core still links oniguruma (C) through
+  `tokenizers`.
+- **Local weights.** Point at a directory holding `model.safetensors` +
+  `tokenizer.json` + `config.json`; nothing downloads at runtime.
 
 ## License & attribution
 

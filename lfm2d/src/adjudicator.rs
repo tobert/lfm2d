@@ -103,7 +103,7 @@ pub struct PromptSpec {
 /// A second round varied one newline at a time (one more inside, one more
 /// after, none after) and every neighbour was worse, so this is a local
 /// optimum rather than the best of an arbitrary five.
-/// `~/exomemory/lfm2d/lfm25-think-prefill-2026-09-18/`.
+/// Run record: `lfm25-think-prefill-2026-09-18` (author's private notes).
 ///
 /// `Open` leaves the turn as the template opens it and the model reasons. That
 /// is today's free-generation behaviour and is honest *without* a schema.
@@ -2646,7 +2646,8 @@ pub fn parse_described(
 /// comes first and won one row of three; 0.62-0.76 with `type` first; 0.86-0.95
 /// with `properties` last. So the field list is stated last, nearest the slot
 /// that copies it, and `properties` is also the only key whose own order
-/// matters. `~/exomemory/lfm2d/lfm25-think-prefill-2026-09-18/toplevel-*`.
+/// matters. Run record: `lfm25-think-prefill-2026-09-18/toplevel-*`
+/// (author's private notes).
 const SCHEMA_KEYS: [&str; 6] = [
     "type",
     "additionalProperties",
