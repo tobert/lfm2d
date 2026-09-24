@@ -101,8 +101,10 @@ def main():
     except OSError:
         sys.exit(f'no daemon on {a.url} — start one first (demo/README.md)')
     if 'email-triage-v1' not in {m['spec'] for m in menu}:
-        sys.exit(f'email-triage-v1 is not on {a.url}\'s menu: start the daemon with '
-                 f'--opinion-spec demo/specs/email-triage-v1.json, or upload it')
+        # By name only: an upload's `spec` is its content hash, never a file
+        # stem, so uploading would not put this name on the menu.
+        sys.exit(f'email-triage-v1 is not on {a.url}\'s boot menu: start the daemon with '
+                 f'--opinion-spec demo/specs/email-triage-v1.json')
     print(f'{B}the system 1 matinee{OFF}  {DIM}{len(menu)} specs on the menu: '
           f'{", ".join(sorted(m["spec"] for m in menu))}{OFF}')
     stop = threading.Event()
@@ -125,7 +127,7 @@ def main():
               ['the full menu always holds the mass: the grammar walked it there',
                'narrow the menu and prob renormalises whatever is left'],
               ([sys.executable, 'asked.py', '--url', a.url,
-                '--spec', 'email-triage-v1', '--field', 'verdict'],
+                '--spec', 'email-triage-v1', '--field', 'feeling'],
                lines_of('inputs/asked.txt'))),
     }
     for key in a.acts:

@@ -252,8 +252,8 @@ target/release/lfm2d \
   --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
 ```
 
-A daemon without it on the menu takes it as an upload:
-`curl --data-binary @demo/specs/email-triage-v1.json -H 'content-type: application/json' http://127.0.0.1:18171/v1/opinion/specs`.
+The acts find the spec by its boot name, so it must be a boot spec: an
+upload's `spec` is its content hash, never a file stem.
 
 - **`show.py`** — the matinee: three acts in one terminal, title cards
   between, items driven through a pty so they echo like someone typed
@@ -273,9 +273,11 @@ A daemon without it on the menu takes it as an upload:
   than the flag refuses the request (the request type denies unknown
   fields); `--no-prompt` skips the view, and a response that omits
   `rendered` when asked ends the demo loudly.
-- **`asked.py --spec email-triage-v1 --field verdict`** — was the model
+- **`asked.py --spec email-triage-v1 --field feeling`** — was the model
   even asked? Each item is read over the full menu, then with each option
-  left out once (`item :: a,b` asks a subset). On the shell spec these
+  left out once (`item :: a,b` asks a subset). Leaving one out needs a
+  field with at least three options (`feeling`; `verdict` has two, and the
+  daemon refuses a one-option question). On the shell spec these
   acts were built against, the full menu held ~99.9% of the mass on
   everything, "what is the capital of France?" and emoji included: the
   grammar walks the model to the slot, so full mass proves the question
