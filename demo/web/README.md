@@ -33,17 +33,26 @@ start if the tokenizer's pieces and the probe's ids disagree. Probes run with
 
 ## Two Worlds (`/two-worlds`)
 
-The same command typed into two worlds: each gets one line of facts
-(`two-worlds.json`, rendered as the spec's facts block), and the page shows
-the reading with no facts, then each world's description, written `undo`
-and verdict odds. Captions are chosen from the numbers (a gap under 25
-points gets "barely moves"), so they stay true if the model changes. Same
-spec and menu checks as One Pass. Four hand-written pairs: a demo, not a
-result. First look (2026-09-24): `git reset --hard HEAD` 99% -> 49% allow,
-`rm -rf ./data` 92% -> 24%, `DROP TABLE` 67% -> 22%, force-push to main
-14% -> 6%.
+An agent's terminal on top, lfm2d below it. Each command is read three
+times, live: alone, then in two worlds. In each world the agent's previous
+command and its raw output appear, the harness distills the output into one
+fact line, and only the command and that line fly down to lfm2d (sent as
+the spec's facts block); the answer flies back up into the terminal and a
+scoreboard keeps all three readings. Outputs and facts are written for the
+video (`two-worlds.json`); no parser produced them.
 
-`?case=4` starts at the fourth command.
+Why distill: raw output moved the odds far less than one plain line, and
+once backwards (2026-09-24, one reading each: a production `\conninfo` read
+35% allow against a scratch database's 21%). Wording matters too: "a local
+dev container created 5 minutes ago" against "production, 2.1 million
+customer rows" gave 67% -> 22%; a drier pair gave 41% -> 34%. Numbers
+with the shipped wording: hard reset 99% -> 49% (bare 73%), deleting ./data
+92% -> 24% (4%), DROP TABLE 67% -> 22% (7%), force-push 14% -> 6% (4%).
+
+Before the click the page reads throwaway commands to push this spec's
+described-state cache past its capacity (read from the menu), so a first
+take is all fresh reads; `?cache=keep` skips that. `?case=4` starts at the
+fourth command. A failed call is shown on screen.
 
 ## One Pass (`/one-pass`)
 

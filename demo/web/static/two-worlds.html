@@ -9,7 +9,7 @@
 <style>
   :root {
     --bg: #07080c; --ink: #e8ecf4; --dim: #5d6679; --mid: #9aa3b5; --faint: #1a1e29; --track: #121621;
-    --allow: #6fb7ff; --ask: #f5a54b; --review: #6b7385; --a: #7ee0c3; --b: #ff6b86;
+    --allow: #6fb7ff; --ask: #f5a54b; --review: #6b7385; --a: #7ee0c3; --b: #ff6b86; --fact: #c9b6ff;
     --serif: "Fraunces", Georgia, "Iowan Old Style", serif;
     --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   }
@@ -17,44 +17,53 @@
   html, body { height: 100%; background: #000; overflow: hidden; }
   body { display: grid; place-items: center; font-family: var(--serif); color: var(--ink); }
   #stage { width: 540px; height: 960px; position: relative; overflow: hidden;
-           background: radial-gradient(120% 70% at 50% 30%, #10131c 0%, var(--bg) 70%); }
-  header { position: absolute; top: 40px; left: 32px; right: 32px; }
-  .kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
-  #caption { margin-top: 12px; font-size: 28px; line-height: 1.18; font-weight: 600; min-height: 92px; transition: opacity .45s; }
-  #caption small { display: block; font-size: 16px; font-weight: 400; color: var(--mid); margin-top: 7px; line-height: 1.38; }
-  #cmd { position: absolute; top: 176px; left: 32px; right: 32px; font-family: var(--mono); font-size: 23px; font-weight: 600; min-height: 32px; }
-  #cmd .p { color: var(--dim); } #cmd .cur { display: inline-block; width: .55em; height: 1em; background: var(--ink); vertical-align: -3px; margin-left: 2px; animation: blink 1s steps(1) infinite; }
+           background: radial-gradient(120% 70% at 50% 45%, #10131c 0%, var(--bg) 70%); }
+  header { position: absolute; top: 34px; left: 30px; right: 30px; }
+  .kicker { font-family: var(--mono); font-size: 12.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  #caption { margin-top: 10px; font-size: 25px; line-height: 1.18; font-weight: 600; min-height: 84px; transition: opacity .4s; }
+  #caption small { display: block; font-size: 15px; font-weight: 400; color: var(--mid); margin-top: 6px; line-height: 1.38; }
+  #caption code { font-family: var(--mono); font-size: .82em; color: var(--ink); }
+
+  #term { position: absolute; top: 140px; left: 30px; right: 30px; height: 300px; border-radius: 10px; overflow: hidden;
+          background: #0a0c12; border: 1px solid #222838; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  #term .chrome { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: #141824; border-bottom: 1px solid #222838;
+                  font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  #term .chrome i { width: 9px; height: 9px; border-radius: 50%; background: #2a3042; } #term .chrome span { margin-left: 8px; }
+  #tbody { padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .ln { min-height: 1.5em; } .ln.cmd { color: var(--ink); font-weight: 600; } .ln.cmd .p { color: var(--a); font-weight: 400; }
+  .ln.out { color: var(--mid); } .ln.gone { opacity: .18; transition: opacity .5s; }
+  .ln.note { color: var(--dim); } .ln.note b { font-weight: 600; }
+  .cur { display: inline-block; width: .55em; height: 1.05em; background: var(--ink); vertical-align: -3px; animation: blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  #bare { position: absolute; top: 214px; left: 32px; right: 32px; font-family: var(--mono); font-size: 13px; color: var(--dim); min-height: 18px; }
-  #bare b { font-weight: 600; }
-  .world { position: absolute; left: 32px; right: 32px; height: 322px; padding: 14px 18px; border-radius: 12px;
-           border: 1px solid var(--faint); background: #0b0d14; opacity: 0; transform: translateY(10px);
-           transition: opacity .5s, transform .5s, border-color .5s; }
-  .world.show { opacity: 1; transform: none; }
-  #w0 { top: 244px; } #w1 { top: 580px; }
-  #w0.live { border-color: color-mix(in srgb, var(--a) 55%, transparent); } #w1.live { border-color: color-mix(in srgb, var(--b) 55%, transparent); }
-  .tag { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
-  .name { margin-top: 2px; font-size: 27px; font-weight: 600; line-height: 1.15; }
-  #w0 .name { color: var(--a); } #w1 .name { color: var(--b); }
-  .facts { margin-top: 5px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--mid); min-height: 36px; }
-  .effect { margin-top: 10px; font-size: 14px; line-height: 1.38; color: var(--dim); height: 58px; overflow: hidden; font-style: italic; }
-  .undo { margin-top: 4px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); min-height: 18px; }
-  .undo b { color: var(--ink); font-weight: 600; }
-  .verdict { position: absolute; left: 18px; right: 18px; bottom: 14px; }
-  .vtop { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); }
-  .vbig { font-size: 38px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .vbig small { font-size: 13px; color: var(--dim); font-weight: 400; margin-left: 6px; }
-  .clock { font-size: 12px; color: var(--dim); text-align: right; line-height: 1.45; font-variant-numeric: tabular-nums; }
-  .clock b { color: var(--ink); font-weight: 600; }
-  .bar { margin-top: 5px; height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; display: flex; }
-  .bar span { display: block; height: 100%; width: 0; transition: width .9s cubic-bezier(.2,.8,.2,1); }
-  .vleg { margin-top: 5px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
-  footer { position: absolute; bottom: 12px; left: 32px; right: 32px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); line-height: 1.5; }
+
+  #chip { position: absolute; top: 458px; left: 30px; right: 30px; padding: 9px 12px; border-radius: 9px; border: 1px dashed var(--fact);
+          background: #120f1d; font-family: var(--mono); font-size: 12.5px; line-height: 1.45; color: var(--ink); opacity: 0; transition: opacity .4s; }
+  #chip.show { opacity: 1; } #chip .l { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--fact); margin-bottom: 3px; }
+
+  #box { position: absolute; top: 568px; left: 110px; width: 320px; height: 106px; border-radius: 16px; text-align: center; padding-top: 14px;
+         background: linear-gradient(180deg, #121827, #0c1019); border: 1px solid #2a3450; transition: box-shadow .3s, border-color .3s; }
+  #box.busy { border-color: var(--allow); box-shadow: 0 0 0 1px var(--allow), 0 0 38px rgba(111,183,255,.35); }
+  #box .n { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: .02em; }
+  #box .m { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 2px; }
+  #box .clk { font-family: var(--mono); font-size: 12px; color: var(--mid); margin-top: 6px; min-height: 16px; font-variant-numeric: tabular-nums; }
+
+  #board { position: absolute; top: 700px; left: 30px; right: 30px; }
+  .brow { display: grid; grid-template-columns: 150px 1fr 52px; align-items: center; gap: 10px; height: 38px; font-family: var(--mono); font-size: 12.5px;
+          opacity: .25; transition: opacity .4s; }
+  .brow.on { opacity: 1; } .brow .who { color: var(--mid); line-height: 1.2; } .brow .who small { display: block; color: var(--dim); font-size: 10.5px; }
+  .brow .bar { height: 12px; border-radius: 6px; background: var(--track); overflow: hidden; display: flex; }
+  .brow .bar span { display: block; height: 100%; width: 0; transition: width .9s cubic-bezier(.2,.8,.2,1); }
+  .brow .v { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #legend { margin-top: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+  #legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 4px 0 10px; }
+
+  .fly { position: absolute; z-index: 3; pointer-events: none; font-family: var(--mono); white-space: pre-wrap; will-change: transform, opacity; }
+  footer { position: absolute; bottom: 12px; left: 30px; right: 30px; font-family: var(--mono); font-size: 10px; color: var(--dim); line-height: 1.5; }
   #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
          background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
   #end.show { opacity: 1; }
-  #end h1 { font-size: 44px; font-weight: 600; line-height: 1.12; } #end p { margin-top: 18px; font-size: 19px; color: #b5bdcc; line-height: 1.45; }
-  #end .url { font-family: var(--mono); font-size: 16px; color: var(--allow); margin-top: 32px; }
+  #end h1 { font-size: 42px; font-weight: 600; line-height: 1.12; } #end p { margin-top: 18px; font-size: 18px; color: #b5bdcc; line-height: 1.45; }
+  #end .url { font-family: var(--mono); font-size: 16px; color: var(--allow); margin-top: 30px; }
   #gate { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px; padding: 40px;
           background: rgba(7,8,12,.94); font-family: var(--mono); color: var(--dim); z-index: 5; cursor: pointer; }
   #gate h1 { font-family: var(--serif); color: var(--ink); font-size: 48px; }
@@ -64,14 +73,14 @@
 <body>
 <div id="stage">
   <header><div class="kicker" id="kicker">two worlds</div><div id="caption"></div></header>
-  <div id="cmd"></div>
-  <div id="bare"></div>
-  <div class="world" id="w0"></div>
-  <div class="world" id="w1"></div>
-  <footer id="foot">LFM2.5-8B-A1B · candle · ROCm on Strix Halo</footer>
+  <div id="term"><div class="chrome"><i></i><i></i><i></i><span>agent session</span></div><div id="tbody"></div></div>
+  <div id="chip"><div class="l">the harness summarizes</div><div id="chiptext"></div></div>
+  <div id="box"><div class="n">lfm2d</div><div class="m" id="boxm">LFM2.5-8B-A1B</div><div class="clk" id="clk"></div></div>
+  <div id="board"></div>
+  <footer id="foot"></footer>
   <div id="end">
     <h1>Same command.<br>Different world.<br>Different odds.</h1>
-    <p>The harness hands lfm2d one line of facts. LFM2.5-8B-A1B describes the command in that world, then every answer's odds are read from the same pass. Every call you saw was live.</p>
+    <p>The harness boils what the agent saw down to one line. LFM2.5-8B-A1B reads the command in that world, on lfm2d. Every call you saw was live.</p>
     <p class="url">github.com/tobert/lfm2d</p>
   </div>
   <div id="gate"><h1>Two Worlds</h1><div id="gatemsg">registering the spec…</div></div>
@@ -80,12 +89,13 @@
 "use strict";
 // A consumer page: it owns its spec and uploads it at load. The names below are
 // this spec's; prepare() checks them against the daemon's menu before anything plays.
-// Every read happens on screen, live, with its latency.
+// Every read happens on screen, live. Terminal output is shown, never sent: only the
+// command and the one distilled fact line reach the model.
 const SPEC_FILE = "/command-verdict-enum-v1.json", CASES_FILE = "/two-worlds.json";
-const DESCRIBE = "effect", UNDO = "undo", VERDICT = "verdict", PASS = "allow";
+const VERDICT = "verdict", PASS = "allow";
 const FACTS = line => `Facts from the harness:\n- ${line}\n\n`;
 const COLORS = ["--allow", "--ask", "--review"];   // by the verdict's option order on the menu
-const SOUND = { tick: 0.045, chord: 0.08, pulse: 0.025 };
+const SOUND = { tick: 0.04, chord: 0.08, pulse: 0.022, whoosh: 0.05 };
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -108,46 +118,48 @@ async function prepare() {
   const reg = await api("/v1/opinion/specs", spec, true);
   const menu = (await api("/v1/opinion/specs")).find(m => m.id === reg.id);
   if (!menu) throw new Error("uploaded spec is not on the menu");
-  const field = n => menu.fields.find(f => f.field === n) ?? (() => { throw new Error(`spec has no field "${n}"`); })();
-  if (field(DESCRIBE).kind !== "text") throw new Error(`"${DESCRIBE}" is not a text field`);
-  if (field(UNDO).kind !== "choice") throw new Error(`"${UNDO}" is not a choice field`);
-  const verdictOpts = field(VERDICT).options;
-  if (!verdictOpts?.includes(PASS)) throw new Error(`"${PASS}" is not a ${VERDICT} option`);
-  D = { info: await api("/v1/adjudicator"), spec: reg.id, verdictOpts, cases: set.cases,
+  const verdict = menu.fields.find(f => f.field === VERDICT);
+  if (verdict?.kind !== "choice" || !verdict.options.includes(PASS)) throw new Error(`spec has no choice "${VERDICT}" with "${PASS}"`);
+  D = { info: await api("/v1/adjudicator"), spec: reg.id, verdictOpts: verdict.options, cases: set.cases,
         questions: menu.fields.filter(f => f.kind === "choice").map(f => ({ field: f.field })) };
+  // A first take should read fresh, whatever ran before: push this spec's described-state
+  // LRU past its capacity with throwaway commands (each asked slot spends one entry).
+  if (params.get("cache") !== "keep") {
+    const decoys = Math.ceil(menu.described_cache_capacity / D.questions.length) + 1;
+    for (let i = 0; i < decoys; i++) {
+      $("gatemsg").textContent = `clearing cached descriptions… ${i + 1}/${decoys}`;
+      await api("/v1/opinion", { spec: reg.id, state: { input: `echo two-worlds-decoy-${i}-${Date.now()}` }, questions: D.questions, use_cache: true });
+    }
+  }
 }
 
-// One live read, with a clock that ticks on screen while the daemon works.
-async function read(input, facts, clockEl) {
-  const state = facts === undefined ? { input } : { input, facts: FACTS(facts) };
-  const t0 = performance.now();
-  let live = true;
-  (async () => { let n = 0; while (live) { clockEl.innerHTML = `reading… <b>${Math.round(performance.now() - t0)} ms</b>`; if (n++ % 6 === 0) pulse(); await sleep(33); } })();
+async function read(input, fact) {
+  const state = fact === undefined ? { input } : { input, facts: FACTS(fact) };
+  const t0 = performance.now(); let live = true;
+  $("box").classList.add("busy");
+  (async () => { let n = 0; while (live) { $("clk").textContent = `reading… ${Math.round(performance.now() - t0)} ms`; if (n++ % 6 === 0) pulse(); await sleep(33); } })();
   try {
     const r = await api("/v1/opinion", { spec: D.spec, state, questions: D.questions, use_cache: true });
     const wall = performance.now() - t0, daemon = r.queue_ms + r.prefill_ms + r.describe_ms + r.read_ms;
-    const answer = f => r.answers.find(a => a.field === f);
-    const mass = Math.min(...r.answers.map(a => Math.exp(a.first_token_mass)));
-    minMass = Math.min(minMass, mass); footer();
-    return { wall, daemon, cached: r.cache.described === "hit",
-             wrote: Object.fromEntries(r.described.map(d => [d.field, d.value])),
-             verdict: Object.fromEntries(answer(VERDICT).options.map(o => [o.option, o.prob])) };
-  } finally { live = false; }
+    minMass = Math.min(minMass, ...r.answers.map(a => Math.exp(a.first_token_mass))); footer();
+    const v = r.answers.find(a => a.field === VERDICT);
+    return { wall, daemon, cached: r.cache.described === "hit", verdict: Object.fromEntries(v.options.map(o => [o.option, o.prob])) };
+  } finally { live = false; $("box").classList.remove("busy"); }
 }
-const clockText = r => `<b>${Math.round(r.wall)} ms</b> round trip<br>${Math.round(r.daemon)} ms in the daemon · ${r.cached ? "reused description" : "fresh read"}`;
 function footer() {
   const i = D.info;
   $("foot").innerHTML = `${esc(i.model_id)} · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo · live /v1/opinion over the tailnet<br>` +
-    `spec ${D.spec.slice(0, 12)} uploaded at load` + (minMass < 1 ? ` · answer-set mass ≥ ${(100 * minMass).toFixed(1)}% so far` : "");
+    `terminal output and facts written for this video · spec ${D.spec.slice(0, 12)}` + (minMass < 1 ? ` · answer-set mass ≥ ${(100 * minMass).toFixed(1)}%` : "");
 }
 
 // --- sound ---
 let ac, master;
 function audioInit() { ac = new AudioContext(); const c = ac.createDynamicsCompressor(); master = ac.createGain(); master.gain.value = 0.9; master.connect(c); c.connect(ac.destination); }
-function tone(freq, type, gain, dur, at = 0) {
+function tone(freq, type, gain, dur, at = 0, glide) {
   if (MUTE || !ac) return; const t = ac.currentTime + 0.005 + at, o = ac.createOscillator(), g = ac.createGain();
-  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  o.type = type; o.frequency.setValueAtTime(freq, t); if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
 }
 function tick() {
   if (MUTE || !ac) return; const n = ac.sampleRate * 0.02, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
@@ -157,88 +169,119 @@ function tick() {
 }
 const midi = m => 440 * Math.pow(2, (m - 69) / 12);
 const pulse = () => tone(midi(81), "sine", SOUND.pulse, 0.08);
-function verdictChord(pAllow) {   // major when it would pass, a low minor second when it would stop
-  const root = 57 + Math.round(pAllow * 7), iv = pAllow >= 0.5 ? [0, 4, 7, 12] : [0, 1, 6];
-  iv.forEach((k, j) => tone(midi(root + k), pAllow >= 0.5 ? "sine" : "triangle", SOUND.chord, 1.6, j * 0.03));
+const down = () => tone(midi(76), "sine", SOUND.whoosh, 0.45, 0, midi(64));
+const up = () => tone(midi(64), "sine", SOUND.whoosh, 0.4, 0, midi(79));
+function verdictChord(p) {   // major when it would pass, a low minor second when it would stop
+  const root = 57 + Math.round(p * 7), iv = p >= 0.5 ? [0, 4, 7, 12] : [0, 1, 6];
+  iv.forEach((k, j) => tone(midi(root + k), p >= 0.5 ? "sine" : "triangle", SOUND.chord, 1.5, j * 0.03));
 }
-function allowColour(p) {   // blue when it would pass, amber when it would stop
+function allowColour(p) {
   const a = [111, 183, 255], b = [245, 165, 75], k = Math.min(Math.max((p - 0.2) / 0.6, 0), 1);
   return `rgb(${b.map((v, j) => Math.round(v + (a[j] - v) * k)).join(",")})`;
 }
 
-// --- picture ---
-async function caption(main, sub) {
-  $("caption").style.opacity = 0; await sleep(380);
-  $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1;
+// --- motion: clone an element's text and fly it across the stage ---
+let K = 1;
+function rectIn(el) {   // an element's box in stage coordinates
+  const s = $("stage").getBoundingClientRect(), r = el.getBoundingClientRect();
+  return { x: (r.left - s.left) / K, y: (r.top - s.top) / K, w: r.width / K, h: r.height / K };
 }
-async function typeText(el, text, ms, sound) { for (const ch of text) { el.insertAdjacentText("beforeend", ch); if (sound && ch !== " ") tick(); await sleep(ms); } }
-function worldShell(k, world) {
-  const el = $("w" + k);
-  el.className = "world";
-  el.innerHTML = `<div class="tag">world ${k === 0 ? "one" : "two"}</div><div class="name">${esc(world.name)}</div><div class="facts"></div>` +
-    `<div class="effect"></div><div class="undo"></div>` +
-    `<div class="verdict"><div class="vtop"><div class="vbig">&nbsp;</div><div class="clock"></div></div>` +
-    `<div class="bar">${D.verdictOpts.map((o, j) => `<span style="background: var(${COLORS[j] ?? "--review"})"></span>`).join("")}</div><div class="vleg">&nbsp;</div></div>`;
-  return el;
-}
-function fillVerdict(el, v) {
-  const spans = el.querySelectorAll(".bar span");
-  D.verdictOpts.forEach((o, j) => { spans[j].style.width = (100 * (v[o] ?? 0)).toFixed(2) + "%"; });
-  const big = el.querySelector(".vbig"); big.innerHTML = `${pct(v[PASS])}<small>${esc(PASS)}</small>`; big.style.color = allowColour(v[PASS]);
-  el.querySelector(".vleg").textContent = D.verdictOpts.filter(o => o !== PASS).map(o => `${o} ${pct(v[o] ?? 0)}`).join(" · ");
+async function fly(html, from, to, { dur = 900, scale = 0.5, fade = true, color, size = 12.5, delay = 0 } = {}) {
+  const f = document.createElement("div"); f.className = "fly"; f.innerHTML = html;
+  Object.assign(f.style, { left: from.x + "px", top: from.y + "px", width: from.w + "px", fontSize: size + "px", color: color ?? "var(--ink)" });
+  $("stage").append(f);
+  const dx = to.x + to.w / 2 - (from.x + from.w / 2), dy = to.y + to.h / 2 - (from.y + from.h / 2);
+  const a = f.animate([{ transform: "translate(0,0) scale(1)", opacity: 1 },
+                       { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: fade ? 0 : 1 }],
+                      { duration: dur, delay, easing: "cubic-bezier(.5,0,.3,1)", fill: "forwards" });
+  await a.finished; f.remove();
 }
 
-async function playWorld(el, c, k) {
-  el.classList.add("live");
-  const res = await read(c.input, c.worlds[k].facts, el.querySelector(".clock"));
-  el.querySelector(".clock").innerHTML = clockText(res);
-  await typeText(el.querySelector(".effect"), `“${res.wrote[DESCRIBE]}”`, 9, false);
-  el.querySelector(".undo").innerHTML = `${esc(UNDO)}: wrote <b>${esc(res.wrote[UNDO] ?? "?")}</b>`;
-  await sleep(350);
-  fillVerdict(el, res.verdict); verdictChord(res.verdict[PASS]);
-  el.classList.remove("live");
+// --- picture ---
+async function caption(main, sub) {
+  $("caption").style.opacity = 0; await sleep(340);
+  $("caption").innerHTML = main + (sub ? `<small>${sub}</small>` : ""); $("caption").style.opacity = 1;
+}
+function line(cls, html) { const d = document.createElement("div"); d.className = "ln " + cls; d.innerHTML = html; $("tbody").append(d); return d; }
+async function typeCmd(text, ms) {
+  const d = line("cmd", `<span class="p">$ </span><span class="t"></span><span class="cur"></span>`), t = d.querySelector(".t");
+  for (const ch of text) { t.insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(ms); }
+  d.querySelector(".cur").remove(); return d;
+}
+function board(c) {
+  const rows = [{ who: "no context", sub: "the command alone" }, ...c.worlds.map((w, k) => ({ who: w.name, sub: `world ${k ? "two" : "one"}` }))];
+  $("board").innerHTML = rows.map((r, k) => `<div class="brow" id="br${k}"><div class="who">${esc(r.who)}<small>${esc(r.sub)}</small></div>` +
+    `<div class="bar">${D.verdictOpts.map((o, j) => `<span style="background: var(${COLORS[j] ?? "--review"})"></span>`).join("")}</div><div class="v">&nbsp;</div></div>`).join("") +
+    `<div id="legend">${D.verdictOpts.map((o, j) => `<i style="background: var(${COLORS[j] ?? "--review"})"></i>${esc(o)}`).join("")}</div>`;
+}
+function fillRow(k, res) {
+  const row = $("br" + k), spans = row.querySelectorAll(".bar span");
+  D.verdictOpts.forEach((o, j) => { spans[j].style.width = (100 * (res.verdict[o] ?? 0)).toFixed(2) + "%"; });
+  const v = row.querySelector(".v"); v.textContent = pct(res.verdict[PASS]); v.style.color = allowColour(res.verdict[PASS]);
+  row.classList.add("on");
+}
+
+// One reading: what leaves the terminal, the live read, what comes back.
+async function send(c, k, sources) {
+  const box = rectIn($("box"));
+  down(); await Promise.all(sources.map((s, i) => fly(s.html, rectIn(s.el), box, { dur: 950, delay: i * 160, scale: 0.35, color: s.color })));
+  const res = await read(c.input, k === 0 ? undefined : c.worlds[k - 1].fact);
+  $("clk").textContent = `${Math.round(res.wall)} ms · ${res.cached ? "reused description" : "fresh read"}`;
+  const note = line("note", `<span style="opacity:0">  ↳ lfm2d: ${pct(res.verdict[PASS])} ${esc(PASS)}</span>`);
+  const label = `↳ lfm2d: <b style="color:${allowColour(res.verdict[PASS])}">${pct(res.verdict[PASS])} ${esc(PASS)}</b> · ${Math.round(res.wall)} ms`;
+  up(); await fly(label, box, rectIn(note), { dur: 800, scale: 1, fade: false, color: "var(--mid)" });
+  note.innerHTML = "  " + label; fillRow(k, res); verdictChord(res.verdict[PASS]);
+  return res;
+}
+
+async function world(c, k) {
+  const w = c.worlds[k - 1];
+  $("tbody").innerHTML = ""; $("chip").classList.remove("show");
+  await caption(`World ${k === 1 ? "one" : "two"}: ${esc(w.name)}.`, `The agent just ran <code>${esc(w.before)}</code>.`);
+  const outs = [];
+  await typeCmd(w.before, 18);
+  for (const l of w.output.split("\n")) { outs.push(line("out", esc(l) || " ")); await sleep(60); }
+  await sleep(1300);
+  await caption(`World ${k === 1 ? "one" : "two"}: ${esc(w.name)}.`, "The harness boils the output down to one line.");
+  $("chiptext").textContent = w.fact;
+  const chip = rectIn($("chip"));
+  await Promise.all(outs.map((o, i) => fly(esc(o.textContent), rectIn(o), chip, { dur: 800, delay: i * 70, scale: 0.6, color: "var(--mid)" })));
+  outs.forEach(o => o.classList.add("gone")); $("chip").classList.add("show"); tone(midi(74), "sine", 0.05, 0.5);
+  await sleep(1300);
+  const cmd = await typeCmd(c.input, 45); await sleep(400);
+  await caption(`World ${k === 1 ? "one" : "two"}: ${esc(w.name)}.`, "The command and that one line go to lfm2d. The raw output never does.");
+  const res = await send(c, k, [{ el: cmd, html: esc("$ " + c.input), color: "var(--ink)" }, { el: $("chiptext"), html: esc(w.fact), color: "var(--fact)" }]);
+  await sleep(1500);
   return res;
 }
 
 async function playCase(c, n) {
   $("kicker").textContent = `two worlds · ${n + 1}/${D.cases.length}`;
-  $("bare").innerHTML = ""; $("cmd").innerHTML = "";
-  const w = c.worlds.map((world, k) => worldShell(k, world));
-  await caption(n === 0 ? "An agent wants to run this." : "Next command.", n === 0 ? "One model reads it in two different worlds. Every call is live." : "");
-  $("cmd").innerHTML = `<span class="p">$ </span><span id="ct"></span><span class="cur"></span>`;
+  $("tbody").innerHTML = ""; $("chip").classList.remove("show"); $("clk").textContent = ""; board(c);
+  await caption(n === 0 ? "An AI agent wants to run a command." : "Next command.", n === 0 ? "Before it runs, lfm2d gives the odds it's safe to allow." : "");
   await sleep(400);
-  for (const ch of c.input) { $("ct").insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(60); }
-  await sleep(300);
-  const bareClock = document.createElement("span"); $("bare").innerHTML = "with no facts: "; $("bare").append(bareClock);
-  const bare = await read(c.input, undefined, bareClock);
-  $("bare").innerHTML = `with no facts: <b style="color:${allowColour(bare.verdict[PASS])}">${pct(bare.verdict[PASS])} ${esc(PASS)}</b> · ${Math.round(bare.wall)} ms`;
-  await sleep(700);
-  for (const [k, el] of w.entries()) {
-    el.classList.add("show"); await sleep(350);
-    await typeText(el.querySelector(".facts"), c.worlds[k].facts, 12, true);
-  }
-  await sleep(600);
-  const res = [];
-  for (const [k, el] of w.entries()) { res.push(await playWorld(el, c, k)); await sleep(900); }
-  const a = res[0].verdict[PASS], b = res[1].verdict[PASS], gap = Math.abs(a - b);
-  if (gap >= 0.25) await caption("Only the facts changed.", `${esc(c.worlds[0].name)}: <b>${pct(a)}</b> ${esc(PASS)} · ${esc(c.worlds[1].name)}: <b>${pct(b)}</b> ${esc(PASS)}`);
-  else await caption("This one barely moves.", `${pct(a)} → ${pct(b)}. It won't trust “${esc(c.input)}” even when ${esc(c.worlds[0].name)}.`);
-  await sleep(gap >= 0.25 ? 4200 : 5600);
-  w.forEach(el => el.classList.remove("show")); await sleep(500);
+  const cmd = await typeCmd(c.input, 55); await sleep(500);
+  await caption("First, the command alone.", "One line goes to lfm2d. It knows nothing about this machine.");
+  const bare = await send(c, 0, [{ el: cmd, html: esc("$ " + c.input), color: "var(--ink)" }]);
+  await sleep(1400);
+  const a = await world(c, 1), b = await world(c, 2);
+  const pa = a.verdict[PASS], pb = b.verdict[PASS], gap = Math.abs(pa - pb);
+  if (gap >= 0.25) await caption("Same command. Only the world changed.", `No context ${pct(bare.verdict[PASS])} · ${esc(c.worlds[0].name)} ${pct(pa)} · ${esc(c.worlds[1].name)} ${pct(pb)}`);
+  else await caption("This one barely moves.", `${pct(pa)} → ${pct(pb)}. It won't trust <code>${esc(c.input)}</code> even when ${esc(c.worlds[0].name)}.`);
+  await sleep(gap >= 0.25 ? 4600 : 5800);
 }
 
-let stageT = "";
-function fit() { const k = Math.min(innerWidth / 540, innerHeight / 960); stageT = `scale(${k})`; $("stage").style.transform = stageT; }
+function fit() { K = Math.min(innerWidth / 540, innerHeight / 960); $("stage").style.transform = `scale(${K})`; }
 addEventListener("resize", fit); fit();
 
 (async () => {
   try { await prepare(); }
   catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
-  footer();
+  footer(); $("boxm").textContent = `${D.info.model_id} · ${D.info.backend === "rocm" ? "ROCm" : D.info.backend}`;
   $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
   if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
   if (!MUTE) audioInit();
-  $("gate").remove(); await sleep(600);
+  $("gate").remove(); await sleep(500);
   try { for (let n = FIRST; n < D.cases.length; n++) await playCase(D.cases[n], n); }
   catch (e) { await caption("A call failed.", esc(String(e.message ?? e))); throw e; }
   $("end").classList.add("show");
