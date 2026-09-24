@@ -277,11 +277,13 @@ upload's `spec` is its content hash, never a file stem.
   even asked? Each item is read over the full menu, then with each option
   left out once (`item :: a,b` asks a subset). Leaving one out needs a
   field with at least three options (`feeling`; `verdict` has two, and the
-  daemon refuses a one-option question). On the shell spec these
-  acts were built against, the full menu held ~99.9% of the mass on
-  everything, "what is the capital of France?" and emoji included: the
-  grammar walks the model to the slot, so full mass proves the question
-  was put, not that the input made sense. Narrowing drops the mass by what
+  daemon refuses a one-option question). The grammar walks the model to
+  the slot, so high full-menu mass proves the question was put, not that
+  the input made sense. Measured 2026-09-24 on lfm2d-system1 0.3.0 with
+  `feeling` over `inputs/asked.txt` (n=4): three emoji 100.0%, "what is
+  the capital of France?" 93.3%, the cancellation email 99.3%, and the
+  store-hours email 82.1% — a real email read lower than emoji. On the
+  shell spec the acts were built against it was ~99.9% on everything. Narrowing drops the mass by what
   the omitted options held while `prob` renormalises the rest into a
   confident-looking answer. Invariant 9, on one screen.
 

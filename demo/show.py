@@ -124,7 +124,7 @@ def main():
               ([sys.executable, 'xray.py', '--url', a.url, '--spec', 'email-triage-v1'],
                lines_of('inputs/xray.txt'))),
         '3': ('asked — was the model even asked?',
-              ['the full menu always holds the mass: the grammar walked it there',
+              ['the full menu holds most of the mass: the grammar walked it there',
                'narrow the menu and prob renormalises whatever is left'],
               ([sys.executable, 'asked.py', '--url', a.url,
                 '--spec', 'email-triage-v1', '--field', 'feeling'],
