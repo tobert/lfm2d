@@ -44,7 +44,9 @@ struct Args {
     /// and `POST /v1/opinion/specs` accepts.
     #[arg(long)]
     prompt: Option<PathBuf>,
-    /// The user turn's content, rendered as the daemon renders it.
+    /// The user turn's content, exactly as `/v1/adjudicate`'s `input`: for
+    /// the state an opinion reads, that is `{facts}{input_label}:\n{input}`
+    /// with the spec's own label.
     #[arg(long, requires = "prompt", conflicts_with = "inputs_file")]
     input: Option<String>,
     /// JSON lines of {"name", "input", "assistant_prefill"?}: a batch against

@@ -162,7 +162,13 @@ def input_for_row(row, order, slot, reconstruct, cov=None):
         prompts = str(Path(__file__).resolve().parents[1] / 'prompts')
         if prompts not in sys.path:
             sys.path.insert(0, prompts)
-        import verdict_eval as V
+        try:
+            import verdict_eval as V
+        except ModuleNotFoundError:
+            # The shell harnesses left lfm2d on 2026-09-24 (README banner).
+            raise SystemExit('--reconstruct needs benchmarks/lfm25/prompts/verdict_eval.py, '
+                             'which left lfm2d with the shell material (git f9ca081, or '
+                             '~/src/kaish-training-data); replay a run that recorded its bytes')
         return {'input': V.render_input(row['text'], V.H.build_facts(row['text'], cov)),
                 'assistant_prefill': prefill_for(row['report'], order, slot)}
     missing = [k for k in ('input', 'output') if k not in row]

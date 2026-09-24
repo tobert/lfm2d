@@ -15,7 +15,7 @@
 //!   --model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
 //!   --tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
 //!   --prompt 'lfm2d/tests/fixtures/specs/email-triage-v1.json' \
-//!   --input 'I was charged twice and want a refund.' \
+//!   --input $'Email:\nI was charged twice and want a refund.' \
 //!   --assistant-prefill '{"gist": "wants a refund for a double charge", "feeling": "frustrated", "verdict": "'
 //! ```
 

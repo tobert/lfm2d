@@ -4,8 +4,10 @@
 #
 # Differences from the encoder pod, all deliberate:
 #   * its own image (lfm2d/Containerfile.rocm): ROCm 7.2.4 runtime, the
-#     `rocm` feature, the prompt specs baked in at /etc/lfm2d/prompts —
-#     the specs are part of `snapshot_id`, so a spec change is a release;
+#     `rocm` feature, only the demo prop specs baked in at
+#     /etc/lfm2d/demo-specs (consumers upload their own at runtime; a
+#     baked boot spec is part of `snapshot_id`, so changing one is a
+#     release);
 #   * one AMD GPU through the device plugin (kube-system
 #     amdgpu-device-plugin-daemonset, rocm/k8s-device-plugin:1.31.0.10;
 #     the node advertises amd.com/gpu: 1 and no other pod claims it as of

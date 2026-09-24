@@ -154,7 +154,7 @@ tokenization, not a scored or judged quantity.
 
 **14. A spec names its own input; send `state.input` and read the label
 from the menu.** Every spec carries a required top-level `input_label`
-(2026-09-24), and `/v1/opinion` renders the user turn as
+(2026-09-24; one line, no colon, no control tokens, at most 64 bytes), and `/v1/opinion` renders the user turn as
 `{facts}{input_label}:\n{input}` from `state: {"input", "facts"?}`. The
 menu entry repeats `input_label`; never hard-code it (invariant 11). The
 label is part of the spec's bytes, so it changes the spec's `id`, and it

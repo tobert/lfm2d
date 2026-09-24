@@ -105,6 +105,13 @@ CLI flags, each with an env-var fallback (`clap`'s `env` feature):
 | `--socket-path` | `LFM2D_SOCKET_PATH` | Unix domain socket to serve on |
 | `--bind-addr` | `LFM2D_BIND_ADDR` | TCP address to serve on, e.g. `127.0.0.1:8088` |
 | `--threads` | `LFM2D_THREADS` | Size of rayon's global thread pool (candle's matmul runs on it transitively), set BEFORE any model load. Defaults to `std::thread::available_parallelism()` |
+| `--adjudicator-model` | `LFM2D_ADJUDICATOR_MODEL` | LFM2.5-8B-A1B GGUF; with `--adjudicator-tokenizer`, enables the opinion engine (`/v1/opinion`, `/v1/adjudicate`, `/v1/opinion/specs`, `/v1/adjudicator`, `/v1/probe`). Each alone is refused |
+| `--adjudicator-tokenizer` | `LFM2D_ADJUDICATOR_TOKENIZER` | The matching Hugging Face `tokenizer.json`, checked against the GGUF's vocabulary at load |
+| `--adjudicator-context` | (none) | Context budget including output, default `4096`, range `128`–`8192` |
+| `--adjudicator-repeat-penalty` | (none) | Sign-aware repetition penalty, default `1.05` (the checkpoint author's), range `1.0`–`2.0`; part of every spec's `snapshot_id` |
+| `--opinion-spec` (repeatable) | `LFM2D_OPINION_SPECS` (comma-separated) | A boot-time spec, named by its file stem. Optional: with none the menu starts empty and fills by upload. Needs the adjudicator. No spec is a default |
+| `--opinion-spec-capacity` | `LFM2D_OPINION_SPEC_CAPACITY` | How many uploaded specs stay resident (LRU), default `8`; boot specs don't count and are never evicted |
+| `--no-probe` | `LFM2D_PROBE` (`0` disables) | Removes `/v1/probe`; `/v1/opinion` and `/v1/adjudicate` are unaffected |
 
 Standard OTEL env vars also apply (`OTEL_EXPORTER_OTLP_ENDPOINT`,
 `OTEL_SERVICE_NAME` default `lfm2d`, ...) — see "Observability" below; none
@@ -112,8 +119,10 @@ of these are `clap` flags, they're read directly by the OTLP exporters and
 `main.rs`.
 
 At least one of `--socket-path`/`--bind-addr` and at least one of
-`--embedder-dir`/`--classifier-dir`/`--router-dir`/`--token-classifier-dir`
-are required — startup
+`--embedder-dir`/`--classifier-dir`/`--router-dir`/`--token-classifier-dir`/
+`--adjudicator-model` are required (an opinion-engine-only daemon is
+valid), and a retired env var (`LFM2D_ADJUDICATOR_PROMPT`,
+`LFM2D_CASCADE_*`) is refused by name — startup
 fails loudly (`exit 2`, config problem named) otherwise. Model loading
 itself is synchronous and happens before the socket is ever bound: a bad
 checkpoint path or an incompatible config also fails loudly at startup
@@ -145,6 +154,12 @@ POST /v1/spans                {"inputs": str|[str], "model"?: str}
 POST /v1/spans/credentials    same shape; credential.* entities only
 POST /v1/tokenize             {"model": str, "text": str, "context"?: str}
 POST /v1/probe                {"text": str} | {"messages": [...]}  -- adjudicator only, on by default
+GET  /v1/adjudicator          checkpoint identity                   -- adjudicator only
+GET  /v1/opinion/specs        the spec menu (boot + uploads)        -- adjudicator only
+POST /v1/opinion/specs        body: a spec's exact bytes            -- adjudicator only
+DELETE /v1/opinion/specs/{id}                                       -- adjudicator only
+POST /v1/opinion              {"spec", "state": {"input", "facts"?}, "questions": [...]}
+POST /v1/adjudicate           {"spec", "input", ...}                -- spec required
 ```
 
 The input field is `inputs` (TEI's spelling), not `texts`. `/v1/route`
@@ -243,13 +258,26 @@ takes singular `input` because it scores one text against many routes.
   calibration contract, and `docs/integration.md` invariants 8–11 do not
   apply to it.
 
-Errors: `{"error": {"message", "type"}}`. `type` is `"bad_request"` (400 —
-malformed/empty input, or a call against a head this instance never
-loaded), `"not_found"` (404 — `/v1/tokenize`'s unknown `model`, or
-`/v1/opinion`'s unknown `spec`; `/v1/probe` names no spec at all, so it
-never 404s that way — with `--no-probe` set, the whole route is simply
-absent, its own plain unmatched-route 404), or `"internal"` (500 — a
-loaded model's forward pass failed, or the worker thread itself died).
+Errors: `{"error": {"message", "type"}}`. `type` is one of:
+
+- `"bad_request"` (400) — malformed/empty input, a call against a head
+  this instance never loaded, or `/v1/adjudicate` without a `spec`;
+- `"not_found"` (404) — `/v1/tokenize`'s unknown `model`, an unknown
+  `spec` on `/v1/opinion` or `/v1/adjudicate`, or `DELETE
+  /v1/opinion/specs/{id}` on nothing loaded. `/v1/probe` names no spec,
+  so it never 404s that way; with `--no-probe` the route is absent, a
+  plain unmatched-route 404;
+- `"forbidden"` (403) — deleting a boot spec;
+- `"unprocessable"` (422) — an uploaded spec that parses but cannot be
+  served (the load-time refusal text is the message);
+- `"cancelled"` (408) — the client went away before the answer, or the
+  daemon is shutting down;
+- `"overloaded"` (503) — the opinion engine's queue is full;
+- `"deadline"` (504) — the request's `timeout_ms` ran out;
+- `"internal"` (500) — a loaded model's forward pass failed, or a worker
+  thread died.
+
+A consumer switching on `type` must treat an unknown value as an error.
 Never a silently-wrong `200`.
 
 ## Calling lfm2d from another program (non-normative)

@@ -210,7 +210,7 @@ the first that needs them.
 Requests accept `input`, `max_tokens` (default/max 2048), `timeout_ms`
 (default 30000, max 120000), `use_cache` (default true), `distributions` and
 `opinion` (both below). `use_cache:false` explicitly measures a cold prefill. Prompt plus output must fit the server's
-context budget (default 4096, range 128–8192). Inputs are at most 65536 bytes.
+context budget (default 4096, range 128–8192). Inputs are at most 66560 bytes: `/v1/opinion`'s 64 KiB state plus headroom for its rendered `input_label` (at most 64 bytes), so an escalation always fits.
 Bad requests return 400; overload 503; deadlines 504; cancellation 408;
 inference failures 500. Deadline time includes queueing.
 
@@ -460,11 +460,11 @@ second pass over 236 rows is 236 misses, which is why the harness measures
 the hit path by an immediate repeat.
 
 `lfm2d/tests/opinion_real.rs` (ignored: it loads the 8B) pins the read to
-the generative slot and the hit to the miss; `benchmarks/lfm25/opinion_demo.py`
-shows all of this against a running daemon;
-`benchmarks/lfm25/prompts/describe_read_eval.py` runs the F9 gold set
-through the endpoint paired on a generative run, and `score_instruments.py`
-scores it beside the slot score.
+the generative slot and the hit to the miss; `demo/xray.py` and
+`demo/asked.py` show the read against a running daemon. The harnesses that
+measured it on the F9 gold set (`benchmarks/lfm25/opinion_demo.py`,
+`prompts/describe_read_eval.py`, `score_instruments.py`) left with the shell
+material; they are in git at `f9ca081`.
 
 **Escalation is the same forward pass, continued.** The generative
 adjudicator is the same resident model on the same state. When
@@ -918,21 +918,16 @@ cargo test -p candle-transformers --release --features rocm --lib \
 
 cd "$HOME/src/lfm2d"
 cargo test -p lfm2d
-python3 benchmarks/lfm25/evaluate.py \
-  --binary './target/release/lfm2d' \
-  --model '/tank/ml/models/llama.cpp/LFM2.5-8B-A1B-GGUF/LFM2.5-8B-A1B-Q5_K_M.gguf' \
-  --tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
-  --out '/tmp/lfm25-evaluation'
+cargo test -p lfm2d --release --features rocm --test opinion_real -- --ignored
 ```
 
 The daemon's existing real-PII tests also need their normal model fixture;
 set `LFM2_TOKEN_CLF_DIR` when using a worktree without that checkpoint.
-The benchmark writes all synthetic responses and a summary, verifies repeat
-isolation, errors/deadlines, reuse after cancellation, and in-flight SIGTERM.
-Its exit status checks runtime invariants; inspect the summary's `passed`
-count for schema and severity agreement. Four cases are an integration probe,
-not an accuracy certification. The grader does not establish the truth of
-free-text effect/reversibility explanations.
+The end-to-end evaluator behind the 2026-09-13 numbers below
+(`benchmarks/lfm25/evaluate.py`: four shell-severity cases, cold/cached/
+repeated, errors/deadlines, reuse after cancellation, in-flight SIGTERM)
+left with the shell material and is in git at `f9ca081`. Four cases were
+an integration probe, not an accuracy certification.
 
 On the real Q5_K_M checkpoint, a 40-token greedy smoke continuation matched
 llama.cpp exactly. Cold versus cached fixed-input logits for the adjudicator
@@ -965,7 +960,7 @@ schedule. What the measurement does say is that **a cold reader does not reprodu
 what production answered**, which makes `use_cache: false` a poor baseline for
 anything meant to describe the daemon, and puts a floor under every cold-path
 probe. `lfm25-examine` is a cold reader. `benchmarks/lfm25/prompts/verdict_eval.py
---no-cache` is the arm, and `docs/lfm25-grouped-prefill.md` predicted exactly
+--no-cache` was the arm (git `f9ca081`), and `docs/lfm25-grouped-prefill.md` predicted exactly
 this: "Cold and cached chunk schedules now produce different long greedy
 generations."
 
