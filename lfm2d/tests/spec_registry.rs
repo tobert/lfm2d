@@ -43,6 +43,7 @@ fn info() -> PrefixInfo {
 /// produces.
 fn prompt(system: &str) -> PromptSpec {
     serde_json::from_value(serde_json::json!({
+        "input_label": "Input",
         "system": system,
         "output_schema": {
             "type": "object",
@@ -329,8 +330,8 @@ async fn field_order_alone_changes_the_id() {
     // Same JSON object, semantically, with `system` and `output_schema`
     // swapped in the source text. `serde_json::Value` would sort both to
     // the same key order and hide this; the id is over the RAW BYTES.
-    let a = r#"{"system":"order test","output_schema":{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["allow","ask"]}},"required":["verdict"]}}"#;
-    let b = r#"{"output_schema":{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["allow","ask"]}},"required":["verdict"]},"system":"order test"}"#;
+    let a = r#"{"input_label":"Input","system":"order test","output_schema":{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["allow","ask"]}},"required":["verdict"]}}"#;
+    let b = r#"{"output_schema":{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["allow","ask"]}},"required":["verdict"]},"system":"order test","input_label":"Input"}"#;
     let (status_a, va) = post_bytes(&router, "/v1/opinion/specs", a).await;
     let (status_b, vb) = post_bytes(&router, "/v1/opinion/specs", b).await;
     assert_eq!(status_a, 201, "{va}");
@@ -348,7 +349,7 @@ async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again
     let router = lfm2d::adjudicator::router(handle, true);
 
     let unknown = format!(
-        r#"{{"spec":"{}","state":{{"command":"x"}},"questions":[{{"field":"verdict"}}]}}"#,
+        r#"{{"spec":"{}","state":{{"input":"x"}},"questions":[{{"field":"verdict"}}]}}"#,
         "0".repeat(64)
     );
     let (status, v) = post_json(&router, "/v1/opinion", &unknown).await;
@@ -369,7 +370,7 @@ async fn upload_then_opinion_by_id_works_unknown_id_is_404_delete_then_404_again
     );
 
     let ask = format!(
-        r#"{{"spec":"{id}","state":{{"command":"cargo clean"}},"questions":[{{"field":"verdict"}}]}}"#
+        r#"{{"spec":"{id}","state":{{"input":"Where is my order?"}},"questions":[{{"field":"verdict"}}]}}"#
     );
     let (status, v) = post_json(&router, "/v1/opinion", &ask).await;
     assert_eq!(status, 200, "{v}");
@@ -453,7 +454,7 @@ async fn capacity_plus_one_uploads_evicts_the_lru_and_a_recently_used_one_surviv
 
     // And the evicted one's id is a clean 404 for an opinion read.
     let ask = format!(
-        r#"{{"spec":"{idb}","state":{{"command":"x"}},"questions":[{{"field":"verdict"}}]}}"#
+        r#"{{"spec":"{idb}","state":{{"input":"x"}},"questions":[{{"field":"verdict"}}]}}"#
     );
     let (status, v) = post_json(&router, "/v1/opinion", &ask).await;
     assert_eq!(status, 404, "{v}");
@@ -485,8 +486,12 @@ async fn an_unparseable_body_is_400_and_never_reaches_the_engine() {
         ("not json at all", "not json at all"),
         ("empty object, missing required `system`", "{}"),
         ("valid JSON, still missing required `system`", r#"{"tools": []}"#),
-        ("system is the wrong type", r#"{"system": 5}"#),
-        ("an unknown top-level field (deny_unknown_fields)", r#"{"system": "x", "nope": 1}"#),
+        ("valid otherwise, missing required `input_label`", r#"{"system": "x"}"#),
+        ("system is the wrong type", r#"{"input_label": "Input", "system": 5}"#),
+        (
+            "an unknown top-level field (deny_unknown_fields)",
+            r#"{"input_label": "Input", "system": "x", "nope": 1}"#,
+        ),
     ] {
         let (status, v) = post_bytes(&router, "/v1/opinion/specs", body).await;
         assert_eq!(status, 400, "{why} ({body:?}): {v}");

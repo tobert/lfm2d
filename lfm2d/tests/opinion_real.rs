@@ -83,14 +83,15 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         .expect("the spec has a verdict field");
     let options = verdict.options.clone();
     let ok = || Ok(());
-    for command in [
+    for email in [
         "Hi, what are your store hours on Saturday?",
         "I was charged twice for order #4471 and I want a refund today, this is ridiculous.",
         "Someone logged into my account from another country and changed my email address.",
     ] {
         // The bytes the opinion path renders into the user turn, through the
         // same public renderer: escalation resumes only on these exact bytes.
-        let state = OpinionState { command: command.into(), facts: None }.render();
+        // The label is read off the menu, as a client must read it.
+        let state = OpinionState { input: email.into(), facts: None }.render(&entry.input_label);
         // The generative path, recording every step's raw distribution.
         let generative: AdjudicateRequest = serde_json::from_value(serde_json::json!({
             "spec": SPEC,
@@ -109,13 +110,13 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         // The opinion path on the same bytes.
         let request: OpinionRequest = serde_json::from_value(serde_json::json!({
             "spec": SPEC,
-            "state": {"command": command},
+            "state": {"input": email},
             "questions": [{"field": "verdict"}]
         }))
         .unwrap();
         let question = entry.resolve(&request.questions[0]).unwrap();
         let first = adjudicator.opine(&request, std::slice::from_ref(&question), &ok).expect("opine");
-        assert_eq!(first.cache.described, "miss", "{command}");
+        assert_eq!(first.cache.described, "miss", "{email}");
         // The description is the report's own fields, in order.
         let described: Vec<(&str, &serde_json::Value)> = first
             .described
@@ -128,7 +129,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
                 ("gist", &report_fields["gist"]),
                 ("feeling", &report_fields["feeling"])
             ],
-            "{command}"
+            "{email}"
         );
         // Every option's first token is the token the generative path saw at
         // the slot, with the logprob it recorded there.
@@ -151,14 +152,14 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
                 .find(|t| t.token == option.tokens[0])
                 .unwrap_or_else(|| {
                     panic!(
-                        "{command}: {:?}'s first token {} is not in the slot's top 8",
+                        "{email}: {:?}'s first token {} is not in the slot's top 8",
                         option.option, option.tokens[0]
                     )
                 });
             let gap = (recorded.logprob - option.first_logprob).abs();
             assert!(
                 gap < 1e-3,
-                "{command}: {:?} generative {} vs read {} (gap {gap})",
+                "{email}: {:?} generative {} vs read {} (gap {gap})",
                 option.option,
                 recorded.logprob,
                 option.first_logprob
@@ -174,14 +175,14 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         assert_eq!(
             serde_json::Value::String(top.option.clone()),
             *written,
-            "{command}"
+            "{email}"
         );
         assert!(
             answer.read.sequence_mass > -0.1,
-            "{command}: mass {} — the question was asked",
+            "{email}: mass {} — the question was asked",
             answer.read.sequence_mass
         );
-        assert!(first.rendered.is_none(), "{command}: rendered unasked");
+        assert!(first.rendered.is_none(), "{email}: rendered unasked");
         // A second read is a hit and returns the same numbers. It asks for
         // the rendered text, which is the bytes `rendered_sha256` hashes.
         let mut asked = request.clone();
@@ -193,11 +194,11 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         assert_eq!(
             lfm2d::hash::sha256_hex_bytes(rendered.as_bytes()),
             second.answers[0].read.rendered_sha256,
-            "{command}"
+            "{email}"
         );
-        assert!(rendered.ends_with("\"verdict\": \""), "{command}: {rendered:?}");
-        assert!(rendered.contains(&state), "{command}");
-        assert_eq!(second.cache.described, "hit", "{command}");
+        assert!(rendered.ends_with("\"verdict\": \""), "{email}: {rendered:?}");
+        assert!(rendered.contains(&state), "{email}");
+        assert_eq!(second.cache.described, "hit", "{email}");
         assert_eq!(second.described_tokens, first.described_tokens);
         assert_eq!(second.prefill_ms, 0.0);
         assert_eq!(second.describe_ms, 0.0);
@@ -214,7 +215,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
                 .iter()
                 .zip(&second.answers[0].read.options)
                 .all(|(a, b)| same(a, b)),
-            "{command}"
+            "{email}"
         );
         assert_eq!(
             first.answers[0].read.sequence_mass,
@@ -233,11 +234,11 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         assert_eq!(
             resumed.resumed_tokens,
             Some(first.described_tokens),
-            "{command}: {:?}",
+            "{email}: {:?}",
             resumed.resumed_tokens
         );
-        assert_eq!(resumed.output, report.output, "{command}");
-        assert_eq!(resumed.report, report.report, "{command}");
+        assert_eq!(resumed.output, report.output, "{email}");
+        assert_eq!(resumed.report, report.report, "{email}");
         assert_eq!(resumed.completion_tokens, report.completion_tokens);
         assert_eq!(resumed.cached_tokens, resumed.prompt_tokens);
         // Several questions: one description, every slot read on the way.
@@ -246,7 +247,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         let ask = |fields: &[&str], use_cache: bool| -> OpinionRequest {
             serde_json::from_value(serde_json::json!({
                 "spec": SPEC,
-                "state": {"command": command},
+                "state": {"input": email},
                 "questions": fields.iter().map(|f| serde_json::json!({"field": f})).collect::<Vec<_>>(),
                 "use_cache": use_cache,
                 "rendered": true
@@ -254,14 +255,14 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
             .unwrap()
         };
         let same_read = |a: &lfm2d::opinion_api::Answer, b: &lfm2d::opinion_api::Answer, why: &str| {
-            assert_eq!(a.field, b.field, "{command}: {why}");
-            assert_eq!(a.read.rendered_sha256, b.read.rendered_sha256, "{command}: {why} {}", a.field);
-            assert_eq!(a.read.sequence_mass, b.read.sequence_mass, "{command}: {why} {}", a.field);
+            assert_eq!(a.field, b.field, "{email}: {why}");
+            assert_eq!(a.read.rendered_sha256, b.read.rendered_sha256, "{email}: {why} {}", a.field);
+            assert_eq!(a.read.sequence_mass, b.read.sequence_mass, "{email}: {why} {}", a.field);
             for (x, y) in a.read.options.iter().zip(&b.read.options) {
                 assert_eq!(
                     (x.option.as_str(), x.first_logprob, x.logprob, &x.tokens),
                     (y.option.as_str(), y.first_logprob, y.logprob, &y.tokens),
-                    "{command}: {why} {}",
+                    "{email}: {why} {}",
                     a.field
                 );
             }
@@ -270,7 +271,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         let questions = entry.resolve_all(&multi_cold_req.questions).unwrap();
         let multi_cold = adjudicator.opine(&multi_cold_req, &questions, &ok).expect("multi cold");
         let fields: Vec<&str> = multi_cold.answers.iter().map(|a| a.field.as_str()).collect();
-        assert_eq!(fields, ["feeling", "verdict"], "{command}: emission order");
+        assert_eq!(fields, ["feeling", "verdict"], "{email}: emission order");
         for answer in &multi_cold.answers {
             let single_req = ask(&[answer.field.as_str()], false);
             let q = entry.resolve(&single_req.questions[0]).unwrap();
@@ -283,8 +284,8 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
                 let pairs = |r: &lfm2d::opinion_api::OpinionResponse| -> Vec<(String, serde_json::Value)> {
                     r.described.iter().map(|d| (d.field.clone(), d.value.clone())).collect()
                 };
-                assert_eq!(pairs(&multi_cold), pairs(&single), "{command}: described");
-                assert_eq!(multi_cold.described_tokens, single.described_tokens, "{command}");
+                assert_eq!(pairs(&multi_cold), pairs(&single), "{email}: described");
+                assert_eq!(multi_cold.described_tokens, single.described_tokens, "{email}");
             }
         }
         // Every answer's hash covers the rendered text up to its own slot.
@@ -295,7 +296,7 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
             assert_eq!(
                 lfm2d::hash::sha256_hex_bytes(rendered[..end].as_bytes()),
                 answer.read.rendered_sha256,
-                "{command}: {}",
+                "{email}: {}",
                 answer.field
             );
         }
@@ -305,14 +306,14 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         let multi_warm_req = ask(&["feeling", "verdict"], true);
         let questions = entry.resolve_all(&multi_warm_req.questions).unwrap();
         let multi_warm = adjudicator.opine(&multi_warm_req, &questions, &ok).expect("multi warm");
-        assert_eq!(multi_warm.cache.described, "miss", "{command}");
+        assert_eq!(multi_warm.cache.described, "miss", "{email}");
         same_read(&multi_warm.answers[1], &first.answers[0], "warm multi vs warm single");
         let feeling_req = ask(&["feeling"], true);
         let q = entry.resolve(&feeling_req.questions[0]).unwrap();
         let feeling_hit = adjudicator
             .opine(&feeling_req, std::slice::from_ref(&q), &ok)
             .expect("feeling hit");
-        assert_eq!(feeling_hit.cache.described, "hit", "{command}");
+        assert_eq!(feeling_hit.cache.described, "hit", "{email}");
         same_read(&feeling_hit.answers[0], &multi_warm.answers[0], "hit vs the walk that cached it");
         // A cold request never resumes (and neither does one that wants every
         // step's distribution). Its bytes are NOT asserted equal: a cold
@@ -324,16 +325,16 @@ fn describe_then_read_stands_at_the_generative_paths_own_slot() {
         .unwrap();
         let fresh = adjudicator.generate(&cold, &ok).expect("cold");
         assert_eq!(fresh.resumed_tokens, None);
-        assert!(fresh.report.is_some(), "{command}: cold generation still reports");
+        assert!(fresh.report.is_some(), "{email}: cold generation still reports");
         eprintln!(
-            "{command:.40} escalation resumed {} tokens, decoded {} more in {:.0} ms (fresh {:.0} ms)",
+            "{email:.40} escalation resumed {} tokens, decoded {} more in {:.0} ms (fresh {:.0} ms)",
             resumed.resumed_tokens.unwrap(),
             resumed.completion_tokens - resumed.resumed_tokens.unwrap(),
             resumed.decode_ms,
             fresh.prefill_ms + fresh.decode_ms
         );
         eprintln!(
-            "{command:.40} generative {written} in {:.0} ms; read {:?} in {:.0}+{:.0}+{:.0} ms, hit {:.0} ms, mass {:.4}",
+            "{email:.40} generative {written} in {:.0} ms; read {:?} in {:.0}+{:.0}+{:.0} ms, hit {:.0} ms, mass {:.4}",
             report.prefill_ms + report.decode_ms,
             answer
                 .read

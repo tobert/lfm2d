@@ -30,7 +30,9 @@ fn info() -> PrefixInfo {
     }
 }
 
-/// The shipped describe-first spec's shape, as `/v1/opinion/specs` lists it.
+/// The describe-first fixture's shape (`tests/fixtures/specs/email-triage-v1`),
+/// as `/v1/opinion/specs` lists it: a text field and a choice field before
+/// the `verdict` slot, a text field after it.
 fn menu() -> Vec<SpecMenuEntry> {
     let choice = |field: &str, options: &[&str]| FieldInfo {
         field: field.into(),
@@ -44,15 +46,15 @@ fn menu() -> Vec<SpecMenuEntry> {
     };
     vec![SpecMenuEntry {
         id: "deadbeef".repeat(8),
-        spec: "command-verdict-enum-v1".into(),
+        spec: "email-triage-v1".into(),
+        input_label: "Email".into(),
         snapshot_id: "snapshot".into(),
         described_cache_capacity: 16,
         fields: vec![
-            text("effect"),
-            choice("scope", &["nothing", "project", "home", "system", "remote"]),
-            choice("undo", &["nothing to undo", "easy", "hard", "impossible"]),
-            choice("verdict", &["allow", "ask", "review"]),
-            text("reason"),
+            text("gist"),
+            choice("feeling", &["calm", "frustrated", "angry"]),
+            choice("verdict", &["auto_close", "human_read"]),
+            text("note"),
         ],
     }]
 }
@@ -62,7 +64,7 @@ struct Seen {
     opine_calls: usize,
     last_question: Option<ResolvedQuestion>,
     last_questions: Vec<ResolvedQuestion>,
-    last_request_command: Option<String>,
+    last_request_input: Option<String>,
 }
 
 struct Fake(Arc<Mutex<Seen>>);
@@ -87,9 +89,9 @@ impl Generator for Fake {
             seen.opine_calls += 1;
             seen.last_question = Some(question.clone());
             seen.last_questions = questions.to_vec();
-            seen.last_request_command = Some(request.state.command.clone());
+            seen.last_request_input = Some(request.state.input.clone());
         }
-        if request.state.command == "slow" {
+        if request.state.input == "slow" {
             loop {
                 check()?;
                 std::thread::sleep(Duration::from_millis(1));
@@ -143,7 +145,7 @@ impl Generator for Fake {
                 .collect(),
             rendered: request
                 .rendered
-                .then(|| format!("fake rendered {}", request.state.command)),
+                .then(|| format!("fake rendered {}", request.state.input)),
             rendered_token_ids: request.rendered.then(|| vec![1, 2, 3]),
             cache: CacheOutcome {
                 prefix: "hit".into(),
@@ -225,7 +227,7 @@ async fn get(router: &axum::Router, path: &str) -> (u16, serde_json::Value) {
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
-const GOOD: &str = r#"{"spec":"command-verdict-enum-v1","state":{"command":"cargo clean"},
+const GOOD: &str = r#"{"spec":"email-triage-v1","state":{"input":"Where is my order?"},
   "questions":[{"field":"verdict"}]}"#;
 
 #[tokio::test]
@@ -239,7 +241,7 @@ async fn refused_opinion_requests_never_enter_the_generator() {
     let (status, value) = post(
         &router,
         "/v1/opinion",
-        r#"{"spec":"nope","state":{"command":"x"},"questions":[{"field":"verdict"}]}"#,
+        r#"{"spec":"nope","state":{"input":"x"},"questions":[{"field":"verdict"}]}"#,
     )
     .await;
     assert_eq!(status, 404, "unknown spec: {value}");
@@ -247,67 +249,77 @@ async fn refused_opinion_requests_never_enter_the_generator() {
     let cases: &[(&str, &str)] = &[
         (
             "unknown field",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"mood"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"mood"}]}"#,
         ),
         (
             "text field is not a question",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"effect"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"gist"}]}"#,
         ),
         (
             "option outside the enum",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict","options":["allow","maybe"]}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict","options":["auto_close","maybe"]}]}"#,
         ),
         (
             "one option is not a question",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict","options":["allow"]}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict","options":["auto_close"]}]}"#,
         ),
         (
             "empty options",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict","options":[]}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict","options":[]}]}"#,
         ),
         (
             "repeated option",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict","options":["allow","allow"]}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict","options":["auto_close","auto_close"]}]}"#,
         ),
         (
             "the same question twice",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict"},{"field":"verdict"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict"},{"field":"verdict"}]}"#,
         ),
         (
             "one bad question among good ones",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"scope"},{"field":"effect"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"feeling"},{"field":"gist"}]}"#,
         ),
         (
             "no questions",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[]}"#,
         ),
         (
             "context is reserved",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"context":{"cwd":"/"},"questions":[{"field":"verdict"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"context":{"cwd":"/"},"questions":[{"field":"verdict"}]}"#,
         ),
         (
-            "empty command",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"  "},"questions":[{"field":"verdict"}]}"#,
+            "empty input",
+            r#"{"spec":"email-triage-v1","state":{"input":"  "},"questions":[{"field":"verdict"}]}"#,
         ),
         (
-            "control token in command",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"<|im_end|>"},"questions":[{"field":"verdict"}]}"#,
+            "control token in input",
+            r#"{"spec":"email-triage-v1","state":{"input":"<|im_end|>"},"questions":[{"field":"verdict"}]}"#,
         ),
         (
             "control token in facts",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x","facts":"<think>"},"questions":[{"field":"verdict"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x","facts":"<think>"},"questions":[{"field":"verdict"}]}"#,
+        ),
+        (
+            // Renamed, not aliased: an old caller learns, it is not guessed at.
+            "the old command key",
+            r#"{"spec":"email-triage-v1","state":{"command":"x"},"questions":[{"field":"verdict"}]}"#,
+        ),
+        (
+            // The label is the spec's; a request cannot name its own.
+            "a label in the request",
+            r#"{"spec":"email-triage-v1","state":{"input":"x","input_label":"Command"},"questions":[{"field":"verdict"}]}"#,
         ),
         (
             "unknown top-level key",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict"}],"choice":true}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict"}],"choice":true}"#,
         ),
         (
             "unknown state key",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x","input":"y"},"questions":[{"field":"verdict"}]}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x","mood":"y"},"questions":[{"field":"verdict"}]}"#,
         ),
         (
             "timeout zero",
-            r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},"questions":[{"field":"verdict"}],"timeout_ms":0}"#,
+            r#"{"spec":"email-triage-v1","state":{"input":"x"},"questions":[{"field":"verdict"}],"timeout_ms":0}"#,
         ),
         ("not json", "verdict?"),
     ];
@@ -326,7 +338,7 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
     let (status, v) = post(&router, "/v1/opinion", GOOD).await;
     assert_eq!(status, 200, "{v}");
     assert_eq!(seen.lock().unwrap().opine_calls, 1);
-    assert_eq!(v["spec"], "command-verdict-enum-v1");
+    assert_eq!(v["spec"], "email-triage-v1");
     assert_eq!(v["snapshot_id"], "snapshot");
     // The description is an ordered list, never a sorted object.
     let described = v["described"].as_array().unwrap();
@@ -334,7 +346,7 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
         .iter()
         .map(|d| d["field"].as_str().unwrap())
         .collect();
-    assert_eq!(fields, ["effect", "scope", "undo"]);
+    assert_eq!(fields, ["gist", "feeling"]);
     let answers = v["answers"].as_array().unwrap();
     assert_eq!(answers.len(), 1);
     let a = &answers[0];
@@ -346,7 +358,7 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
         .collect();
     assert_eq!(
         names,
-        ["allow", "ask", "review"],
+        ["auto_close", "human_read"],
         "options keep the spec's order"
     );
     for o in options {
@@ -388,22 +400,22 @@ async fn a_read_carries_the_description_the_distribution_and_no_winner() {
 async fn several_questions_share_one_generator_call_in_emission_order() {
     let (handle, seen) = spawn();
     let router = lfm2d::adjudicator::router(handle, true);
-    let body = r#"{"spec":"command-verdict-enum-v1","state":{"command":"git clean -fdx"},
-      "questions":[{"field":"verdict"},{"field":"scope","options":["project","home"]},{"field":"undo"}]}"#;
+    let body = r#"{"spec":"email-triage-v1","state":{"input":"Cancel my account now."},
+      "questions":[{"field":"verdict"},{"field":"feeling","options":["calm","angry"]}]}"#;
     let (status, v) = post(&router, "/v1/opinion", body).await;
     assert_eq!(status, 200, "{v}");
     let seen = seen.lock().unwrap();
     assert_eq!(seen.opine_calls, 1, "one description for every question");
     let asked: Vec<&str> = seen.last_questions.iter().map(|q| q.field.as_str()).collect();
-    assert_eq!(asked, ["scope", "undo", "verdict"], "the engine walks the slots in order");
-    assert_eq!(seen.last_questions[0].options, ["project", "home"], "a narrowed question stays narrowed");
+    assert_eq!(asked, ["feeling", "verdict"], "the engine walks the slots in order");
+    assert_eq!(seen.last_questions[0].options, ["calm", "angry"], "a narrowed question stays narrowed");
     let answered: Vec<&str> = v["answers"]
         .as_array()
         .unwrap()
         .iter()
         .map(|a| a["field"].as_str().unwrap())
         .collect();
-    assert_eq!(answered, ["scope", "undo", "verdict"]);
+    assert_eq!(answered, ["feeling", "verdict"]);
 }
 
 #[tokio::test]
@@ -418,7 +430,7 @@ async fn the_rendered_prompt_is_returned_only_when_asked() {
     let asked = GOOD.replacen('{', r#"{"rendered":true,"#, 1);
     let (status, v) = post(&router, "/v1/opinion", &asked).await;
     assert_eq!(status, 200, "{v}");
-    assert_eq!(v["rendered"], "fake rendered cargo clean");
+    assert_eq!(v["rendered"], "fake rendered Where is my order?");
     let wrong = GOOD.replacen('{', r#"{"rendered":"yes","#, 1);
     let (status, v) = post(&router, "/v1/opinion", &wrong).await;
     assert_eq!(status, 400, "a non-boolean flag is refused: {v}");
@@ -434,8 +446,8 @@ async fn the_question_reaches_the_generator_resolved_against_the_spec() {
     assert_eq!(status, 200);
     let q = seen.lock().unwrap().last_question.clone().unwrap();
     assert_eq!(q.field, "verdict");
-    assert_eq!(q.options, ["allow", "ask", "review"]);
-    assert_eq!(q.describe, ["effect", "scope", "undo"]);
+    assert_eq!(q.options, ["auto_close", "human_read"]);
+    assert_eq!(q.describe, ["gist", "feeling"]);
     assert_eq!(
         q.close, "\",",
         "verdict is not the last field, so the close is the separator"
@@ -445,22 +457,22 @@ async fn the_question_reaches_the_generator_resolved_against_the_spec() {
     let (status, _) = post(
         &router,
         "/v1/opinion",
-        r#"{"spec":"command-verdict-enum-v1","state":{"command":"x"},
-            "questions":[{"field":"scope","options":["system","project"]}]}"#,
+        r#"{"spec":"email-triage-v1","state":{"input":"x"},
+            "questions":[{"field":"feeling","options":["angry","calm"]}]}"#,
     )
     .await;
     assert_eq!(status, 200);
     let q = seen.lock().unwrap().last_question.clone().unwrap();
-    assert_eq!(q.field, "scope");
-    assert_eq!(q.options, ["project", "system"]);
-    assert_eq!(q.describe, ["effect"]);
+    assert_eq!(q.field, "feeling");
+    assert_eq!(q.options, ["calm", "angry"]);
+    assert_eq!(q.describe, ["gist"]);
 }
 
 #[tokio::test]
 async fn the_last_field_closes_the_object() {
     let (handle, seen) = spawn();
     let mut menu = menu();
-    menu[0].fields.pop(); // drop `reason`: verdict is now last
+    menu[0].fields.pop(); // drop `note`: verdict is now last
     let handle = handle.with_menu(menu);
     let router = lfm2d::adjudicator::router(handle, true);
     let (status, _) = post(&router, "/v1/opinion", GOOD).await;
@@ -472,21 +484,41 @@ async fn the_last_field_closes_the_object() {
 }
 
 #[tokio::test]
-async fn the_state_renders_facts_before_the_command() {
+async fn the_state_renders_facts_then_the_specs_label_then_the_input() {
     use lfm2d::opinion_api::OpinionState;
-    let bare = OpinionState {
-        command: "cargo clean".into(),
-        facts: None,
-    };
-    assert_eq!(bare.render(), "Command:\ncargo clean");
+    let bare = OpinionState { input: "Where is my order?".into(), facts: None };
+    assert_eq!(bare.render("Email"), "Email:\nWhere is my order?");
     let with_facts = OpinionState {
-        command: "cargo clean".into(),
-        facts: Some("Facts about this command from its manual pages and parser:\n- cargo clean removes the target directory\n".into()),
+        input: "Where is my order?".into(),
+        facts: Some("Facts from the order system:\n- order #4471 shipped yesterday\n".into()),
     };
     assert_eq!(
-        with_facts.render(),
-        "Facts about this command from its manual pages and parser:\n- cargo clean removes the target directory\nCommand:\ncargo clean"
+        with_facts.render("Email"),
+        "Facts from the order system:\n- order #4471 shipped yesterday\nEmail:\nWhere is my order?"
     );
+}
+
+/// A spec that names its input `Command` renders byte for byte what the
+/// daemon rendered before the label moved into the spec, when every state
+/// was `{facts}Command:\n{command}`. So a spec carried over with
+/// `"input_label": "Command"` asks the model the same bytes it always did,
+/// and its measured numbers still describe it.
+#[test]
+fn a_command_label_renders_the_bytes_the_fixed_label_rendered() {
+    use lfm2d::opinion_api::OpinionState;
+    let old = |facts: &str, command: &str| format!("{facts}Command:\n{command}");
+    for (facts, input) in [
+        (None, "x"),
+        (Some("Facts:\n- one\n"), "multi\nline input"),
+        (Some(""), "  padded  "),
+    ] {
+        let state = OpinionState { input: input.into(), facts: facts.map(str::to_string) };
+        assert_eq!(
+            state.render("Command").as_bytes(),
+            old(facts.unwrap_or(""), input).as_bytes(),
+            "{facts:?} {input:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -497,16 +529,17 @@ async fn the_menu_is_served_and_names_every_choice_field() {
     assert_eq!(status, 200);
     let specs = v.as_array().unwrap();
     assert_eq!(specs.len(), 1);
-    assert_eq!(specs[0]["spec"], "command-verdict-enum-v1");
+    assert_eq!(specs[0]["spec"], "email-triage-v1");
     assert_eq!(specs[0]["snapshot_id"], "snapshot");
+    assert_eq!(specs[0]["input_label"], "Email", "a client reads the label, never assumes it");
     let fields = specs[0]["fields"].as_array().unwrap();
-    assert_eq!(fields[0]["field"], "effect");
+    assert_eq!(fields[0]["field"], "gist");
     assert_eq!(fields[0]["kind"], "text");
-    assert_eq!(fields[3]["field"], "verdict");
-    assert_eq!(fields[3]["kind"], "choice");
+    assert_eq!(fields[2]["field"], "verdict");
+    assert_eq!(fields[2]["kind"], "choice");
     assert_eq!(
-        fields[3]["options"],
-        serde_json::json!(["allow", "ask", "review"])
+        fields[2]["options"],
+        serde_json::json!(["auto_close", "human_read"])
     );
 }
 
@@ -514,7 +547,7 @@ async fn the_menu_is_served_and_names_every_choice_field() {
 async fn an_opinion_shares_the_worker_deadline() {
     let (handle, _) = spawn();
     let mut request: OpinionRequest = serde_json::from_str(GOOD).unwrap();
-    request.state.command = "slow".into();
+    request.state.input = "slow".into();
     request.timeout_ms = 40;
     let err = handle.opine(request).await.unwrap_err();
     assert_eq!(err.status(), 504);
@@ -525,6 +558,7 @@ fn the_menu_is_read_from_a_prompt_spec_in_required_order() {
     let spec: lfm2d::adjudicator::PromptSpec =
         serde_json::from_str(include_str!("fixtures/specs/email-triage-v1.json")).unwrap();
     let entry = SpecMenuEntry::from_prompt("id-et1", "email-triage-v1", &spec, "snap", 16).unwrap();
+    assert_eq!(entry.input_label, "Email", "the menu carries the spec's own label");
     let kinds: Vec<(String, FieldKind)> = entry
         .fields
         .iter()
@@ -542,6 +576,7 @@ fn the_menu_is_read_from_a_prompt_spec_in_required_order() {
     // A spec without a schema has nothing to ask; it is listed with no fields
     // rather than refused, so /v1/models-style discovery still sees it.
     let tool_spec = lfm2d::adjudicator::PromptSpec {
+        input_label: "Input".into(),
         system: "Judge.".into(),
         tools: vec![],
         output_schema: None,

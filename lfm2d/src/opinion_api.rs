@@ -1,7 +1,7 @@
 //! `/v1/opinion`: the typed-decision surface over the resident adjudicator.
 //!
 //! An opinion request names a loaded prompt spec, hands over the state (the
-//! command and, optionally, the facts an app built for it) and asks one or
+//! input and, optionally, the facts an app built for it) and asks one or
 //! more of the spec's choice fields. The daemon renders the same prompt the
 //! generative path renders, generates the fields that precede each question
 //! under the output grammar — the *description* — stands at each asked
@@ -10,9 +10,9 @@
 //! writes; nothing after the LAST asked slot is decoded.
 //!
 //! Why describe first: a read at the verdict slot before the model has
-//! described the command carries nothing on this checkpoint (F9: AUC ~0.5
-//! at 99% mass); after `effect`/`scope`/`undo` the same slot separates the
-//! gold at AUC 0.74. The description is therefore part of the answer and is
+//! described the input carries nothing on this checkpoint (F9, measured on
+//! shell commands: AUC ~0.5 at 99% mass); after three described fields the
+//! same slot separates the gold at AUC 0.74. The description is therefore part of the answer and is
 //! echoed, so a caller can see and log what the read was conditioned on.
 //!
 //! What the response never carries: a winner. The caller picks, from its own
@@ -42,33 +42,42 @@ fn default_timeout() -> u64 {
 /// The state an opinion is asked about. Rendered into the user turn exactly
 /// as the evaluation harnesses render it, so a paired generative run and an
 /// opinion read see the same bytes: the facts block verbatim (an app builds
-/// it; the daemon never does), then `Command:` and the command.
+/// it; the daemon never does), then the spec's `input_label`, a colon, a
+/// newline, and the input.
+///
+/// A generative `/v1/adjudicate` escalation resumes from the described state
+/// only on the exact same bytes, so a caller escalating an opinion sends
+/// [`OpinionState::render`]'s output — label included — as its `input`.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpinionState {
-    pub command: String,
-    /// Evidence about the command, prepended verbatim. Ends with a newline
-    /// if the caller wants one between it and `Command:`.
+    pub input: String,
+    /// Evidence about the input, prepended verbatim. Ends with a newline if
+    /// the caller wants one between it and the label.
     #[serde(default)]
     pub facts: Option<String>,
 }
 
 impl OpinionState {
-    pub fn render(&self) -> String {
+    /// `{facts}{label}:\n{input}`, with `label` from the spec
+    /// ([`PromptSpec::input_label`]), never from the request.
+    pub fn render(&self, label: &str) -> String {
         format!(
-            "{}Command:\n{}",
+            "{}{label}:\n{}",
             self.facts.as_deref().unwrap_or(""),
-            self.command
+            self.input
         )
     }
     fn validate(&self) -> Result<(), String> {
-        validate_text(&self.command).map_err(|e| format!("state.command: {e}"))?;
+        validate_text(&self.input).map_err(|e| format!("state.input: {e}"))?;
         if let Some(facts) = &self.facts
             && (facts.contains("<|") || facts.contains("<think>") || facts.contains("</think>"))
         {
             return Err("state.facts: literal model control tokens are not allowed".into());
         }
-        if self.render().len() > MAX_STATE_BYTES {
+        // The caller's bytes only: the label is the spec's, and the rendered
+        // prompt's length is checked against the context limit anyway.
+        if self.facts.as_deref().map_or(0, str::len) + self.input.len() > MAX_STATE_BYTES {
             return Err(format!("state exceeds {MAX_STATE_BYTES} bytes"));
         }
         Ok(())
@@ -166,6 +175,10 @@ pub struct SpecMenuEntry {
     /// way and answer to it as well as to `id`). An uploaded spec has no
     /// file, so this equals `id`.
     pub spec: String,
+    /// What the spec's user turn calls its input ([`PromptSpec::input_label`]):
+    /// `state.input` renders after `{input_label}:` and a newline. Read it
+    /// here rather than assuming one.
+    pub input_label: String,
     pub snapshot_id: String,
     /// How many described states the daemon keeps for this spec.
     pub described_cache_capacity: usize,
@@ -260,6 +273,7 @@ impl SpecMenuEntry {
         Ok(Self {
             id: id.to_string(),
             spec: name.to_string(),
+            input_label: prompt.input_label.clone(),
             snapshot_id: snapshot_id.to_string(),
             described_cache_capacity,
             fields,
@@ -456,6 +470,7 @@ mod tests {
         SpecMenuEntry {
             id: "id-s".into(),
             spec: "s".into(),
+            input_label: "Input".into(),
             snapshot_id: "x".into(),
             described_cache_capacity: 16,
             fields: vec![
@@ -494,21 +509,21 @@ mod tests {
     #[test]
     fn a_request_needs_at_least_one_question_and_no_context() {
         let parse = |s: &str| serde_json::from_str::<OpinionRequest>(s).unwrap();
-        let good = parse(r#"{"spec":"s","state":{"command":"x"},"questions":[{"field":"v"}]}"#);
+        let good = parse(r#"{"spec":"s","state":{"input":"x"},"questions":[{"field":"v"}]}"#);
         assert!(good.validate().is_ok());
         assert!(good.use_cache && good.timeout_ms == 30000);
         let two = parse(
-            r#"{"spec":"s","state":{"command":"x"},"questions":[{"field":"v"},{"field":"w"}]}"#,
+            r#"{"spec":"s","state":{"input":"x"},"questions":[{"field":"v"},{"field":"w"}]}"#,
         );
         assert!(two.validate().is_ok(), "several questions share one description");
-        let none = parse(r#"{"spec":"s","state":{"command":"x"},"questions":[]}"#);
+        let none = parse(r#"{"spec":"s","state":{"input":"x"},"questions":[]}"#);
         assert!(none.validate().is_err());
         let ctx = parse(
-            r#"{"spec":"s","state":{"command":"x"},"context":1,"questions":[{"field":"v"}]}"#,
+            r#"{"spec":"s","state":{"input":"x"},"context":1,"questions":[{"field":"v"}]}"#,
         );
         assert!(ctx.validate().is_err());
         let null_ctx = parse(
-            r#"{"spec":"s","state":{"command":"x"},"context":null,"questions":[{"field":"v"}]}"#,
+            r#"{"spec":"s","state":{"input":"x"},"context":null,"questions":[{"field":"v"}]}"#,
         );
         assert!(null_ctx.validate().is_ok());
     }

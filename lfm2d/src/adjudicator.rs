@@ -40,6 +40,15 @@ pub(crate) const MAX_INPUT_BYTES: usize = 65536;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptSpec {
+    /// What the user turn calls its input: an opinion state renders as
+    /// `{facts}{input_label}:\n{input}` ([`crate::opinion_api::OpinionState`]).
+    /// Required, and part of the spec's bytes, so its id and its
+    /// `snapshot_id` cover it. The spec owns the label because the spec's
+    /// system prompt is what tells the model where the input is; a label the
+    /// system prompt never names would be one the model was never told
+    /// about. One line, no colon, no model control tokens — refused at load
+    /// ([`PromptSpec::render_prefix`]).
+    pub input_label: String,
     pub system: String,
     #[serde(default)]
     pub tools: Vec<serde_json::Value>,
@@ -120,6 +129,7 @@ impl PromptSpec {
     /// The checkpoint's single-system/single-user chat-template subset. Tool
     /// schemas are part of the frozen system message, as in the GGUF template.
     pub fn render_prefix(&self) -> Result<String, String> {
+        self.validate_input_label()?;
         validate_text(&self.system)?;
         if self.reasoning == Reasoning::Open && self.output_schema.is_some() {
             return Err(
@@ -156,6 +166,26 @@ impl PromptSpec {
         Ok(format!(
             "<|startoftext|><|im_start|>system\n{system}<|im_end|>\n"
         ))
+    }
+
+    /// The label must render as exactly one `label:` line: a newline or a
+    /// colon inside it would make the rendered state say something other
+    /// than "the input follows", and a control token would forge a turn.
+    fn validate_input_label(&self) -> Result<(), String> {
+        let label = &self.input_label;
+        if label.trim().is_empty() {
+            return Err("input_label must not be empty".into());
+        }
+        if label.contains('\n') || label.contains('\r') {
+            return Err("input_label must be one line".into());
+        }
+        if label.contains(':') {
+            return Err("input_label must not contain a colon; the renderer writes the one after it".into());
+        }
+        if label.contains("<|") || label.contains("<think>") || label.contains("</think>") {
+            return Err("input_label must not carry model control tokens".into());
+        }
+        Ok(())
     }
 
     /// The single user turn and the opening of the assistant's, appended to
@@ -1028,28 +1058,14 @@ impl LoadedSpec {
                 .map_err(|e| e.to_string())?;
         }
         let template_version = prompt.template_version();
-        // The repetition penalty shapes every description and report, so a
-        // consumer that refits on `snapshot_id` must see it change.
-        let mut identity = serde_json::json!([
-            template_version,
+        let snapshot_id = snapshot_id(
+            &prompt,
             weight_hash,
             tokenizer_hash,
-            prefix_ids,
+            &prefix_ids,
             execution.backend.as_str(),
-            "f32",
-            repeat_penalty
-        ]);
-        // The opinion question is part of what this daemon answers, so it is
-        // part of its identity. Appended only when present: specs without one
-        // keep the snapshot ids they had.
-        if let Some(opinion) = &prompt.opinion {
-            identity
-                .as_array_mut()
-                .expect("identity is an array")
-                .push(serde_json::to_value(opinion).map_err(|e| e.to_string())?);
-        }
-        let snapshot_id =
-            sha256_hex_bytes(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
+            repeat_penalty,
+        )?;
         let info = PrefixInfo {
             model_id: model_id.to_string(),
             weight_hash: weight_hash.to_string(),
@@ -1116,6 +1132,43 @@ impl LoadedSpec {
     }
 }
 
+/// A spec's `snapshot_id`: everything that decides what the daemon answers
+/// under it. Only the spec's parsed content counts, never its id or file
+/// name, so the same content loaded twice lands on the same snapshot.
+fn snapshot_id(
+    prompt: &PromptSpec,
+    weight_hash: &str,
+    tokenizer_hash: &str,
+    prefix_ids: &[u32],
+    backend: &str,
+    repeat_penalty: f32,
+) -> Result<String, String> {
+    // The repetition penalty shapes every description and report, so a
+    // consumer that refits on `snapshot_id` must see it change.
+    let mut identity = serde_json::json!([
+        prompt.template_version(),
+        weight_hash,
+        tokenizer_hash,
+        prefix_ids,
+        backend,
+        "f32",
+        repeat_penalty
+    ]);
+    let parts = identity.as_array_mut().expect("identity is an array");
+    // The opinion question is part of what this daemon answers, so it is
+    // part of its identity. Appended only when present: specs without one
+    // keep the snapshot ids they had.
+    if let Some(opinion) = &prompt.opinion {
+        parts.push(serde_json::to_value(opinion).map_err(|e| e.to_string())?);
+    }
+    // The label is rendered into every user turn, not the prefix, so
+    // `prefix_ids` never sees it: without this, two specs that differ only
+    // in what they call their input would share a snapshot. Always present,
+    // so adding it changed every spec's snapshot_id once (2026-09-24).
+    parts.push(serde_json::json!({"input_label": prompt.input_label}));
+    Ok(sha256_hex_bytes(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?))
+}
+
 /// The sampling description every identity carries: one definition, so the
 /// checkpoint's (`GET /v1/adjudicator`) and each spec's cannot disagree.
 fn sampling(repeat_penalty: f32) -> String {
@@ -1157,6 +1210,34 @@ pub(crate) fn suffix_is_stable(
     let whole = encode_ids(tokenizer, &format!("{prefix}{suffix}"))?;
     let stable = !alone.is_empty() && whole.ends_with(&alone);
     Ok((alone, stable))
+}
+
+/// `snapshot_id` must cover the spec's `input_label`: the label is rendered
+/// into every user turn, never the prefix, so nothing else in the identity
+/// sees it. Model-free: the identity is a pure function of its inputs.
+#[cfg(test)]
+mod snapshot_id_tests {
+    use super::*;
+
+    fn spec(label: &str) -> PromptSpec {
+        serde_json::from_value(serde_json::json!({"input_label": label, "system": "Judge."})).unwrap()
+    }
+    fn id(p: &PromptSpec) -> String {
+        snapshot_id(p, "w", "t", &[1, 2, 3], "cpu", 1.05).unwrap()
+    }
+
+    #[test]
+    fn a_spec_that_changes_only_its_input_label_gets_a_new_snapshot_id() {
+        assert_eq!(id(&spec("Email")), id(&spec("Email")), "same content, same snapshot");
+        assert_ne!(id(&spec("Email")), id(&spec("Ticket")), "the label is part of what is answered");
+    }
+
+    #[test]
+    fn the_prefix_and_the_penalty_still_move_it() {
+        let p = spec("Email");
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 4], "cpu", 1.05).unwrap());
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "cpu", 1.0).unwrap());
+    }
 }
 
 /// Real-tokenizer facts pinned against the actual LFM2.5-8B-A1B
@@ -1928,7 +2009,7 @@ impl Adjudicator {
         let prompt_text = format!(
             "{}{}",
             spec.prefix_text,
-            spec.prompt.render_user_turn(&request.state.render())
+            spec.prompt.render_user_turn(&request.state.render(&spec.prompt.input_label))
         );
         let prompt_ids = self
             .tokenizer
@@ -1939,7 +2020,7 @@ impl Adjudicator {
         let context_limit = spec.info.context_limit;
         if prompt_ids.len() + 2 >= context_limit {
             return Err(Failure::BadRequest(
-                "prompt leaves no adjudicator context to describe the command".into(),
+                "prompt leaves no adjudicator context to describe the input".into(),
             ));
         }
         let mut cache = CacheOutcome {
@@ -3883,7 +3964,7 @@ mod handle_menu_tests {
         }
     }
     fn prompt(system: &str) -> PromptSpec {
-        serde_json::from_value(serde_json::json!({"system": system})).unwrap()
+        serde_json::from_value(serde_json::json!({"input_label": "Input", "system": system})).unwrap()
     }
     fn body_of(p: &PromptSpec) -> Vec<u8> {
         serde_json::to_vec(p).unwrap()

@@ -51,6 +51,10 @@ fn cli() -> Cli {
     ])
 }
 
+fn prompt_json(bytes: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(bytes).expect("the fixture is JSON")
+}
+
 #[test]
 #[ignore = "loads and hashes the 6 GB LFM2.5-8B-A1B GGUF; minutes on a GPU host"]
 fn a_runtime_registered_copy_reads_bit_identical_to_the_boot_loaded_spec() {
@@ -86,12 +90,27 @@ fn a_runtime_registered_copy_reads_bit_identical_to_the_boot_loaded_spec() {
     );
     assert_eq!(outcome.entry.fields, boot_entry.fields);
 
+    // The label is rendered into the user turn, not the prefix, so the
+    // prefix tokens cannot tell two labels apart; snapshot_id must anyway.
+    let mut relabelled = prompt_json(&bytes);
+    relabelled["input_label"] = "Ticket".into();
+    let relabelled_bytes = serde_json::to_vec(&relabelled).unwrap();
+    let relabelled_id = lfm2d::hash::sha256_hex_bytes(&relabelled_bytes);
+    let relabelled_outcome = adjudicator
+        .register(relabelled_id, serde_json::from_slice(&relabelled_bytes).unwrap(), &ok)
+        .expect("register the relabelled copy");
+    assert_eq!(relabelled_outcome.entry.input_label, "Ticket");
+    assert_ne!(
+        relabelled_outcome.entry.snapshot_id, boot_entry.snapshot_id,
+        "a spec that differs only in input_label answers different bytes, so a different snapshot"
+    );
+
     let email = "I was charged twice for order #4471 and I want a refund today, this is \
                  ridiculous and I've been a customer for six years.";
     let ask = |spec: &str| -> OpinionRequest {
         serde_json::from_value(serde_json::json!({
             "spec": spec,
-            "state": {"command": email},
+            "state": {"input": email},
             "questions": [{"field": "verdict"}, {"field": "feeling"}],
             "rendered": true
         }))
