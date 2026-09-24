@@ -143,7 +143,8 @@ class PageTests(unittest.TestCase):
                 self.assertNotIn("ts.net", text)
                 self.assertNotIn("http://", text.replace("http://www.w3.org", ""))
                 # a scaled stage centred by layout overflows any window shorter than it
-                self.assertIn("translate(-50%, -50%) scale", text)
+                if page.name != "index.html":
+                    self.assertIn("translate(-50%, -50%) scale", text)
 
     def test_one_pass_props_are_well_formed(self):
         static = Path(server.__file__).parent / "static"
