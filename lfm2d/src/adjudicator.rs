@@ -31,6 +31,10 @@ use std::{
 use tokio::sync::oneshot;
 
 pub(crate) const CHUNK: usize = 128;
+/// The candle fork revision this binary was built against, read from
+/// `Cargo.lock` by `build.rs`. Part of every `snapshot_id`: the kernels are
+/// the fork's, so a new revision can move every number.
+pub const CANDLE_REV: &str = env!("LFM2D_CANDLE_REV");
 /// `<|im_end|>`, which ends a turn. `Checkpoint::load` refuses a tokenizer that
 /// puts it anywhere else.
 const EOS: u32 = 124900;
@@ -332,6 +336,10 @@ pub struct AdjudicatorInfo {
     pub tokenizer_hash: String,
     pub context_limit: usize,
     pub backend: String,
+    /// `ExecutionDevice::identity`: the target the kernels were built for.
+    pub device: String,
+    /// [`CANDLE_REV`].
+    pub candle_rev: String,
     pub dtype: String,
     pub sampling: String,
     pub weight_dtypes: Vec<String>,
@@ -346,6 +354,8 @@ impl From<&PrefixInfo> for AdjudicatorInfo {
             tokenizer_hash: p.tokenizer_hash.clone(),
             context_limit: p.context_limit,
             backend: p.backend.clone(),
+            device: p.device.clone(),
+            candle_rev: p.candle_rev.clone(),
             dtype: p.dtype.clone(),
             sampling: p.sampling.clone(),
             weight_dtypes: p.weight_dtypes.clone(),
@@ -366,6 +376,8 @@ pub struct PrefixInfo {
     pub input_cache_capacity: usize,
     pub context_limit: usize,
     pub backend: String,
+    pub device: String,
+    pub candle_rev: String,
     pub dtype: String,
     pub sampling: String,
     pub weight_dtypes: Vec<String>,
@@ -1074,7 +1086,8 @@ impl LoadedSpec {
             weight_hash,
             tokenizer_hash,
             &prefix_ids,
-            execution.backend.as_str(),
+            &execution.identity,
+            CANDLE_REV,
             repeat_penalty,
         )?;
         let info = PrefixInfo {
@@ -1087,6 +1100,8 @@ impl LoadedSpec {
             input_cache_capacity: 1,
             context_limit,
             backend: execution.backend.as_str().into(),
+            device: execution.identity.clone(),
+            candle_rev: CANDLE_REV.into(),
             dtype: "f32".into(),
             sampling: sampling(repeat_penalty),
             weight_dtypes: weight_dtypes.to_vec(),
@@ -1151,7 +1166,8 @@ fn snapshot_id(
     weight_hash: &str,
     tokenizer_hash: &str,
     prefix_ids: &[u32],
-    backend: &str,
+    device: &str,
+    candle_rev: &str,
     repeat_penalty: f32,
 ) -> Result<String, String> {
     // The repetition penalty shapes every description and report, so a
@@ -1161,7 +1177,8 @@ fn snapshot_id(
         weight_hash,
         tokenizer_hash,
         prefix_ids,
-        backend,
+        device,
+        candle_rev,
         "f32",
         repeat_penalty
     ]);
@@ -1267,7 +1284,7 @@ mod snapshot_id_tests {
         serde_json::from_value(serde_json::json!({"input_label": label, "system": "Judge."})).unwrap()
     }
     fn id(p: &PromptSpec) -> String {
-        snapshot_id(p, "w", "t", &[1, 2, 3], "cpu", 1.05).unwrap()
+        snapshot_id(p, "w", "t", &[1, 2, 3], "rocm:gfx1151:hip7.2", "rev-a", 1.05).unwrap()
     }
 
     #[test]
@@ -1279,8 +1296,20 @@ mod snapshot_id_tests {
     #[test]
     fn the_prefix_and_the_penalty_still_move_it() {
         let p = spec("Email");
-        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 4], "cpu", 1.05).unwrap());
-        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "cpu", 1.0).unwrap());
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 4], "rocm:gfx1151:hip7.2", "rev-a", 1.05).unwrap());
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1151:hip7.2", "rev-a", 1.0).unwrap());
+    }
+
+    /// Kernels branch on the GPU target and change with the candle build, so
+    /// the same weights and spec give different numbers on another card or
+    /// another fork revision; a consumer that refits on `snapshot_id` must
+    /// see both move it, not just the backend's name.
+    #[test]
+    fn the_device_and_the_candle_build_move_it() {
+        let p = spec("Email");
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1100:hip7.2", "rev-a", 1.05).unwrap());
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1151:hip7.1", "rev-a", 1.05).unwrap());
+        assert_ne!(id(&p), snapshot_id(&p, "w", "t", &[1, 2, 3], "rocm:gfx1151:hip7.2", "rev-b", 1.05).unwrap());
     }
 }
 
@@ -1628,6 +1657,8 @@ impl Adjudicator {
             tokenizer_hash: self.tokenizer_hash.clone(),
             context_limit: self.context_limit,
             backend: self.execution.backend.as_str().into(),
+            device: self.execution.identity.clone(),
+            candle_rev: CANDLE_REV.into(),
             dtype: "f32".into(),
             sampling: sampling(self.repeat_penalty),
             weight_dtypes: self.weight_dtypes.clone(),
@@ -2491,6 +2522,8 @@ impl Adjudicator {
                 weight_hash: self.weight_hash.clone(),
                 tokenizer_hash: self.tokenizer_hash.clone(),
                 backend: self.execution.backend.as_str().into(),
+                device: self.execution.identity.clone(),
+                candle_rev: CANDLE_REV.into(),
                 dtype: "f32".into(),
                 sampling: format!("greedy; repetition_penalty={}; history=full", self.repeat_penalty),
             },
@@ -4002,6 +4035,8 @@ mod handle_menu_tests {
             input_cache_capacity: 1,
             context_limit: 128,
             backend: "cpu".into(),
+            device: "cpu".into(),
+            candle_rev: "test".into(),
             dtype: "f32".into(),
             sampling: "greedy".into(),
             weight_dtypes: vec!["F32".into()],

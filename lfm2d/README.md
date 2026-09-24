@@ -528,14 +528,13 @@ The task spec left a few things implicit; here's what was decided and why
 
 ## Problems noted, not fixed
 
-- **`snapshot_id` names the backend, not the GPU or the candle build.**
-  It hashes `"rocm"`/`"cuda"`, so two AMD cards that take different kernel
-  paths (the fork's `RDNA2`/`RDNA3` guards), or two builds of the candle
-  fork, share a `snapshot_id` while their distributions differ. A consumer
-  that refits on `snapshot_id` would miss that. Fix: add the device arch
-  and the candle revision to the identity; the ROCm device does not expose
-  its arch name yet, so it starts in the fork. Carried from the step-5
-  split, 2026-09-24.
+- **`snapshot_id` names the GPU target only on ROCm.** Since 2026-09-24
+  it hashes the device identity (`rocm:gfx1151:hip7.2`, from the fork's
+  `RocmDevice::arch()`/`hip_version()`) and the candle revision
+  (`CANDLE_REV`, read from `Cargo.lock` by `lfm2d/build.rs`). CUDA and
+  Metal still report the bare backend name: two NVIDIA cards would share a
+  `snapshot_id`. The CUDA port should add the compute capability the same
+  way.
 - **Spec registration telemetry has no source address.** The daemon has
   no `ConnectInfo` wiring, so a registration or eviction log line cannot
   say who uploaded the spec.
@@ -635,9 +634,10 @@ re-uploading the same spec is free; an unknown or evicted `spec` is `404`,
 the cue to upload and retry. There is no default spec: `/v1/opinion` and
 `/v1/adjudicate` both require `spec`, and `/v1/adjudicate` without one is
 a `400` naming the menu. `GET /v1/adjudicator` reports the checkpoint
-only (`model_id`, `weight_hash`, `tokenizer_hash`, `context_limit`,
-`backend`, `dtype`, `sampling`, `weight_dtypes`); per-spec identity is
-each menu entry's `snapshot_id`. See the guide's "Runtime spec
+and where it runs (`model_id`, `weight_hash`, `tokenizer_hash`,
+`context_limit`, `backend`, `device`, `candle_rev`, `dtype`, `sampling`,
+`weight_dtypes`); per-spec identity is each menu entry's `snapshot_id`,
+which hashes `device` and `candle_rev` too. See the guide's "Runtime spec
 registration" and `docs/integration.md` invariants 12 and 14.
 
 Two more routes are answered without ever entering a spec's judgement

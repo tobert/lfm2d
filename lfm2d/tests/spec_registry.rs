@@ -30,6 +30,8 @@ fn info() -> PrefixInfo {
         input_cache_capacity: 1,
         context_limit: 128,
         backend: "cpu".into(),
+        device: "cpu".into(),
+        candle_rev: "test".into(),
         dtype: "f32".into(),
         sampling: "greedy".into(),
         weight_dtypes: vec!["F32".into()],
@@ -575,7 +577,33 @@ async fn adjudicator_info_is_the_checkpoint_only() {
     keys.sort_unstable();
     assert_eq!(
         keys,
-        ["backend", "context_limit", "dtype", "model_id", "sampling", "tokenizer_hash", "weight_dtypes", "weight_hash"]
+        [
+            "backend",
+            "candle_rev",
+            "context_limit",
+            "device",
+            "dtype",
+            "model_id",
+            "sampling",
+            "tokenizer_hash",
+            "weight_dtypes",
+            "weight_hash"
+        ]
     );
     assert_eq!(v["weight_hash"], "hash", "the checkpoint identity comes from the loaded model");
+}
+
+/// `CANDLE_REV` is what `build.rs` read from `Cargo.lock`; it must be the
+/// fork revision the workspace pins, or `snapshot_id` names a build that
+/// is not the one running.
+#[test]
+fn candle_rev_is_the_pinned_fork_revision() {
+    let manifest = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../Cargo.toml")).unwrap();
+    let pinned = manifest
+        .lines()
+        .find(|l| l.starts_with("candle-core ="))
+        .and_then(|l| l.split("rev = \"").nth(1))
+        .and_then(|r| r.split('"').next())
+        .expect("the workspace pins candle-core by rev");
+    assert_eq!(lfm2d::adjudicator::CANDLE_REV, pinned);
 }

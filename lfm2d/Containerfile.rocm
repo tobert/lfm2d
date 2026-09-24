@@ -5,7 +5,7 @@
 # demo prop specs. The GGUF, tokenizer and checkpoints are mounted at runtime
 # (deploy/k8s-zorak-system1.yaml), never baked in.
 #
-#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.3.0 \
+#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.3.1 \
 #       -f lfm2d/Containerfile.rocm .
 #
 # Build context is the repo ROOT; .containerignore allowlists what is
@@ -50,6 +50,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # lfm2d/Containerfile for why both manifests are copied up front).
 COPY Cargo.toml Cargo.lock ./
 COPY lfm2d/Cargo.toml lfm2d/Cargo.toml
+# build.rs names the candle revision from Cargo.lock (adjudicator::CANDLE_REV).
+COPY lfm2d/build.rs lfm2d/build.rs
 RUN mkdir -p src && echo "fn main() {}" > src/main.rs \
     && mkdir -p lfm2d/src \
     && echo "fn main() {}" > lfm2d/src/main.rs \

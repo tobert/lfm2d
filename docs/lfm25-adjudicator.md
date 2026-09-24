@@ -150,9 +150,10 @@ curl --fail-with-body 'http://127.0.0.1:18152/v1/adjudicate' \
 
 ## Response contract
 
-`GET /v1/adjudicator` identifies the checkpoint only (`model_id`,
-`weight_hash`, `tokenizer_hash`, `context_limit`, `backend`, `dtype`,
-`sampling`, `weight_dtypes`); per-spec identity (`snapshot_id`,
+`GET /v1/adjudicator` identifies the checkpoint and where it runs
+(`model_id`, `weight_hash`, `tokenizer_hash`, `context_limit`, `backend`,
+`device` such as `rocm:gfx1151:hip7.2`, `candle_rev`, `dtype`, `sampling`,
+`weight_dtypes`); per-spec identity (`snapshot_id`,
 `template_version`, `prefix_tokens`) is on each `GET /v1/opinion/specs`
 entry. `/v1/models` also lists the adjudicator. Each generation response
 includes:

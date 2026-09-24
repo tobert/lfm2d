@@ -274,6 +274,8 @@ pub struct ProbeIdentity {
     pub weight_hash: String,
     pub tokenizer_hash: String,
     pub backend: String,
+    pub device: String,
+    pub candle_rev: String,
     pub dtype: String,
     pub sampling: String,
 }

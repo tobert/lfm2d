@@ -198,6 +198,12 @@ fn an_adjudicator_booted_with_no_specs_serves_the_first_upload() {
     let mut adjudicator = Adjudicator::load(&cli).expect("load with an empty menu");
     let ok = || Ok(());
     assert!(adjudicator.menu().is_empty(), "no --opinion-spec, no menu entries");
+    // The identity names the GPU target and the candle build, not just
+    // "rocm": numbers do not transfer between targets or fork revisions.
+    let info = adjudicator.info();
+    assert!(info.device.starts_with("rocm:gfx"), "device identity: {}", info.device);
+    assert!(info.device.contains(":hip"), "device identity names the HIP toolchain: {}", info.device);
+    assert_eq!(info.candle_rev, lfm2d::adjudicator::CANDLE_REV);
 
     let request = |spec: Option<&str>| -> AdjudicateRequest {
         let mut body = serde_json::json!({"input": "Hi, what are your store hours?", "max_tokens": 64});

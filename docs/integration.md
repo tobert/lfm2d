@@ -69,6 +69,12 @@ for opinions).
 consumer that acts on one picks the option itself, from thresholds fitted
 on its own data, per spec, and refits when `snapshot_id` changes —
 calibration does not transfer between specs, and the failure is silent.
+`snapshot_id` covers the weights, tokenizer, template, rendered prefix,
+repetition penalty and spec, and since 2026-09-24 the device target
+(`GET /v1/adjudicator`'s `device`, e.g. `rocm:gfx1151:hip7.2`) and the candle
+build (`candle_rev`), because the same weights give different numbers on
+another GPU target or kernel build. On CUDA and Metal `device` is still the
+bare backend name.
 Invariant 5 still holds for scores from the encoder heads; an opinion is a
 different instrument with this contract of its own.
 

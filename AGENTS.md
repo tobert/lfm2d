@@ -68,8 +68,11 @@ backend on whatever Intel's ideal sdk is"). What keeps a port cheap:
   The first CUDA step is `cargo build --features cuda` plus the real-model
   tests (`LFM2D_TEST_GPU=cuda`, `demo/test_devices.sh cuda`) on the DGX
   Spark (tenchi, arm64).
-- Numbers are per backend: re-measure on the new stack, never carry a
-  threshold across.
+- Numbers are per backend and per target: re-measure on the new stack,
+  never carry a threshold across. `snapshot_id` hashes the device identity
+  (`rocm:gfx1151:hip7.2`) and the candle revision; a CUDA port should
+  give its device the compute capability the same way (today it reports
+  the bare `cuda`).
 
 ## Checkpoint facts (fixture-verified — trust these over docs)
 

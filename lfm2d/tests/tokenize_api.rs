@@ -180,6 +180,8 @@ fn info() -> PrefixInfo {
         input_cache_capacity: 1,
         context_limit: 128,
         backend: "cpu".into(),
+        device: "cpu".into(),
+        candle_rev: "test".into(),
         dtype: "f32".into(),
         sampling: "greedy".into(),
         weight_dtypes: vec!["F32".into()],

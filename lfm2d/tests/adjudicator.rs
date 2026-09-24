@@ -96,6 +96,8 @@ fn info() -> PrefixInfo {
         input_cache_capacity: 0,
         context_limit: 128,
         backend: "cpu".into(),
+        device: "cpu".into(),
+        candle_rev: "test".into(),
         dtype: "f32".into(),
         sampling: "greedy".into(),
         weight_dtypes: vec!["F32".into()],
@@ -580,6 +582,9 @@ async fn a_request_without_distributions_gets_exactly_todays_response_shape() {
         "input_cache_capacity",
         "context_limit",
         "backend",
+        // Added 2026-09-24 with the device-and-build identity in snapshot_id.
+        "device",
+        "candle_rev",
         "dtype",
         "sampling",
         "weight_dtypes",

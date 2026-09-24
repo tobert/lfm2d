@@ -57,6 +57,12 @@ pub struct ExecutionDevice {
     pub device: Device,
     pub backend: DeviceArg,
     pub selection_reasons: Vec<String>,
+    /// What the kernels were built for, as specific as the backend can say:
+    /// `rocm:gfx1151:hip7.2`, or the backend's bare name where candle does
+    /// not yet expose more (cpu, and CUDA and Metal until their ports). Part
+    /// of every `snapshot_id`, because numbers do not transfer between
+    /// targets.
+    pub identity: String,
 }
 
 impl ExecutionDevice {
@@ -75,7 +81,8 @@ impl ExecutionDevice {
         let device = if backend == DeviceArg::Cpu { Device::Cpu } else {
             initialized.ok_or("selected GPU without an initialized device")?
         };
-        Ok(Self { device, backend, selection_reasons })
+        let identity = identity_of(&device, backend);
+        Ok(Self { device, backend, selection_reasons, identity })
     }
 
     pub fn metadata(&self, dtype: DType) -> crate::telemetry::ExecutionMetadata {
@@ -87,6 +94,14 @@ impl ExecutionDevice {
             device_name: None,
             dtype: format!("{dtype:?}").to_lowercase(),
         }
+    }
+}
+
+fn identity_of(device: &Device, backend: DeviceArg) -> String {
+    match device {
+        #[cfg(feature = "rocm")]
+        Device::Rocm(d) => format!("rocm:{}:hip{}", d.arch(), d.hip_version()),
+        _ => backend.as_str().to_string(),
     }
 }
 
