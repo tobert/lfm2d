@@ -31,6 +31,20 @@ start if the tokenizer's pieces and the probe's ids disagree. Probes run with
 - `?scene=3` starts at the third scene, for retakes.
 - The sound mapping lives in the `SOUND` object at the top of the script.
 
+## Everything Is a Command (`/everything`)
+
+Replaces the pitched "Dark Matter" video, whose premise did not hold: on
+the describe-first shell spec, raw answer-set mass is 99.8-100% for every
+input, nonsense included, and the model's unconstrained top tokens at the
+verdict slot are the menu words themselves (re-measured 2026-09-24,
+lfm2d-system1 0.3.1). So the page shows the true version: two real
+commands, then things that aren't commands, each described earnestly as a
+command ("The command 'what is 2 + 2' simply requests a mathematical
+calculation"), with a ring for the raw mass on the menu and bars for the
+split. The ring never moves; the split does (the capital of France reads
+allow 43 / ask 43). Answer-set mass is not an out-of-domain detector on a
+describe-first spec; choosing what to hand the judge is the harness's job.
+
 ## Would LFM Let You? (`/let-you`)
 
 A game show. The page uploads `life-decision-v1.json` (verdict `go` /
