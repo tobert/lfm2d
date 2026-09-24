@@ -175,6 +175,14 @@ class PageTests(unittest.TestCase):
         self.assertTrue(conf["commands"] and conf["finale"])
         self.assertEqual(len(set(conf["commands"] + conf["finale"])), len(conf["commands"]) + len(conf["finale"]))
 
+    def test_let_you_props_are_well_formed(self):
+        static = Path(server.__file__).parent / "static"
+        spec = json.loads((static / "life-decision-v1.json").read_text())
+        self.assertIsInstance(spec.get("input_label"), str)
+        self.assertEqual(sorted(spec["output_schema"]["properties"]["verdict"]["enum"]), ["go", "stop", "wait"])
+        rounds = json.loads((static / "let-you.json").read_text())["rounds"]
+        self.assertEqual(len(rounds), len(set(rounds)))
+
 
 if __name__ == "__main__":
     unittest.main()

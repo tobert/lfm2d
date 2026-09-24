@@ -31,6 +31,18 @@ start if the tokenizer's pieces and the probe's ids disagree. Probes run with
 - `?scene=3` starts at the third scene, for retakes.
 - The sound mapping lives in the `SOUND` object at the top of the script.
 
+## Would LFM Let You? (`/let-you`)
+
+A game show. The page uploads `life-decision-v1.json` (verdict `go` /
+`wait` / `stop`, plus the model's own `effect`, `scope` and `undo`) and
+plays `let-you.json`'s everyday proposals through it: a drumroll while it
+reads, a traffic light lit by the odds, and a counter of rounds without a
+"go for it". First take (2026-09-24): wait 96% on texting an ex, stop 79%
+on microwaving a fork ("could damage its metal coating"), wait 100% on the
+last slice of cake, go 91% on `git status`, go 87% on a glass of water
+with 13% still "sleep on it". The joke is the real finding: the verdict
+slot hedges.
+
 ## House Rules (`/house-rules`)
 
 A made-up `AGENTS.md` (`house-rules-AGENTS.md`, the file from the

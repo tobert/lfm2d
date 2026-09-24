@@ -1,0 +1,6 @@
+{
+ "about": "A prop for the Would LFM Let You? video: everyday proposals read through life-decision-v1.json, a spec the page uploads at load. The joke is the model's own deadpan; every number is live.",
+ "rounds": ["text my ex at 2am", "reply-all to the whole company with a meme", "microwave a fork to see what happens",
+            "eat the last slice of cake", "adopt a third cat", "get a tattoo of my partner's name", "git status",
+            "drink a glass of water"]
+}

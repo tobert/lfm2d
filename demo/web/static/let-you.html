@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Would LFM Let You?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0716; --ink: #fff4e6; --dim: #7d6f95; --mid: #c9b8e0; --faint: #221836;
+    --go: #4fe39a; --wait: #ffc24a; --stop: #ff4f6d; --gold: #ffd37a;
+    --serif: "Fraunces", Georgia, serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body { font-family: var(--serif); color: var(--ink); }
+  /* centred on the window; fit() scales it. A transform does not shrink the layout box, so centring by layout would push it off the bottom. */
+  #stage { position: absolute; left: 50%; top: 50%; transform-origin: center center; width: 540px; height: 960px; overflow: hidden;
+           background: radial-gradient(90% 55% at 50% 0%, #3a1d5e 0%, transparent 70%), radial-gradient(120% 70% at 50% 100%, #1d0f33 0%, var(--bg) 70%); }
+  #marquee { position: absolute; top: 28px; left: 0; right: 0; text-align: center; }
+  #marquee .t { font-size: 40px; font-weight: 700; letter-spacing: -.01em; color: var(--gold);
+                text-shadow: 0 0 18px rgba(255,211,122,.45), 0 2px 0 #7a4c12; }
+  #marquee .bulbs { margin: 8px auto 0; width: 380px; height: 8px;
+                    background: radial-gradient(circle, var(--gold) 2px, transparent 3px) 0 0 / 16px 8px; animation: chase 1s steps(2) infinite; opacity: .8; }
+  @keyframes chase { 50% { background-position: 8px 0; } }
+  #round { position: absolute; top: 112px; left: 32px; right: 32px; text-align: center; font-family: var(--mono); font-size: 12.5px;
+           letter-spacing: .2em; text-transform: uppercase; color: var(--mid); }
+  #card { position: absolute; top: 140px; left: 32px; right: 32px; height: 168px; border-radius: 16px; padding: 18px 22px;
+          background: linear-gradient(180deg, #2a1b44, #1a1030); border: 2px solid #4a3470; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  #card .l { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  #act { margin-top: 10px; font-size: 31px; line-height: 1.15; font-weight: 700; }
+  #card .clk { position: absolute; right: 18px; bottom: 12px; font-family: var(--mono); font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #take { position: absolute; top: 326px; left: 32px; right: 32px; min-height: 96px; }
+  #take .l { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  #effect { margin-top: 6px; font-size: 19px; line-height: 1.35; font-style: italic; color: var(--mid); }
+  #chips { position: absolute; top: 436px; left: 32px; right: 32px; display: flex; gap: 10px; flex-wrap: wrap; min-height: 32px; }
+  .chip { font-family: var(--mono); font-size: 13px; padding: 6px 12px; border-radius: 999px; background: #241739; border: 1px solid #4a3470;
+          opacity: 0; transform: translateY(6px); transition: opacity .35s, transform .35s; }
+  .chip.show { opacity: 1; transform: none; } .chip b { color: var(--ink); }
+  #lights { position: absolute; top: 494px; left: 50%; transform: translateX(-50%); display: flex; gap: 22px; padding: 18px 24px; border-radius: 26px;
+            background: #140d22; border: 2px solid #3a2a55; }
+  .lamp { width: 112px; text-align: center; font-family: var(--mono); }
+  .lamp .bulb { width: 96px; height: 96px; margin: 0 auto; border-radius: 50%; background: #1f1630; border: 2px solid #2d2144; transition: box-shadow .5s, background .5s; }
+  .lamp .n { margin-top: 10px; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .lamp .p { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; min-height: 30px; }
+  #call { position: absolute; top: 718px; left: 32px; right: 32px; text-align: center; font-size: 44px; font-weight: 700; min-height: 56px;
+          transform: scale(.8); opacity: 0; transition: transform .35s cubic-bezier(.3,1.6,.5,1), opacity .25s; }
+  #call.show { transform: none; opacity: 1; }
+  #callsub { position: absolute; top: 780px; left: 32px; right: 32px; text-align: center; font-size: 17px; color: var(--mid); min-height: 48px; line-height: 1.35; }
+  #hedge { position: absolute; top: 846px; left: 32px; right: 32px; font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  #hedge .bar { margin-top: 5px; height: 8px; border-radius: 4px; background: #1f1630; overflow: hidden; }
+  #hedge .bar span { display: block; height: 100%; width: 0; background: var(--wait); transition: width .6s; }
+  footer { position: absolute; bottom: 12px; left: 32px; right: 32px; font-family: var(--mono); font-size: 10px; color: var(--dim); line-height: 1.5; text-align: center; }
+  #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
+         background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
+  #end.show { opacity: 1; }
+  #end h1 { font-size: 46px; font-weight: 700; line-height: 1.1; color: var(--gold); } #end p { margin-top: 18px; font-size: 18px; color: var(--mid); line-height: 1.45; }
+  #end .url { font-family: var(--mono); font-size: 16px; color: var(--go); margin-top: 30px; }
+  #gate { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px; padding: 40px;
+          background: rgba(12,7,22,.94); font-family: var(--mono); color: var(--dim); z-index: 5; cursor: pointer; }
+  #gate h1 { font-family: var(--serif); color: var(--gold); font-size: 44px; }
+  #gate.err { color: var(--stop); cursor: default; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="marquee"><div class="t">Would LFM let you?</div><div class="bulbs"></div></div>
+  <div id="round"></div>
+  <div id="card"><div class="l">the contestant proposes</div><div id="act"></div><div class="clk" id="clk"></div></div>
+  <div id="take"><div class="l">LFM's take</div><div id="effect"></div></div>
+  <div id="chips"></div>
+  <div id="lights"></div>
+  <div id="call"></div>
+  <div id="callsub"></div>
+  <div id="hedge"></div>
+  <footer id="foot"></footer>
+  <div id="end">
+    <h1>Would LFM let you?<br>Mostly: sleep on it.</h1>
+    <p id="endp">The same engine that judges shell commands, handed a new spec at load. LFM2.5-8B-A1B describes the idea, then reads its odds. Every call was live.</p>
+    <p class="url">github.com/tobert/lfm2d</p>
+  </div>
+  <div id="gate"><h1>Would LFM let you?</h1><div id="gatemsg">warming up the studio…</div></div>
+</div>
+<script>
+"use strict";
+// A consumer page: it owns life-decision-v1.json and uploads it at load, then checks the
+// field and option names it uses against the daemon's menu. The show reads every
+// verdict option's odds; which lamp lights is just the odds, not a rule of ours.
+const SPEC_FILE = "/life-decision-v1.json", SET_FILE = "/let-you.json";
+const DESCRIBE = "effect", SCOPE = "scope", UNDO = "undo", VERDICT = "verdict";
+const LAMPS = { go: "--go", wait: "--wait", stop: "--stop" };   // this spec's verdict options, checked at load
+const CALLS = { go: "Go for it.", wait: "Sleep on it.", stop: "Absolutely not." };
+const SOUND = { tick: 0.035 };
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const params = new URLSearchParams(location.search);
+const AUTO = params.has("auto"), MUTE = params.has("mute") || AUTO;
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = p => (p >= 0.995 ? ">99" : p < 0.005 ? "<1" : Math.round(p * 100)) + "%";
+
+async function api(path, body, raw = false) {
+  const init = body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: raw ? body : JSON.stringify(body) };
+  const r = await fetch("/api" + path, init), j = await r.json();
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${j.error?.message ?? JSON.stringify(j)}`);
+  return j;
+}
+
+let D, minMass = 1;
+async function prepare() {
+  const spec = await (await fetch(SPEC_FILE)).text(), set = await (await fetch(SET_FILE)).json();
+  const reg = await api("/v1/opinion/specs", spec, true);
+  const menu = (await api("/v1/opinion/specs")).find(m => m.id === reg.id);
+  if (!menu) throw new Error("uploaded spec is not on the menu");
+  const field = n => menu.fields.find(f => f.field === n) ?? (() => { throw new Error(`spec has no field "${n}"`); })();
+  const opts = field(VERDICT).options;
+  if (JSON.stringify([...opts].sort()) !== JSON.stringify(Object.keys(LAMPS).sort())) throw new Error(`verdict options ${opts} are not this show's lamps`);
+  for (const f of [SCOPE, UNDO]) if (field(f).kind !== "choice") throw new Error(`"${f}" is not a choice field`);
+  if (field(DESCRIBE).kind !== "text") throw new Error(`"${DESCRIBE}" is not a text field`);
+  D = { info: await api("/v1/adjudicator"), spec: reg.id, opts, rounds: set.rounds,
+        questions: menu.fields.filter(f => f.kind === "choice").map(f => ({ field: f.field })) };
+  if (params.get("cache") !== "keep") {   // a first take reads fresh: push the described-state LRU past its capacity
+    const decoys = Math.ceil(menu.described_cache_capacity / D.questions.length) + 1;
+    for (let i = 0; i < decoys; i++) {
+      $("gatemsg").textContent = `warming up the studio… ${i + 1}/${decoys}`;
+      await api("/v1/opinion", { spec: reg.id, state: { input: `hum quietly for a moment (${i}-${Date.now()})` }, questions: D.questions, use_cache: true });
+    }
+  }
+}
+
+async function read(input) {
+  const t0 = performance.now(); let live = true;
+  (async () => { while (live) { $("clk").textContent = `the judge is thinking… ${Math.round(performance.now() - t0)} ms`; await sleep(33); } })();
+  drumroll(true);
+  try {
+    const r = await api("/v1/opinion", { spec: D.spec, state: { input }, questions: D.questions, use_cache: true });
+    const wall = performance.now() - t0;
+    minMass = Math.min(minMass, ...r.answers.map(a => Math.exp(a.first_token_mass))); footer();
+    const odds = f => Object.fromEntries(r.answers.find(a => a.field === f).options.map(o => [o.option, o.prob]));
+    $("clk").textContent = `${Math.round(wall)} ms`;
+    return { wrote: Object.fromEntries(r.described.map(d => [d.field, d.value])), verdict: odds(VERDICT) };
+  } finally { live = false; drumroll(false); }
+}
+function footer() {
+  const i = D.info;
+  $("foot").innerHTML = `${esc(i.model_id)} · candle · ${i.backend === "rocm" ? "ROCm" : esc(i.backend)} on Strix Halo · live /v1/opinion · spec ${D.spec.slice(0, 12)} uploaded at load` +
+    (minMass < 1 ? `<br>answer-set mass ≥ ${(100 * minMass).toFixed(1)}%` : "");
+}
+
+// --- sound ---
+let ac, master, roll;
+function audioInit() { ac = new AudioContext(); const c = ac.createDynamicsCompressor(); master = ac.createGain(); master.gain.value = 0.9; master.connect(c); c.connect(ac.destination); }
+function tone(freq, type, gain, dur, at = 0, glide) {
+  if (MUTE || !ac) return; const t = ac.currentTime + 0.005 + at, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t); if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(gain, dur, hp = 2400) {
+  if (MUTE || !ac) return; const n = ac.sampleRate * dur, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 5);
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = b; f.type = "highpass"; f.frequency.value = hp; g.gain.value = gain; s.connect(f); f.connect(g); g.connect(master); s.start();
+}
+const tick = () => noise(SOUND.tick, 0.02);
+function drumroll(on) {   // a snare roll while the judge thinks
+  if (MUTE || !ac) return;
+  if (on) roll = setInterval(() => noise(0.05, 0.05, 900), 55); else { clearInterval(roll); noise(0.12, 0.25, 500); }
+}
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+function sting(call) {
+  if (call === "go") [72, 76, 79, 84].forEach((m, j) => tone(midi(m), "triangle", 0.09, 0.5, j * 0.07));
+  else if (call === "wait") { tone(midi(62), "sawtooth", 0.06, 0.45, 0, midi(58)); tone(midi(58), "sawtooth", 0.06, 0.8, 0.42, midi(51)); }
+  else { tone(midi(40), "square", 0.1, 0.9); tone(midi(41), "square", 0.08, 0.9); }
+}
+
+// --- picture ---
+function lamps() {
+  $("lights").innerHTML = D.opts.map(o => `<div class="lamp" id="lamp-${o}"><div class="bulb"></div><div class="n">${esc(o)}</div><div class="p"></div></div>`).join("");
+}
+function light(v) {
+  for (const o of D.opts) {
+    const el = $("lamp-" + o), c = getComputedStyle(document.documentElement).getPropertyValue(LAMPS[o]).trim(), p = v[o] ?? 0;
+    el.querySelector(".bulb").style.background = `color-mix(in srgb, ${c} ${Math.round(12 + 88 * p)}%, #1f1630)`;
+    el.querySelector(".bulb").style.boxShadow = p > 0.05 ? `0 0 ${Math.round(10 + 60 * p)}px ${c}` : "none";
+    el.querySelector(".p").textContent = pct(p); el.querySelector(".p").style.color = p >= 0.5 ? c : "var(--dim)";
+  }
+}
+async function typeAct(text) { $("act").textContent = ""; for (const ch of text) { $("act").insertAdjacentText("beforeend", ch); if (ch !== " ") tick(); await sleep(50); } }
+async function typeEffect(text) { $("effect").textContent = ""; for (const ch of text) { $("effect").insertAdjacentText("beforeend", ch); await sleep(14); } }
+
+async function round(act, n, tally) {
+  $("round").textContent = n === D.rounds.length - 1 ? "the final round" : `round ${n + 1}`;
+  $("effect").textContent = ""; $("chips").innerHTML = ""; $("call").classList.remove("show"); $("callsub").textContent = ""; $("clk").textContent = "";
+  light(Object.fromEntries(D.opts.map(o => [o, 0])));
+  await typeAct(act); await sleep(500);
+  const r = await read(act);
+  await typeEffect(r.wrote[DESCRIBE]); await sleep(300);
+  for (const [f, label] of [[SCOPE, "affects"], [UNDO, "take it back"]]) {
+    const c = document.createElement("div"); c.className = "chip"; c.innerHTML = `${label}: <b>${esc(r.wrote[f] ?? "?")}</b>`;
+    $("chips").append(c); await sleep(40); c.classList.add("show"); tick(); await sleep(380);
+  }
+  await sleep(300);
+  light(r.verdict);
+  const top = D.opts.reduce((a, b) => (r.verdict[b] > r.verdict[a] ? b : a));
+  $("call").textContent = CALLS[top]; $("call").style.color = `var(${LAMPS[top]})`; $("call").classList.add("show"); sting(top);
+  const second = D.opts.filter(o => o !== top).reduce((a, b) => (r.verdict[b] > r.verdict[a] ? b : a));
+  $("callsub").innerHTML = top === "go" && r.verdict[second] >= 0.1
+    ? `…but ${pct(r.verdict[second])} says ${esc(CALLS[second].toLowerCase().replace(".", ""))}.`
+    : `${pct(r.verdict[top])} sure.`;
+  if (top !== "go") tally.hedged++;
+  tally.done++;
+  $("hedge").innerHTML = `rounds without a “go for it”: ${tally.hedged} of ${tally.done}<div class="bar"><span style="width:${(100 * tally.hedged / tally.done).toFixed(1)}%"></span></div>`;
+  await sleep(n === D.rounds.length - 1 ? 4200 : 2900);
+  return { act, top, verdict: r.verdict };
+}
+
+function fit() { const k = Math.min(innerWidth / 540, innerHeight / 960); $("stage").style.transform = `translate(-50%, -50%) scale(${k})`; }
+addEventListener("resize", fit); fit();
+
+(async () => {
+  try { await prepare(); }
+  catch (e) { $("gate").classList.add("err"); $("gatemsg").textContent = String(e.message ?? e); throw e; }
+  footer(); lamps();
+  $("gatemsg").textContent = MUTE ? "click to begin (muted)" : "click to begin · sound on";
+  if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
+  if (!MUTE) audioInit();
+  $("gate").remove(); await sleep(500);
+  const tally = { hedged: 0, done: 0 }, results = [];
+  try { for (const [n, act] of D.rounds.entries()) results.push(await round(act, n, tally)); }
+  catch (e) { $("call").textContent = "Technical difficulties."; $("call").classList.add("show"); $("callsub").textContent = String(e.message ?? e); throw e; }
+  const goes = results.filter(r => r.top === "go").map(r => `“${r.act}”`);
+  $("endp").innerHTML = `It said go to ${goes.length ? goes.join(" and ") : "nothing"}. ` + $("endp").innerHTML;
+  $("end").classList.add("show");
+})();
+</script>
+</body>
+</html>
