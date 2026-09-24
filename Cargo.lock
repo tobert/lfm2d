@@ -1499,7 +1499,6 @@ name = "lfm2-encoder"
 version = "0.0.1"
 dependencies = [
  "ahash",
- "anyhow",
  "candle-core",
  "candle-nn",
  "serde",

@@ -33,7 +33,6 @@ cuda = ["candle-core/cuda", "candle-nn/cuda"]
 metal = ["candle-core/metal", "candle-nn/metal"]
 
 [dev-dependencies]
-anyhow = "1"
 # For building a synthetic tokenizer.json in tests/sequence_classification_guards.rs
 # (WordLevel's vocab builder wants tokenizers' own hasher). Already in the
 # dependency tree transitively via tokenizers itself.
