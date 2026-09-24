@@ -1,7 +1,7 @@
 //! `POST /v1/tokenize`: per-model tokenization, answered on the request
 //! handler over a CLONED tokenizer — it never touches a worker's job queue,
 //! so it answers even while the adjudicator or an encoder head is mid-job.
-//! Ruled 2026-09-23, `docs/system1-split-plan.md` "Tokenize and probe
+//! Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Tokenize and probe
 //! endpoints".
 //!
 //! `model` names any loaded model with its own tokenizer — the adjudicator

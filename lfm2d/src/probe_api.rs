@@ -6,7 +6,7 @@
 //! a loaded spec's menu — see that module's docs for why that restriction
 //! exists there and does not here.
 //!
-//! Ruled 2026-09-23, `docs/system1-split-plan.md` "Tokenize and probe
+//! Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Tokenize and probe
 //! endpoints". Types and request validation live here, mirroring
 //! [`crate::opinion_api`]; the engine (rendering, warm-prefix resume,
 //! continuation scoring, greedy generation) lives in `adjudicator.rs`

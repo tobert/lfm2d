@@ -236,7 +236,7 @@ async fn refused_opinion_requests_never_enter_the_generator() {
     let router = lfm2d::adjudicator::router(handle, true);
     // An unknown spec is its own case, 404 not 400: it's the client's cue
     // to upload the spec (`POST /v1/opinion/specs`) and retry, not "this
-    // request is malformed" — see `docs/system1-split-plan.md` "Runtime
+    // request is malformed" — see `docs/system1-split-plan.md` (git f9ca081) "Runtime
     // spec registration".
     let (status, value) = post(
         &router,

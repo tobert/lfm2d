@@ -169,7 +169,7 @@ pub struct SpecMenuEntry {
     /// kaibo's CAS digest and `lfm2d::hash::sha256_hex_bytes`. Identity for
     /// every spec, boot or uploaded; `POST /v1/opinion` and
     /// `POST /v1/adjudicate` accept it wherever they accept `spec`. See
-    /// `docs/system1-split-plan.md` "Runtime spec registration".
+    /// `docs/system1-split-plan.md` (git f9ca081) "Runtime spec registration".
     pub id: String,
     /// A boot-time spec's file stem (`--opinion-spec` specs are named this
     /// way and answer to it as well as to `id`). An uploaded spec has no

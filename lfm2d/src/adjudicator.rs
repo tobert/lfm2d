@@ -250,7 +250,7 @@ pub struct AdjudicateRequest {
     pub timeout_ms: u64,
     /// Per-generated-token distributions (top-k logprobs, raw named-set
     /// mass). Omitted entirely (the default) => `AdjudicateResponse` is
-    /// today's shape, byte-identical; see `docs/field-requests.md`
+    /// today's shape, byte-identical; see `docs/field-requests.md` (git f9ca081)
     /// decision 5 and [`crate::types::DistributionRequest`].
     #[serde(default)]
     pub distributions: Option<crate::types::DistributionRequest>,
@@ -265,7 +265,7 @@ pub struct AdjudicateRequest {
     /// that refusal can say that, instead of serde's bare "missing field".
     /// An escalation from `POST /v1/opinion` resumes from that spec's
     /// described cache only when `spec` names the SAME spec the opinion read
-    /// used — see `docs/system1-split-plan.md` "Runtime spec registration".
+    /// used — see `docs/system1-split-plan.md` (git f9ca081) "Runtime spec registration".
     #[serde(default)]
     pub spec: Option<String>,
 }
@@ -980,7 +980,7 @@ impl<'a> From<&'a Checkpoint> for CheckpointView<'a> {
 struct LoadedSpec {
     /// Lowercase hex sha256 of the exact bytes this spec was loaded from.
     /// Content-addressed identity — see [`crate::hash::sha256_hex_bytes`]
-    /// and `docs/system1-split-plan.md` "Runtime spec registration".
+    /// and `docs/system1-split-plan.md` (git f9ca081) "Runtime spec registration".
     id: String,
     /// A boot spec's file stem; an uploaded spec has no file, so this
     /// equals `id`. `/v1/opinion` and `/v1/adjudicate` accept either.
@@ -1334,7 +1334,7 @@ impl SpecIdentity for LoadedSpec {
 /// least-recently-used cache of runtime-uploaded specs
 /// (`POST /v1/opinion/specs`). Pure data structure — no model access, no I/O
 /// — so the dedup/eviction rules "Runtime spec registration" rules on
-/// (`docs/system1-split-plan.md`) are unit-tested below without a
+/// (`docs/system1-split-plan.md` (git f9ca081)) are unit-tested below without a
 /// checkpoint. [`Adjudicator`] is the only production user; `T` is
 /// [`LoadedSpec`] there.
 struct SpecStore<T> {
@@ -1392,7 +1392,7 @@ impl<T: SpecIdentity> SpecStore<T> {
     /// LRU order, never "whichever is checked first"). A hit on an
     /// UPLOADED spec touches it to the back of the LRU, same as
     /// [`SpecStore::resolve_mut`]'s hit does: "served-or-registered = use"
-    /// (`docs/system1-split-plan.md` "Runtime spec registration") applies
+    /// (`docs/system1-split-plan.md` (git f9ca081) "Runtime spec registration") applies
     /// here exactly as it does to a request that names the spec by id —
     /// resuming its resident state IS serving a request against it.
     /// `prefix_ids` extracts each spec's resident-prefix token ids; a
@@ -1607,7 +1607,7 @@ impl Adjudicator {
     /// (`crate::tokenize_api`). `main.rs` calls this BEFORE handing `self`
     /// to [`Handle::spawn`], which moves it into the worker thread — the
     /// whole point of cloning here is that tokenizing never waits behind
-    /// the worker's model queue (`docs/system1-split-plan.md` "Tokenize
+    /// the worker's model queue (`docs/system1-split-plan.md` (git f9ca081) "Tokenize
     /// and probe endpoints"). `tokenizers::Tokenizer` clones cheaply (its
     /// heavy pieces — the vocabulary, the merge table — are reference
     /// counted internally), so this is not a second copy of the vocabulary.

@@ -254,7 +254,7 @@ pub struct SpanResult {
 
 // -------------------------------------------------------- /v1/adjudicate distributions
 //
-// `docs/field-requests.md` decision 5: every model-filled field carries its
+// `docs/field-requests.md` (git f9ca081) decision 5: every model-filled field carries its
 // distribution, in LOG-SPACE (values saturate — 0.993 vs 0.927 is typical,
 // live winner margins have been seen at 5e-9, and probability floats smear
 // an ordering logprobs keep), and a named token set's mass is reported RAW
