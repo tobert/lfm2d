@@ -625,7 +625,7 @@ runtime. The guide's
 "The opinion API" section has the shapes and the numbers;
 `docs/integration.md` invariants 8–14 are its contract. It deploys as its
 own GPU service, `lfm2d-system1` (`Containerfile.rocm`,
-`deploy/k8s-zorak-system1.yaml`), beside this encoder sidecar rather than
+`deploy/k8s-system1.yaml`), beside this encoder sidecar rather than
 inside it.
 
 A spec can also be registered at runtime — `POST /v1/opinion/specs` (body:

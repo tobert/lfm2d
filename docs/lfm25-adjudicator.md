@@ -86,10 +86,10 @@ inside it: `lfm2d/Containerfile.rocm` builds the `rocm` feature on
 `rocm/dev-ubuntu-24.04:<host ROCm version>` (the binary links the ROCm
 runtime dynamically, and candle compiles its kernels with `hipcc` at first
 run for the GPU it finds, cached under `CANDLE_ROCM_CACHE_DIR`), and
-`lfm2d/deploy/k8s-zorak-system1.yaml` runs it with one GPU from the AMD
-device plugin, the GGUF, tokenizer and embedder from a hostPath, only the
-demo prop specs baked into the image (consumers upload theirs), and its own
-Tailscale identity. The manifest's comments
+`lfm2d/deploy/k8s-system1.yaml` runs it with one GPU from the AMD
+device plugin, the GGUF, tokenizer and embedder from a mounted volume, and
+only the demo prop specs baked into the image (consumers upload theirs).
+The manifest's comments
 carry the measured memory numbers and every deliberate difference from
 the encoder pod.
 

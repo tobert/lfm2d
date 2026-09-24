@@ -102,8 +102,8 @@ spec:
               # at f32 (`candle-mmap-loads-are-copies`; measured 2,849,368
               # KiB VmRSS for two heads, peak VmHWM 4,225,404 KiB during
               # load). The three heads in `args:` above are the same shape
-              # as the frozen zorak pod's three (a classifier, the router,
-              # the PII-Detector), which runs at 4,166 MiB steady state
+              # as the author's frozen deployment's three (a classifier, the
+              # router, the PII-Detector), which runs at 4,166 MiB steady state
               # (`kubectl top`, 2026-09-24) on a 6Gi request. Load-time
               # peak runs ~1.4x steady state, so size off the peak: an
               # OOM-kill mid-boot is a worse failure than requesting more.

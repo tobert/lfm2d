@@ -27,7 +27,7 @@ git.
 |---|---|
 | consumer contract (numbered invariants, never renumbered) | `docs/integration.md` |
 | daemon API, deploy notes, known problems | `lfm2d/README.md` |
-| deploy examples | `lfm2d/deploy/` — a generic k8s manifest, a quadlet unit, and the host-specific manifests beside them |
+| deploy examples | `lfm2d/deploy/` — generic k8s manifests (encoder heads, `lfm2d-system1` on one GPU) and a quadlet unit; host-specific manifests live outside the repo |
 | opinion engine: build, API, validation | `docs/lfm25-adjudicator.md` |
 | opinion API types and spec menu | `lfm2d/src/opinion_api.rs`; engine in `adjudicator.rs` |
 | engine performance record | `docs/lfm25-*.md` (kernels, cache, fusion, GQA, prefill), numbers in `benchmarks/lfm25/results/` |

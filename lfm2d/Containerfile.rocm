@@ -3,16 +3,16 @@
 # Two stages, like lfm2d/Containerfile: a builder produces the release
 # binary with the `rocm` feature, the runtime ships that binary plus the
 # demo prop specs. The GGUF, tokenizer and checkpoints are mounted at runtime
-# (deploy/k8s-zorak-system1.yaml), never baked in.
+# (deploy/k8s-system1.yaml), never baked in.
 #
-#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.3.1 \
+#   podman build -t lfm2d-system1:latest \
 #       -f lfm2d/Containerfile.rocm .
 #
 # Build context is the repo ROOT; .containerignore allowlists what is
 # COPYed here, so a new COPY needs a line there in the same edit.
 #
-# Base: the ROCm version must match the node's driver generation — zorak
-# runs ROCm 7.2.4 (`/opt/rocm/.info/version`), and the binary links
+# Base: the ROCm version must match the node's driver generation — the
+# author's gfx1151 host runs ROCm 7.2.4 (`/opt/rocm/.info/version`), and the binary links
 # libamdhip64.so.7 / librocblas.so.5 / librocrand.so.1 /
 # libhsa-runtime64.so.1 dynamically. rocm/dev-ubuntu-24.04:7.2.4 (1.2 GB
 # compressed) carries the HIP toolchain and runtime but NOT the math
@@ -86,8 +86,8 @@ RUN mkdir -p /models /var/cache/candle-rocm && chown lfm2d:lfm2d /models /var/ca
 ENV CANDLE_ROCM_CACHE_DIR=/var/cache/candle-rocm PATH=/opt/rocm/bin:$PATH
 
 # GPU access: the AMD device plugin mounts /dev/kfd and the render node
-# into the pod; the render node is group-owned (`render`, gid 987 on
-# zorak), so the manifest adds that gid as a supplemental group for this
+# into the pod; the render node is group-owned (`render`; read the gid
+# with `getent group render`), so the manifest adds that gid as a supplemental group for this
 # non-root user. Nothing here runs as root.
 USER lfm2d
 EXPOSE 8088

@@ -1,0 +1,139 @@
+# lfm2d-system1 — the opinion engine (LFM2.5-8B-A1B: `/v1/opinion`,
+# `/v1/adjudicate`, `/v1/probe`, `/v1/tokenize`) on one GPU, as its own
+# Deployment beside the encoder pod in k8s.yaml. Generalized from the
+# author's single-node AMD (gfx1151, ROCm 7.2) deployment; every number
+# below was measured there and is a starting point, not a property of
+# your cluster.
+#
+# Build the image from the repo ROOT (see ../Containerfile.rocm):
+#   podman build -t lfm2d-system1:latest -f lfm2d/Containerfile.rocm .
+# then push it somewhere this cluster can pull from and update `image:`.
+# The ROCm runtime in the image must match the node's driver generation.
+#
+# Differences from the encoder pod, all deliberate:
+#   * the `rocm` feature and a ROCm runtime base; only the demo prop spec
+#     is baked in (/etc/lfm2d/demo-specs). Consumers upload their own
+#     specs at runtime (`POST /v1/opinion/specs`). A baked boot spec is
+#     part of `snapshot_id`, so changing one is a release;
+#   * one GPU through the vendor's device plugin (`amd.com/gpu` here);
+#   * one replica with `Recreate`: a rolling update would need a second
+#     GPU to schedule the new pod before the old one leaves;
+#   * memory: the process itself is small (measured VmRSS ~400 MiB
+#     steady, VmHWM ~730 MiB at load). The ~6.8 GiB of weights and state
+#     live GPU-side. On an APU that is host RAM in GTT, OUTSIDE the
+#     cgroup's accounting, so the kubelet never sees it. Leave headroom on
+#     the node for it;
+#   * one serial worker, like the encoder pod: throughput is 1/latency,
+#     about one cache miss per second, tens per second on described-cache
+#     hits.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lfm2d-system1
+  labels:
+    app: lfm2d-system1
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: lfm2d-system1 }
+  template:
+    metadata:
+      labels: { app: lfm2d-system1 }
+    spec:
+      # The daemon drains and exits 0 within ~0.3 s of SIGTERM. A restart
+      # is still minutes, and none of it is the daemon: measured 129 s and
+      # 295 s delete-to-ready, mostly the device plugin re-offering the
+      # freed GPU (FailedScheduling backoff) and allocating it to the new
+      # container. With one GPU that is downtime; a second GPU node is the
+      # fix, not a shorter grace period.
+      terminationGracePeriodSeconds: 30
+      # The GPU's render node is group-owned on the host; a non-root
+      # container user needs those groups. Read the host's gids with
+      # `getent group render video` and put them here.
+      securityContext:
+        supplementalGroups: [RENDER_GID, VIDEO_GID]
+      containers:
+        - name: lfm2d-system1
+          image: localhost/lfm2d-system1:latest
+          args:
+            # The GGUF and the Hub tokenizer, side by side (see the root
+            # README's "Getting the weights"). Every published opinion-engine
+            # number was measured on Q5_K_M.
+            - --adjudicator-model=/models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf
+            - --adjudicator-tokenizer=/models/LFM2.5-8B-A1B/tokenizer.json
+            # The only boot spec is the demos' invented support-inbox prop.
+            # There is no default spec: every /v1/opinion and
+            # /v1/adjudicate request names one.
+            - --opinion-spec=/etc/lfm2d/demo-specs/email-triage-v1.json
+            # Optional: an embedder on its own worker queue beside the
+            # adjudicator. Light (~16 ms single on the GPU) and cheap to
+            # keep resident.
+            - --embedder-dir=/models/LFM2.5-Embedding-350M
+            - --adjudicator-context=4096
+            - --device=rocm
+            # 8 was the flat region for the encoder heads on a 32-core
+            # host; the adjudicator's work is on the GPU. Sweep before
+            # changing.
+            - --threads=8
+            - --bind-addr=0.0.0.0:8088
+          ports:
+            - containerPort: 8088
+          env:
+            # Point at your OTLP collector, or delete these to run with
+            # telemetry export off.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4317"
+            - name: OTEL_SERVICE_NAME
+              value: lfm2d-system1
+            - name: RAYON_NUM_THREADS
+              value: "8"
+            # candle compiles its ROCm kernels with hipcc on first run for
+            # the GPU it finds and caches them here. The volume below keeps
+            # that across restarts; it is keyed by arch and ROCm version, so
+            # a driver upgrade recompiles rather than reuses.
+            - name: CANDLE_ROCM_CACHE_DIR
+              value: /var/cache/candle-rocm
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+            - { name: kernel-cache, mountPath: /var/cache/candle-rocm }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8088 }
+            periodSeconds: 5
+            failureThreshold: 1
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8088 }
+            periodSeconds: 10
+            failureThreshold: 3
+          # Load hashes the 6 GB GGUF and prefills every boot spec's prefix:
+          # ~12 s warm, longer from a cold disk, plus the first-run kernel
+          # compile. The image pull (10+ GB: rocblas ships kernels for every
+          # architecture) happens before this starts counting.
+          startupProbe:
+            httpGet: { path: /readyz, port: 8088 }
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "4"
+            limits:
+              amd.com/gpu: 1
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: lfm2-models
+        # The compiled kernels are cheap to lose; an emptyDir costs one
+        # recompile per pod start. Use a persistent volume to skip it.
+        - name: kernel-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lfm2d-system1
+spec:
+  selector: { app: lfm2d-system1 }
+  ports:
+    - port: 8088
+      targetPort: 8088
