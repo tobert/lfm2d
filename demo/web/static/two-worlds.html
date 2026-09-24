@@ -15,7 +15,9 @@
   }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; background: #000; overflow: hidden; }
-  body { display: grid; place-items: center; font-family: var(--serif); color: var(--ink); }
+  body { font-family: var(--serif); color: var(--ink); }
+  /* centred on the window; fit() scales it. A transform does not shrink the layout box, so centring by layout would push it off the bottom. */
+  #stage { position: absolute !important; left: 50%; top: 50%; transform-origin: center center; }
   #stage { width: 540px; height: 960px; position: relative; overflow: hidden;
            background: radial-gradient(120% 70% at 50% 45%, #10131c 0%, var(--bg) 70%); }
   header { position: absolute; top: 34px; left: 30px; right: 30px; }
@@ -271,7 +273,7 @@ async function playCase(c, n) {
   await sleep(gap >= 0.25 ? 4600 : 5800);
 }
 
-function fit() { K = Math.min(innerWidth / 540, innerHeight / 960); $("stage").style.transform = `scale(${K})`; }
+function fit() { K = Math.min(innerWidth / 540, innerHeight / 960); $("stage").style.transform = `translate(-50%, -50%) scale(${K})`; }
 addEventListener("resize", fit); fit();
 
 (async () => {
