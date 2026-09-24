@@ -5,7 +5,7 @@
 # demo prop specs. The GGUF, tokenizer and checkpoints are mounted at runtime
 # (deploy/k8s-zorak-system1.yaml), never baked in.
 #
-#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.2.0 \
+#   podman build -t 192.168.1.2:3000/amy/lfm2d-system1:0.3.0 \
 #       -f lfm2d/Containerfile.rocm .
 #
 # Build context is the repo ROOT; .containerignore allowlists what is
