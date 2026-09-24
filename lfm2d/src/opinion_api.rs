@@ -30,7 +30,7 @@ use crate::adjudicator::{PrefixInfo, PromptSpec, validate_text};
 use crate::opinion::OpinionRead;
 use serde::{Deserialize, Serialize};
 
-const MAX_STATE_BYTES: usize = 65536;
+pub(crate) const MAX_STATE_BYTES: usize = 65536;
 
 fn yes() -> bool {
     true
@@ -445,6 +445,19 @@ pub fn margin(probs: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An opinion escalates by sending its rendered state as
+    /// `/v1/adjudicate`'s `input`, so the largest state this route accepts,
+    /// rendered under the longest label a spec may carry, must fit there.
+    #[test]
+    fn a_full_size_state_still_fits_adjudicate_once_rendered() {
+        let largest_rendered = MAX_STATE_BYTES + crate::adjudicator::MAX_INPUT_LABEL_BYTES + ":\n".len();
+        assert!(
+            crate::adjudicator::MAX_INPUT_BYTES >= largest_rendered,
+            "{} < {largest_rendered}: a full-size opinion could not be escalated",
+            crate::adjudicator::MAX_INPUT_BYTES
+        );
+    }
 
     #[test]
     fn slot_text_is_the_key_as_the_grammar_writes_it() {

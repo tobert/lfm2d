@@ -37,6 +37,12 @@ fn input_label_is_required_and_refused_unless_it_is_one_plain_line() {
         let error = spec(bad).render_prefix().expect_err(bad);
         assert!(error.contains("input_label"), "{bad:?}: {error}");
     }
+    // Bounded, so a full-size opinion state still fits /v1/adjudicate's
+    // input once its label is rendered (escalation must never 400).
+    let longest = "L".repeat(lfm2d::adjudicator::MAX_INPUT_LABEL_BYTES);
+    assert!(spec(&longest).render_prefix().is_ok(), "a label at the cap is fine");
+    let error = spec(&format!("{longest}L")).render_prefix().expect_err("a label past the cap");
+    assert!(error.contains("input_label"), "{error}");
 }
 #[test]
 fn tool_schema_is_part_of_the_frozen_system_prompt() {

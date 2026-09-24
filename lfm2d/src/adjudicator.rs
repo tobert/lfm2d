@@ -35,7 +35,15 @@ pub(crate) const CHUNK: usize = 128;
 /// puts it anywhere else.
 const EOS: u32 = 124900;
 const MAX_NEW: usize = 2048;
-pub(crate) const MAX_INPUT_BYTES: usize = 65536;
+/// `/v1/adjudicate`'s input cap: `/v1/opinion`'s 64 KiB state plus
+/// headroom for the rendered `{input_label}:\n`, so an escalation of a
+/// full-size opinion is never refused (pinned by
+/// `opinion_api::tests::a_full_size_state_still_fits_adjudicate_once_rendered`).
+pub(crate) const MAX_INPUT_BYTES: usize = 65536 + 1024;
+/// The longest `input_label` a spec may carry. Bounded so a full-size
+/// opinion state, rendered under its label, still fits `MAX_INPUT_BYTES`
+/// when a consumer escalates it to `/v1/adjudicate`.
+pub const MAX_INPUT_LABEL_BYTES: usize = 64;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -185,6 +193,9 @@ impl PromptSpec {
         if label.contains("<|") || label.contains("<think>") || label.contains("</think>") {
             return Err("input_label must not carry model control tokens".into());
         }
+        if label.len() > MAX_INPUT_LABEL_BYTES {
+            return Err(format!("input_label is {} bytes; at most {MAX_INPUT_LABEL_BYTES}", label.len()));
+        }
         Ok(())
     }
 
@@ -293,7 +304,7 @@ impl AdjudicateRequest {
         self.spec_key()?;
         validate_text(&self.input)?;
         if self.input.len() > MAX_INPUT_BYTES {
-            return Err("input exceeds 65536 bytes".into());
+            return Err(format!("input exceeds {MAX_INPUT_BYTES} bytes"));
         }
         if self.max_tokens == 0 || self.max_tokens > MAX_NEW {
             return Err("max_tokens must be 1..=2048".into());
@@ -433,7 +444,7 @@ impl IntoResponse for Failure {
             Self::NotFound(s) => (StatusCode::NOT_FOUND, "not_found", s),
             Self::Unprocessable(s) => (StatusCode::UNPROCESSABLE_ENTITY, "unprocessable", s),
             Self::Forbidden(s) => (StatusCode::FORBIDDEN, "forbidden", s),
-            Self::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", s),
+            Self::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", s),
             Self::Cancelled => (
                 StatusCode::REQUEST_TIMEOUT,
                 "cancelled",
@@ -1215,6 +1226,39 @@ pub(crate) fn suffix_is_stable(
 /// `snapshot_id` must cover the spec's `input_label`: the label is rendered
 /// into every user turn, never the prefix, so nothing else in the identity
 /// sees it. Model-free: the identity is a pure function of its inputs.
+/// The opinion engine's error `type`s are the vocabulary `lfm2d/README.md`
+/// documents, and a 500 is spelled like the encoder routes' (`"internal"`,
+/// `types::ApiError`), so a consumer switching on `type` meets one word for
+/// one failure across the daemon.
+#[cfg(test)]
+mod failure_wire_tests {
+    use super::*;
+
+    async fn kind(f: Failure) -> (u16, String) {
+        let response = f.into_response();
+        let status = response.status().as_u16();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        (status, v["error"]["type"].as_str().unwrap().to_string())
+    }
+
+    #[tokio::test]
+    async fn every_failure_speaks_the_documented_vocabulary() {
+        let cases = [
+            (Failure::BadRequest("x".into()), 400, "bad_request"),
+            (Failure::NotFound("x".into()), 404, "not_found"),
+            (Failure::Forbidden("x".into()), 403, "forbidden"),
+            (Failure::Unprocessable("x".into()), 422, "unprocessable"),
+            (Failure::Cancelled, 408, "cancelled"),
+            (Failure::Deadline, 504, "deadline"),
+            (Failure::Internal("x".into()), 500, "internal"),
+        ];
+        for (failure, status, expected) in cases {
+            assert_eq!(kind(failure).await, (status, expected.to_string()));
+        }
+    }
+}
+
 #[cfg(test)]
 mod snapshot_id_tests {
     use super::*;

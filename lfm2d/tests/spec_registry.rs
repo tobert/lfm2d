@@ -559,3 +559,23 @@ async fn adjudicate_with_spec_names_the_uploaded_id_to_the_generator() {
         "the resolved spec id reaches the generator's request"
     );
 }
+
+/// `GET /v1/adjudicator` is the checkpoint, not a spec: with no spec
+/// privileged there is no single `snapshot_id`, `template_version` or
+/// `prefix_tokens` to report here. Those live on each menu entry. Pinned as
+/// the exact key set, so a spec field creeping back (or a checkpoint field
+/// going missing) fails here, not in a consumer.
+#[tokio::test]
+async fn adjudicator_info_is_the_checkpoint_only() {
+    let handle = Handle::spawn(Fake::new(vec![], 8), (&info()).into());
+    let router = lfm2d::adjudicator::router(handle, true);
+    let (status, v) = get(&router, "/v1/adjudicator").await;
+    assert_eq!(status, 200, "{v}");
+    let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        ["backend", "context_limit", "dtype", "model_id", "sampling", "tokenizer_hash", "weight_dtypes", "weight_hash"]
+    );
+    assert_eq!(v["weight_hash"], "hash", "the checkpoint identity comes from the loaded model");
+}
