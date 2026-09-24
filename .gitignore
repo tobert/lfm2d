@@ -16,5 +16,9 @@
 # and never read into an agent's context.
 /data
 *.jsonl
+# The retired training tree (moved out 2026-09-24) still has local,
+# corpus-derived leftovers in checkouts that had it: relabel logs, bulk
+# chunks. Never tracked, and never to become committable.
+/training/
 __pycache__/
 .venv-train/
