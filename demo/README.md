@@ -270,12 +270,23 @@ upload's `spec` is its content hash, never a file stem.
   field with at least three options (`feeling`; `verdict` has two, and the
   daemon refuses a one-option question). The grammar walks the model to
   the slot, so high full-menu mass proves the question was put, not that
-  the input made sense. Measured 2026-09-24 on the author's lfm2d-system1 deployment (image 0.3.0) with
-  `feeling` over `inputs/asked.txt` (n=4): three emoji 100.0%, "what is
-  the capital of France?" 93.3%, the cancellation email 99.3%, and the
-  store-hours email 82.1% — a real email read lower than emoji. On the
-  shell spec the acts were built against it was ~99.9% on everything. Narrowing drops the mass by what
-  the omitted options held while `prob` renormalises the rest into a
+  the input made sense. Full-menu mass on `feeling` over the four items
+  in `inputs/asked.txt` (its fifth line re-asks the cancellation on a
+  subset), on the author's lfm2d-system1 deployment:
+
+  | item | v2, image 0.3.2, 2026-09-25 | v1, image 0.3.0, 2026-09-24 |
+  |---|---|---|
+  | the cancellation email | 99.8% | 99.3% |
+  | "what is the capital of France?" | 95.5% | 93.3% |
+  | the store-hours email | 86.8% | 82.1% |
+  | three emoji | 70.5% | 100.0% |
+
+  v2 reworded only the verdict rules, and the mass on a field those rules
+  never mention moved by 29.5 points on the emoji. A question about France
+  still reads above a real email, so the mass says the question was put,
+  not that the input made sense. The shell spec the acts were first built
+  against read ~99.9% on everything. Narrowing drops the mass by what the
+  omitted options held while `prob` renormalises the rest into a
   confident-looking answer. Invariant 9, on one screen.
 
 Every script checks its spec, field and options against
