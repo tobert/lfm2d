@@ -20,7 +20,9 @@ daemon — see [`lfm2d/README.md`](lfm2d/README.md)). The daemon serves:
   [engine performance record](docs/lfm25-qkv-input-cache.md).
 
 The daemon knows nothing about any one domain: the questions come from the
-specs its consumers bring.
+specs its consumers bring. [Writing a spec](docs/writing-a-spec.md) covers
+what a spec may contain, what the engine does with it, and how to measure
+one.
 
 Upstream candle-transformers implements the *causal* LFM2
 (`models/lfm2.rs`). Nobody implements the encoder branch —

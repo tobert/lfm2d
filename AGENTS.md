@@ -29,6 +29,7 @@ git.
 | daemon API, deploy notes, known problems | `lfm2d/README.md` |
 | deploy examples | `lfm2d/deploy/` — generic k8s manifests (encoder heads, `lfm2d-system1` on one GPU) and a quadlet unit; host-specific manifests live outside the repo |
 | opinion engine: build, API, validation | `docs/lfm25-adjudicator.md` |
+| writing a spec: what loads, what the fields do, how to measure one | `docs/writing-a-spec.md` |
 | opinion API types and spec menu | `lfm2d/src/opinion_api.rs`; engine in `adjudicator.rs` |
 | engine performance record | `docs/lfm25-*.md` (kernels, cache, fusion, GQA, prefill), numbers in `benchmarks/lfm25/results/` |
 | lens / routing / knockout tooling | `benchmarks/lfm25/examine/`, bins in `lfm2d/src/bin/` |

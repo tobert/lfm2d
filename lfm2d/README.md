@@ -607,7 +607,8 @@ the user turn renders `{facts}{input_label}:\n{input}`; the menu
 (`GET /v1/opinion/specs`) carries the label so a client reads it at
 runtime. The guide's
 "The opinion API" section has the shapes and the numbers;
-`docs/integration.md` invariants 8–14 are its contract. It deploys as its
+`docs/integration.md` invariants 8–14 are its contract, and
+`docs/writing-a-spec.md` is the guide to writing one. It deploys as its
 own GPU service, `lfm2d-system1` (`Containerfile.rocm`,
 `deploy/k8s-system1.yaml`), beside this encoder sidecar rather than
 inside it.

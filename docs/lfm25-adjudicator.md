@@ -319,7 +319,8 @@ slot, read *after* `effect`/`scope`/`undo`, is the judgement (AUC 0.74,
 25/74 recall at 4 false alarms). `/v1/opinion` serves that slot directly.
 It is its own endpoint with its own contract (`docs/integration.md`
 invariants 8–11): the typed-decision surface, in the README's words the
-System 1 read; in code, the opinion read.
+System 1 read; in code, the opinion read. How to write the spec it reads
+is [`writing-a-spec.md`](writing-a-spec.md).
 
 ```json
 POST /v1/opinion
