@@ -1336,7 +1336,7 @@ mod checkpoint_load_error_tests {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".models"));
         let tok = models.join("LFM2.5-8B-A1B/tokenizer.json");
-        assert!(tok.is_file(), "missing tokenizer at {} (see the root README, Getting started)", tok.display());
+        assert!(tok.is_file(), "missing tokenizer at {} (see docs/development.md)", tok.display());
         let gguf = PathBuf::from("/nonexistent/lfm2d-test/model.gguf");
         let err = Checkpoint::load(&gguf, &tok, crate::device::DeviceArg::Cpu, 0)
             .err()

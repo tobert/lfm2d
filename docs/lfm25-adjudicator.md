@@ -58,7 +58,7 @@ in `Cargo.toml`; `GET /v1/adjudicator` reports it as `candle_rev`): the seven
 optimization passes plus the read-only observer and per-call steering seams.
 No sibling checkout or local Cargo patches are required. The ROCm build
 requires the ROCm development toolchain and a supported AMD GPU. Fetch the
-GGUF and the tokenizer as the root README's "Getting started" shows:
+GGUF and the tokenizer as [development.md](development.md) shows:
 
 ```bash
 cargo build -p lfm2d --release --features rocm
@@ -924,8 +924,8 @@ cargo test -p lfm2d
 cargo test -p lfm2d --release --features rocm --test opinion_real -- --ignored
 ```
 
-The daemon's real-PII tests also need the PII-Detector checkpoint (root
-README, "Getting started"); set `LFM2_TOKEN_CLF_DIR` when using a worktree
+The daemon's real-PII tests also need the PII-Detector checkpoint
+([development.md](development.md)); set `LFM2_TOKEN_CLF_DIR` when using a worktree
 without `.models/`.
 The end-to-end evaluator behind the 2026-09-13 numbers below
 (`benchmarks/lfm25/evaluate.py`: four shell-severity cases, cold/cached/

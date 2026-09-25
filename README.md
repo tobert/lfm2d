@@ -1,240 +1,193 @@
 # lfm2d
 
-A System 1 service built around LiquidAI's **LFM2.5** suite, on [candle] —
-pure Rust, no Python in the serving path.
+**A System 1 for software, built on LiquidAI's LFM2.5 models.** Rust on
+[candle] with no Python in the serving path, serving from one resident
+process on an AMD GPU.
 
-Two crates in one workspace: **`lfm2-encoder`** (this README — the
-bidirectional encoder library, at the repo root) and **`lfm2d`** (the HTTP
-daemon — see [`lfm2d/README.md`](lfm2d/README.md)). The daemon serves:
+Before an agent runs a command, an app sends an email, or a person acts on
+an idea, something should take a quick look: a fast, cheap first read that
+lets the ordinary majority through and flags the rest for a slower judge (a
+bigger model or a person, the System 2). lfm2d is that first read.
 
-- **encoder heads**: embeddings, token classification (PII and secrets),
-  and prompt routing. ColBERT and sequence classification are in the
-  library, not served;
-- **LFM2.5-8B-A1B** on ROCm as a fast opinion engine: a caller names a
-  prompt spec (loaded at boot or uploaded at runtime, content-addressed), and
-  `/v1/opinion` describes the input under the spec's schema, then reads every
-  option of a choice field in one forward pass, with the raw probability mass
-  beside the renormalised answer. `/v1/adjudicate` continues the same state
-  generatively; `/v1/probe` and `/v1/tokenize` are the instruments. See the
-  [build, API, and validation guide](docs/lfm25-adjudicator.md) and the
-  [engine performance record](docs/lfm25-qkv-input-cache.md).
+You bring the question as a **spec** (a system prompt and a small JSON
+schema). lfm2d loads it into a resident **LFM2.5-8B-A1B**, a mixture of
+experts with about 1B parameters active per token, and answers with
+**odds, not prose**: the model describes the input in the spec's fields, then
+every option of the field you asked about is scored from that one
+description, each option's tokens teacher-forced.
+The response carries each option's probability *and* the raw probability
+mass the model put on the whole answer set, so a caller can tell an answer
+from a model that was never really asked. lfm2d never picks a winner; your
+code sets the threshold.
 
-The daemon knows nothing about any one domain: the questions come from the
-specs its consumers bring. [Writing a spec](docs/writing-a-spec.md) covers
-what a spec may contain, what the engine does with it, and how to measure
-one.
+Beside the opinion engine, the same daemon serves LiquidAI's LFM2.5 encoder
+heads: embeddings, PII and secrets detection, and prompt routing.
 
-Upstream candle-transformers implements the *causal* LFM2
-(`models/lfm2.rs`). Nobody implements the encoder branch —
-`Lfm2BidirectionalModel` and its task heads. This crate is that gap:
+## What an opinion looks like
 
-| checkpoint | head | why we want it |
-|---|---|---|
-| `LFM2.5-Embedding-350M` | pooled embedding (1024-dim) | text embeddings in-process |
-| `LFM2.5-ColBERT-350M` | late interaction (128-dim per token, MaxSim) | retrieval that resists hard negatives |
-| `LFM2.5-Encoder-350M-PII-Detector` | token classification (BIOES, 161 labels **including credentials/secrets**) | boundary screening of foreign prose & outbound payloads |
-| `LFM2.5-Encoder-350M-Prompt-Router` | sequence **routing** (`rule_proj_dim` — scores prompts against rule projections, zero-shot-shaped) | dynamic model-lane routing |
-| your own fine-tune | sequence classification (`Lfm2BidirForSequenceClassification`) | a specialist head over a shared trunk |
-| `LFM2.5-Encoder-230M/350M` | masked-LM bases (the trunk loads; no MLM head) | fine-tune substrate |
-| `LFM2.5-Encoder-350M-Policy-Linter` | per-token **rule matching** — config parses, head **not implemented** | — |
-
-## Status
-
-**Every implemented head has a parity test against the reference
-implementation**: the trunk, pooled embedding, ColBERT late interaction,
-token classification (PII and credential spans) and sequence routing. Each
-parity suite under `tests/` compares against activations dumped from real
-weights by the matching script in `tests/reference/`. Sequence
-classification loads any fine-tuned checkpoint of the family; no
-LiquidAI checkpoint ships that head, so its tests
-(`tests/sequence_classification_guards.rs`) run on synthetic weights.
-
-## Getting started
-
-Build (CPU is the default; ROCm is the one GPU backend we run and measure.
-The `cuda` and `metal` features exist but have not been ported or
-measured — see `lfm2d/README.md`):
+Upload a spec (content-addressed: its id is the sha256 of its bytes), then
+ask:
 
 ```sh
-cargo build --release                    # library + examples, CPU
-cargo build --release -p lfm2d           # the daemon, CPU
-cargo build --release -p lfm2d --features rocm
+curl -s localhost:8088/v1/opinion/specs --data-binary @demo/web/static/life-decision-v2.json
+curl -s localhost:8088/v1/opinion -H 'content-type: application/json' -d '{
+  "spec": "0995af933c7763ff7b6de306cd3542e8ad39ad93fe0e0cdd510430f7020df042",
+  "state": {"input": "microwave a fork to see what happens"},
+  "questions": [{"field": "verdict"}]
+}'
 ```
 
-A C compiler is needed: candle-core pulls in oniguruma through
-`tokenizers`.
+```jsonc
+{
+  "described": [
+    {"field": "effect", "value": "The fork will melt and lose its structural integrity, potentially causing burns or damage to the microwave."},
+    {"field": "scope",  "value": "someone else"},
+    {"field": "undo",   "value": "hard"}
+  ],
+  "answers": [{
+    "field": "verdict",
+    "options": [
+      {"option": "go",   "prob": 0.00006, "logprob": -9.77},
+      {"option": "wait", "prob": 0.339,   "logprob": -1.08},
+      {"option": "stop", "prob": 0.661,   "logprob": -0.41}
+    ],
+    "sequence_mass": -0.000016,   // log of the raw mass on {go, wait, stop}: 99.998%
+    "margin": 0.32
+  }],
+  "cache": {"prefix": "hit", "state": "miss", "described": "miss"},
+  "prefill_ms": 171, "describe_ms": 1161, "read_ms": 102
+}
+```
 
-Checkpoints are never downloaded at runtime. Fetch them into `.models/`
-(gitignored) with the Hugging Face CLI:
+(trimmed; the full response also names the model, weights, device and
+candle revision that produced it.)
+
+- **The spec's prefix is prefilled once**, when you upload it, and kept
+  resident as a snapshot of the hybrid model's state. Each request only
+  prefills its own input.
+- **Describe, then read.** The fields in front of the asked one are the
+  model's only reasoning; it writes them greedily under a JSON grammar
+  compiled from your schema. Asking again reuses the description, so a
+  repeat costs one read.
+- **Facts** (`state.facts`) are trusted context placed before the input,
+  such as a project's rules or what the user asked for. One line of facts
+  can flip an answer.
+- **Deterministic.** Greedy decoding on a fixed stack: thirty inputs read
+  twice from cold gave bit-identical descriptions and probabilities.
+
+The model has no domain built in. The questions come from the specs, and
+[writing a spec](docs/writing-a-spec.md) covers what a spec may contain,
+what the engine does with it, and how to measure one.
+
+## How well it reads
+
+Measured 2026-09-25 through the running daemon on sets it was not tuned on
+([`benchmarks/system1/`](benchmarks/system1/README.md) has the method,
+every table, and the scripts). On 213 everyday proposals (61 ordinary, 80
+worth sleeping on, 72 physically dangerous):
+
+| spec | ordinary → go | dangerous → go | dangerous → stop |
+|---|---|---|---|
+| life-decision **v1** | 3 / 61 | 0 / 72 | 14 / 72 |
+| life-decision **v2** | 46 / 61 | 5 / 72 | 37 / 72 |
+| **gate** variant | 53 / 61 | 1 / 72 | 2 / 72 |
+
+The model is the same in every row; only the spec changes. v1's rules
+said anything touching someone else is a wait, and the model decided
+nearly everything touches someone else ("make a cup of tea": wait, 93%).
+Rewording the rules fixed pass-through. Where v2 still errs, its
+description was already wrong ("put water on the grease fire" was described
+as extinguishing it safely): the verdict follows what the model believes
+happens next.
+
+On support email the same engine is weaker: routing between "a template
+can close it" and "a person must read it" gives an AUC of 0.76-0.81.
+
+**Speed**, one question on a busy workstation (upper bounds): a fresh
+short input in about 0.6 s p50, a support email in 0.85 s, and a repeat of
+either in 54-65 ms.
+
+## Demos
+
+Browser pages that play themselves against a live daemon, sized for
+recording ([`demo/web/`](demo/web/README.md)):
+
+- **The Sour Note**: LFM2.5 reads a passage and every token plays a note
+  whose dissonance is the model's surprise. Change one word and you hear
+  it.
+- **Would LFM Let You?**: a game show. Everyday ideas go through the
+  life-decision spec, and the traffic light is lit by the odds.
+- **Two Worlds**: the same command read alone, then with one line of facts
+  from two different worlds.
+- **House Rules**: an agent's `AGENTS.md`; the daemon's own embedder finds
+  the rule that governs a command, and quoting that one rule changes the
+  answer more usefully than quoting the whole file.
+- **Everything Is a Command**: what happens when the input doesn't fit the
+  spec. The mass stays high, so the harness has to choose the inputs.
+
+[`demo/show.py`](demo/README.md) runs the same ideas in a terminal against
+an email-triage spec.
+
+## Run it
+
+The opinion engine runs on **ROCm**; it is built and measured on an AMD
+Radeon 8060S (Strix Halo, gfx1151). CUDA and Metal are future ports, and
+the CPU path is a slow reference only. The encoder heads run well on CPU.
+Building needs the ROCm development toolchain and a C compiler (candle-core
+links oniguruma through `tokenizers`).
 
 ```sh
-for m in LFM2.5-Embedding-350M LFM2.5-ColBERT-350M \
-         LFM2.5-Encoder-350M-PII-Detector LFM2.5-Encoder-350M-Prompt-Router; do
-  hf download "LiquidAI/$m" --local-dir ".models/$m"
-done
-# the opinion engine: the GGUF, plus the tokenizer from the base repo
-hf download LiquidAI/LFM2.5-8B-A1B-GGUF LFM2.5-8B-A1B-Q5_K_M.gguf \
-  --local-dir .models/LFM2.5-8B-A1B
+# the model and its tokenizer
+hf download LiquidAI/LFM2.5-8B-A1B-GGUF LFM2.5-8B-A1B-Q5_K_M.gguf --local-dir .models/LFM2.5-8B-A1B
 hf download LiquidAI/LFM2.5-8B-A1B tokenizer.json --local-dir .models/LFM2.5-8B-A1B
+
+cargo build --release -p lfm2d --features rocm
+./target/release/lfm2d --device rocm --bind-addr 127.0.0.1:8088 \
+  --adjudicator-model .models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf \
+  --adjudicator-tokenizer .models/LFM2.5-8B-A1B/tokenizer.json
 ```
 
-Tests that need weights **fail loudly** rather than skipping, naming the
-missing file (most print the `hf download` command too), so a plain
-`cargo test --workspace` wants all of the above except the GGUF:
+Add `--embedder-dir`, `--router-dir` or `--token-classifier-dir` to serve
+encoder heads from the same process. `lfm2d/Containerfile.rocm` builds a
+container; `lfm2d/deploy/` has Kubernetes and quadlet examples.
 
-| weights | tests |
+| where | what |
 |---|---|
-| none | config parsing, guards, the daemon's API/stub/shutdown suites |
-| `LFM2.5-Embedding-350M` | `trunk_parity`, `embedding_parity`, `retrieval_quality` |
-| `LFM2.5-ColBERT-350M` | `colbert_parity` |
-| `LFM2.5-Encoder-350M-PII-Detector` | `pii_parity`, `lfm2d/tests/integration_real_spans` |
-| `LFM2.5-Encoder-350M-Prompt-Router` | `router_parity` |
-| `LFM2.5-8B-A1B/tokenizer.json` | `lfm2d/tests/tokenize_api`, `probe_tokenize_telemetry_safety`, and unit tests in `lfm2d/src/{adjudicator,tokenize_api}.rs` |
-| the GGUF (`#[ignore]`d; minutes on a GPU, hours on CPU) | `opinion_real`, `probe_real`, `spec_registry_real`, `constrained_decoding` |
-| Embedding + Router + PII and a GPU (`#[ignore]`d) | `lfm2d/tests/device_real`, via `demo/test_devices.sh` |
+| [`lfm2d/README.md`](lfm2d/README.md) | the daemon: flags, every endpoint, deployment, known problems |
+| [`docs/writing-a-spec.md`](docs/writing-a-spec.md) | writing and measuring a spec |
+| [`docs/integration.md`](docs/integration.md) | the consumer contract, as numbered invariants |
+| [`docs/encoders.md`](docs/encoders.md) | the encoder library: heads, parity, retrieval quality, costs |
+| [`docs/development.md`](docs/development.md) | building, fetching checkpoints, and which tests need which weights |
+| [`docs/lfm25-adjudicator.md`](docs/lfm25-adjudicator.md) | the opinion engine's build and validation record |
 
-`LFM2_MODELS_DIR` and `LFM2_TOKEN_CLF_DIR` point the tests elsewhere
-(a git worktree has no `.models/`). `demo/test_devices.sh <rocm|cuda|metal>`
-runs the CPU-vs-GPU agreement gate on a GPU host.
+## The encoder heads
 
-`Lfm2Trunk` reproduces LiquidAI's own
-`modeling_lfm2_bidirectional.py` to max|Δ| ≈ 4.6e-5 on f32 CPU, verified
-against activations dumped from the real Embedding-350M weights
-(`tests/reference/dump_trunk_reference.py`, transformers 4.56.2).
+The repo root is also `lfm2-encoder`, a library that implements LiquidAI's
+*bidirectional* LFM2.5 encoders (upstream candle has only the causal
+LFM2).
+Every head a LiquidAI checkpoint ships has a parity test against
+activations dumped from the real weights by LiquidAI's own modeling code.
+Sequence classification, which no LiquidAI checkpoint ships, is tested on
+synthetic weights.
 
-Config parsing covers every family checkpoint. The fixtures keep
-earning their keep — the 230M base is *shallower* (14 layers) not just
-narrower; the PII config ships a literal `"full_attn_idxs": null`; the
-Router is not a softmax classifier; `intermediate_size` **disagrees with
-the shipped weights** on three of four checkpoints (says 6656, ships
-4608 — see `Lfm2EncoderConfig::ffn_dim`); and the Policy-Linter turned
-out to be a fifth architecture name, `Lfm2BidirForRuleMatching`.
+| checkpoint | head |
+|---|---|
+| `LFM2.5-Embedding-350M` | pooled 1024-dim embeddings (served at `/embed`) |
+| `LFM2.5-ColBERT-350M` | late interaction, MaxSim (library) |
+| `LFM2.5-Encoder-350M-PII-Detector` | token classification: 161 BIOES labels, credentials and secrets included |
+| `LFM2.5-Encoder-350M-Prompt-Router` | zero-shot routing against caller-written lanes |
+| your own fine-tune | sequence classification over the shared trunk (library) |
 
-**Text → vector works end to end.** `Lfm2Embedding`
-tokenizes, runs the trunk and CLS-pools, matching the reference pipeline
-including exact token ids. Try it:
-
-```
-cargo run --release --example embed -- .models/LFM2.5-Embedding-350M
-```
-
-Semantic search works end to end. On a 105-document hand-authored corpus:
-**recall@1 88.6%, recall@3 100%**, and a hard negative outranks the true
-positive **1 time in 68**. That last number is the one that means
-something — the hard negatives share vocabulary with the query and are
-still wrong. `tests/retrieval_quality.rs` keeps those numbers honest on
-every `cargo test`.
-
-For a Python client over the actual daemon, see [`demo/`](demo/README.md):
-semantic search, source-passage extraction, thinking-block previews through
-a separate local generator, and real-weight HTTP end-to-end tests.
-
-```
-# search the bundled corpus, or point --dir at your own tree
-cargo run --release --example search -- .models/LFM2.5-Embedding-350M \
-    --query "how do I stop two threads corrupting shared state"
-cargo run --release --example search -- .models/LFM2.5-Embedding-350M --eval
-cargo run --release --example search -- .models/LFM2.5-Embedding-350M \
-    --dir src --query "where is the attention mask built"
-```
-
-### What it costs to run
-
-Measured on 32 cores, per 350M checkpoint (`examples/bench_memory.rs`,
-`examples/bench_parallel.rs`, `examples/dtype_drift.rs`):
-
-| dtype | 1 model | 2 models | solo | concurrent | throughput |
-|---|---|---|---|---|---|
-| f32 | 1409 MiB | 2.70 GiB | ~70 ms | ~87 ms (1.25×) | 23 embeds/s |
-| f16 | 745 MiB | 1.41 GiB | ~139 ms | ~150 ms (1.08×) | 13 embeds/s |
-
-**f16 halves memory for free**: cosine 0.999996 against f32, with
-identical rankings — and it contends *less* than f32, so it scales better
-as you add models. `bf16` (the Embedding checkpoint's storage dtype; the
-others ship f32) is unsupported for `matmul` on candle CPU.
-
-### ColBERT: late interaction, and it wins
-
-`ColbertModel` implements `LFM2.5-ColBERT-350M` — one 128-dim vector per
-token, scored with MaxSim, verified against PyLate itself. Head to head on
-the same corpus (`cargo run --release --example compare_retrievers`):
-
-| | recall@1 | recall@3 | hard-neg wins | index | query |
-|---|---|---|---|---|---|
-| single-vector (CLS + cosine) | 88.6% | 100% | 1.5% | 4.1 KB/doc | 67 ms |
-| **ColBERT (MaxSim)** | **97.1%** | 100% | **0.0%** | 15.5 KB/doc | 90 ms |
-
-ColBERT never lets a hard negative outrank a true positive, for 3.8× the
-storage and 1.4× the query time. On short documents that trade is far
-cheaper than ColBERT's usual reputation suggests.
-
-Its conventions came from PyLate's real behaviour, not the config, because
-several are surprising: query expansion pads with **EOS** (this checkpoint
-has no mask token at all), `[Q]`/`[D]` are **real vocab ids** 64400/64401
-— which is why its vocab is 64402 rather than the family's 65536 —
-expansion tokens are masked as attention *keys* yet still emitted as
-vectors, and documents drop punctuation vectors via a 32-id skiplist.
-
-## This embedding model is asymmetric
-
-Queries and documents take **different prefixes** — `"query: "` and
-`"document: "`. This is not cosmetic: the same sentence embedded both
-ways lands at cosine ≈ 0.70. Using one prefix for both sides degrades
-retrieval and nothing errors, so `TextKind` is a required argument with
-no default:
-
-```rust
-let model = Lfm2Embedding::from_dir("...")?;
-let q = model.embed_normalized("how do I borrow a value?", TextKind::Query)?;
-let d = model.embed_normalized(passage, TextKind::Document)?;
-```
-
-`embed` returns the raw vector — the checkpoint ships no Normalize
-module — and `embed_normalized` L2-normalizes so cosine is a dot product.
-
-## Batching changes your embeddings (read this)
-
-The short conv is deliberately **not** masked, because that is how these
-checkpoints were trained: in the eager/sdpa path the reference's
-`apply_mask_to_padding_states` is a no-op, so pad states flow through the
-conv. With a centered `k = 3` kernel, each conv layer bleeds a pad one
-position into its real neighbour.
-
-**Consequence:** a sequence's embedding depends slightly on what it was
-batched with. Unlike BERT, padding is not inert here. If you need
-reproducible vectors — cache keys, stored embeddings, anything compared
-across processes — embed one sequence at a time with no padding. Batch
-when throughput matters more than bit-identical results.
-
-`forward()` refuses a multi-row batch with no `attention_mask` rather
-than silently treating pad tokens as content.
-
-## Design intents
-
-- **CPU-first.** Consumers embed this in long-lived server processes.
-  Measured on a 32-core Strix Halo: **~81 ms** per short text, f32,
-  including tokenization. A GPU (the `rocm` feature; `cuda` and `metal`
-  are unported) is a bonus for the encoders, never a requirement.
-
-  Getting there needed one non-obvious change: LFM2's short conv is
-  *depthwise* (`groups = hidden_size = 1024`), and candle's grouped
-  `Conv1d` costs a flat **~173 ms per call regardless of sequence
-  length** — per-group dispatch overhead, not arithmetic. Across 10 conv
-  layers that was the entire ~1.9 s of a single embedding. The trunk
-  evaluates the conv as `k` shifted per-channel multiply-adds instead:
-  identical arithmetic, ~23× faster end to end, parity unchanged. See
-  `cargo run --release --example bench_ops`.
-- **Rust, no C++.** Our own tokenizer use is pure Rust (`fancy-regex`,
-  not oniguruma); candle-core still links oniguruma (C) through
-  `tokenizers`.
-- **Local weights.** Point at a directory holding `model.safetensors` +
-  `tokenizer.json` + `config.json`; nothing downloads at runtime.
+Details, numbers and caveats (the embedder is asymmetric; batching changes
+embeddings) are in [docs/encoders.md](docs/encoders.md).
 
 ## License & attribution
 
 MIT OR Apache-2.0, matching candle. Trunk block implementations are
 adapted from [candle-transformers]' `lfm2.rs` (© the candle authors, MIT
-OR Apache-2.0); attribution retained in source where adapted.
+OR Apache-2.0); attribution retained in source where adapted. The opinion
+engine runs on a [fork of candle](https://github.com/tobert/candle) with
+ROCm support, pinned in `Cargo.toml`.
 
 [candle]: https://github.com/huggingface/candle
 [candle-transformers]: https://github.com/huggingface/candle/tree/main/candle-transformers

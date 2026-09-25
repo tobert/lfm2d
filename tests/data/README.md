@@ -81,4 +81,4 @@ benchmark:
 
 If you add documents or queries by hand later, re-run the same checks.
 `tests/retrieval_quality.rs` reads this file on every `cargo test` and holds the
-retrieval numbers in the root README, but it does not re-validate the schema.
+retrieval numbers in docs/encoders.md, but it does not re-validate the schema.

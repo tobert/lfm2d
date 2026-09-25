@@ -57,8 +57,8 @@ spec:
         - name: lfm2d-system1
           image: localhost/lfm2d-system1:latest
           args:
-            # The GGUF and the Hub tokenizer, side by side (see the root
-            # README's "Getting started"). Every published opinion-engine
+            # The GGUF and the Hub tokenizer, side by side (see
+            # docs/development.md). Every published opinion-engine
             # number was measured on Q5_K_M.
             - --adjudicator-model=/models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf
             - --adjudicator-tokenizer=/models/LFM2.5-8B-A1B/tokenizer.json
