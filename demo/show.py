@@ -9,9 +9,9 @@ fed line waits for the child's own prompt however long a row takes.
 
 Acts: 1 inbox (any question a schema can name) · 2 xray (the distribution
 under every written field, and the exact bytes read) · 3 asked (the raw mass
-beside the renormalised answer). Every act uses the email-triage-v1 spec;
-the daemon needs it on the menu (--opinion-spec, or an upload). Ctrl-C ends
-the show.
+beside the renormalised answer). Every act uses the SPEC below, found by
+its boot name, so the daemon needs it on the boot menu (--opinion-spec).
+Ctrl-C ends the show.
 """
 import argparse, json, os, pty, select, subprocess, sys, threading, time, urllib.request
 from pathlib import Path
@@ -19,6 +19,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 B, DIM, OFF = '\033[1m', '\033[2m', '\033[0m'
 PROMPT = '\u276f'  # the '❯' the act REPLs print before reading a line
+SPEC = 'email-triage-v2'  # demo/specs/<SPEC>.json, measured in benchmarks/system1
 
 
 def run_feed(master, lines, stop):
@@ -100,11 +101,11 @@ def main():
         menu = json.load(urllib.request.urlopen(a.url.rstrip('/') + '/v1/opinion/specs', timeout=5))
     except OSError:
         sys.exit(f'no daemon on {a.url} — start one first (demo/README.md)')
-    if 'email-triage-v1' not in {m['spec'] for m in menu}:
+    if SPEC not in {m['spec'] for m in menu}:
         # By name only: an upload's `spec` is its content hash, never a file
         # stem, so uploading would not put this name on the menu.
-        sys.exit(f'email-triage-v1 is not on {a.url}\'s boot menu: start the daemon with '
-                 f'--opinion-spec demo/specs/email-triage-v1.json')
+        sys.exit(f'{SPEC} is not on {a.url}\'s boot menu: start the daemon with '
+                 f'--opinion-spec demo/specs/{SPEC}.json')
     print(f'{B}the system 1 matinee{OFF}  {DIM}{len(menu)} specs on the menu: '
           f'{", ".join(sorted(m["spec"] for m in menu))}{OFF}')
     stop = threading.Event()
@@ -116,18 +117,18 @@ def main():
         '1': ('inbox — the verdict vocabulary is the app\u2019s',
               ['a support-routing spec written as a prop; same primitive'],
               ([sys.executable, 'blink_anything.py', '--url', a.url,
-                '--spec', 'email-triage-v1', '--field', 'verdict'],
+                '--spec', SPEC, '--field', 'verdict'],
                lines_of('inputs/inbox.txt'))),
         '2': ('xray — what it wrote, and what it wrote it from',
               ['every choice field asked; each written value is a greedy pick',
                'then the exact bytes the read continued, checked by sha256'],
-              ([sys.executable, 'xray.py', '--url', a.url, '--spec', 'email-triage-v1'],
+              ([sys.executable, 'xray.py', '--url', a.url, '--spec', SPEC],
                lines_of('inputs/xray.txt'))),
         '3': ('asked — was the model even asked?',
               ['the full menu holds most of the mass: the grammar walked it there',
                'narrow the menu and prob renormalises whatever is left'],
               ([sys.executable, 'asked.py', '--url', a.url,
-                '--spec', 'email-triage-v1', '--field', 'feeling'],
+                '--spec', SPEC, '--field', 'feeling'],
                lines_of('inputs/asked.txt'))),
     }
     for key in a.acts:

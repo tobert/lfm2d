@@ -225,7 +225,7 @@ summaries; added explicit generation smoke and split-passage CLI coverage.
 
 Three scripts and `show.py` to run them in order: a read that answers any
 question a spec can name, then two looks at the numbers under it. Stdlib
-Python; the `email-triage-v1` spec under `specs/` and the input lines under
+Python; the `email-triage-v2` spec under `specs/` and the input lines under
 `inputs/` are invented fixtures, like the ones above. The spec names its own
 input (`"input_label": "Email"`), so a request sends `state: {"input": ...}`.
 
@@ -236,7 +236,7 @@ spec on its boot menu:
 target/release/lfm2d \
   --adjudicator-model .models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf \
   --adjudicator-tokenizer .models/LFM2.5-8B-A1B/tokenizer.json \
-  --opinion-spec demo/specs/email-triage-v1.json \
+  --opinion-spec demo/specs/email-triage-v2.json \
   --adjudicator-context 4096 --device rocm --bind-addr 127.0.0.1:18171 --threads 8
 ```
 
@@ -247,11 +247,12 @@ upload's `spec` is its content hash, never a file stem.
   between, items driven through a pty so they echo like someone typed
   them and each next line waits for the child's own prompt. `--auto` skips
   the between-act pauses; `--acts 13` picks a subset (an unknown act is an
-  error). It refuses to start when `email-triage-v1` is not on the menu.
-- **`blink_anything.py --spec email-triage-v1 --field verdict`** — the
+  error). It refuses to start when its `SPEC` (`email-triage-v2`) is not
+  on the menu; `test_show.py` checks that file is the measured one.
+- **`blink_anything.py --spec email-triage-v2 --field verdict`** — the
   verdict vocabulary is the app's, not ours. The primitive routes a
   support inbox (`auto_close` / `human_read`) over a spec written as a prop.
-- **`xray.py --spec email-triage-v1`** — what the model wrote, and the
+- **`xray.py --spec email-triage-v2`** — what the model wrote, and the
   distribution it wrote it from. Asks every choice field in one request,
   puts the full option distribution (prob, raw `first_logprob`, token ids,
   raw mass) under each written value — the last choice field has no later
@@ -261,7 +262,7 @@ upload's `spec` is its content hash, never a file stem.
   than the flag refuses the request (the request type denies unknown
   fields); `--no-prompt` skips the view, and a response that omits
   `rendered` when asked ends the demo loudly.
-- **`asked.py --spec email-triage-v1 --field feeling`** — was the model
+- **`asked.py --spec email-triage-v2 --field feeling`** — was the model
   even asked? Each item is read over the full menu, then with each option
   left out once (`item :: a,b` asks a subset). Leaving one out needs a
   field with at least three options (`feeling`; `verdict` has two, and the

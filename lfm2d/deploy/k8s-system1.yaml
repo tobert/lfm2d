@@ -65,7 +65,7 @@ spec:
             # The only boot spec is the demos' invented support-inbox prop.
             # There is no default spec: every /v1/opinion and
             # /v1/adjudicate request names one.
-            - --opinion-spec=/etc/lfm2d/demo-specs/email-triage-v1.json
+            - --opinion-spec=/etc/lfm2d/demo-specs/email-triage-v2.json
             # Optional: an embedder on its own worker queue beside the
             # adjudicator. Light (~16 ms single on the GPU) and cheap to
             # keep resident.

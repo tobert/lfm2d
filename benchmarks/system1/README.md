@@ -11,7 +11,7 @@ the opinion engine").
 |---|---|
 | `gen_sets.py` | writes the sets with DeepSeek (`deepseek-flash`), splits each category tune/confirm by a seeded shuffle, prints counts only |
 | `measure.py` | uploads a spec's exact bytes, asks every row through `/v1/opinion` (every choice field, or only the scored one with `--ask-only`), prints aggregates; per-row reads go outside the repo |
-| `specs/` | every baseline and variant measured here (the Let You show's spec is `demo/web/static/life-decision-v2.json`; the email prop is `demo/specs/email-triage-v1.json`) |
+| `specs/` | every baseline and variant measured here (the Let You show's spec is `demo/web/static/life-decision-v2.json`; the email prop is `demo/specs/email-triage-v2.json`, the reworded spec below, same bytes) |
 | `results/` | one summary per spec and split: spec id, set hash, counts, AUCs, mass, and for live runs the adjudicator identity and latency. Tune and some confirm summaries were rebuilt from the saved reads with `measure.py --rows` (they say `derived_from_rows`). No rows |
 
 The sets live outside the repo (author's private notes). Regenerate your
@@ -99,13 +99,13 @@ v1 4/39, 9/40 and 3/61. One draw of 40 rows is a sketch, not a result.
 
 ## Support email: a harder question
 
-`email-triage-v1` (the prop the `demo/show.py` acts use), confirm split
-(40 / 40), one question (`verdict`):
+`email-triage-v1` (the prop the `demo/show.py` acts used until the
+rewording replaced it), confirm split (40 / 40), one question (`verdict`):
 
 | spec | routine → auto_close | human caught | AUC P(auto_close) |
 |---|---|---|---|
 | v1 (read in one run over all 80+80; this is its confirm half) | 20 / 40 | 32 / 40 | 0.76 |
-| rules reworded (`specs/email-triage-reworded.json`) | 20 / 40 | **37 / 40** | **0.81** |
+| rules reworded (now the prop, `demo/specs/email-triage-v2.json`; its summaries say `email-triage-reworded.json`, spec id `1c66281d`) | 20 / 40 | **37 / 40** | **0.81** |
 
 Saying that routine mail stays routine "even when the customer is
 impatient or annoyed", and naming privacy and data requests, caught five
@@ -143,7 +143,7 @@ python3 benchmarks/system1/measure.py --url http://<daemon>:8088 \
     --field verdict --expect ordinary=go --expect think_twice=wait --expect dangerous=stop \
     --pass ordinary --out ~/sets/reads
 python3 benchmarks/system1/measure.py --url http://<daemon>:8088 \
-    --spec demo/specs/email-triage-v1.json --set ~/sets/emails-confirm.jsonl \
+    --spec demo/specs/email-triage-v2.json --set ~/sets/emails-confirm.jsonl \
     --field verdict --expect routine=auto_close --expect human=human_read \
     --pass routine --ask-only --out ~/sets/reads    # the email runs asked one question
 python3 -m unittest discover -s benchmarks/system1

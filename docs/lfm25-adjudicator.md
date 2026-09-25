@@ -66,7 +66,7 @@ cargo build -p lfm2d --release --features rocm
   --device rocm --threads 8 --bind-addr '127.0.0.1:18152' \
   --adjudicator-model '.models/LFM2.5-8B-A1B/LFM2.5-8B-A1B-Q5_K_M.gguf' \
   --adjudicator-tokenizer '.models/LFM2.5-8B-A1B/tokenizer.json' \
-  --opinion-spec 'demo/specs/email-triage-v1.json'
+  --opinion-spec 'demo/specs/email-triage-v2.json'
 ```
 
 `--adjudicator-model` and `--adjudicator-tokenizer` together enable the
@@ -145,7 +145,7 @@ change rather than inferring it.
 ```bash
 curl --fail-with-body 'http://127.0.0.1:18152/v1/adjudicate' \
   -H 'Content-Type: application/json' \
-  --data '{"spec":"email-triage-v1","input":"Email:\nwhere is my order 4471?"}'
+  --data '{"spec":"email-triage-v2","input":"Email:\nwhere is my order 4471?"}'
 ```
 
 ## Response contract
@@ -324,7 +324,7 @@ is [`writing-a-spec.md`](writing-a-spec.md).
 
 ```json
 POST /v1/opinion
-{"spec": "email-triage-v1",
+{"spec": "email-triage-v2",
  "state": {"input": "my order 4471 still says preparing after six days",
            "facts": "Facts from the order system:\n..."},
  "context": null,

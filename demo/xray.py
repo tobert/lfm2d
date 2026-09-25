@@ -7,7 +7,7 @@ renormalised prob, the raw first-token logprob, the token ids, the raw mass
 on the answer set. Then it shows the exact bytes the last read continued
 (`rendered: true`) and checks them against the daemon's own sha256.
 
-    python3 xray.py --url http://127.0.0.1:18171 --spec email-triage-v1
+    python3 xray.py --url http://127.0.0.1:18171 --spec email-triage-v2
 
 A written value that looks certain can be a near tie underneath; xray
 flags every field whose top two options sit within --tie.

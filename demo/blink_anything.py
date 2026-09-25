@@ -5,7 +5,7 @@ the app invents — and watch the model describe the item and hesitate over the
 options in well under a blink once warm. No gates here: the distribution IS
 the product; the app decides what to do with it.
 
-    python3 blink_anything.py --url http://127.0.0.1:18171 --spec email-triage-v1 --field verdict
+    python3 blink_anything.py --url http://127.0.0.1:18171 --spec email-triage-v2 --field verdict
 
 Type an item (an email, a sentence), press enter, nothing runs. Ctrl-D exits.
 """

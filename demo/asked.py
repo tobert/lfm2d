@@ -8,7 +8,7 @@ sense. Narrow the menu and the mass falls by whatever the omitted options
 held, while `prob` renormalises the remainder into a confident-looking
 answer. That is invariant 9 (docs/integration.md) in one screen.
 
-    python3 asked.py --url http://127.0.0.1:18171 --spec email-triage-v1 --field feeling
+    python3 asked.py --url http://127.0.0.1:18171 --spec email-triage-v2 --field feeling
 
 Each line is an item; by default it is read over the full menu and then
 with each option left out once. `item :: a,b` asks exactly that subset.

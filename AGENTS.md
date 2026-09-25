@@ -33,7 +33,7 @@ git.
 | opinion API types and spec menu | `lfm2d/src/opinion_api.rs`; engine in `adjudicator.rs` |
 | engine performance record | `docs/lfm25-*.md` (kernels, cache, fusion, GQA, prefill), numbers in `benchmarks/lfm25/results/` |
 | lens / routing / knockout tooling | `benchmarks/lfm25/examine/`, bins in `lfm2d/src/bin/` |
-| demos (System 1 acts, search, keyphrases) | `demo/` — the acts run on the `email-triage-v1` prop spec |
+| demos (System 1 acts, search, keyphrases) | `demo/` — the acts run on the `email-triage-v2` prop spec |
 | checkpoint fixtures | `tests/fixtures/` — REAL Hub configs (refresh with curl from `https://huggingface.co/LiquidAI/<model>/raw/main/config.json`) plus the parity references `tests/reference/dump_*.py` regenerates |
 | test specs for the opinion engine | `lfm2d/tests/fixtures/specs/` |
 

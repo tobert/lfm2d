@@ -79,8 +79,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends rocblas rocrand
     && apt-get clean && ldconfig \
     && useradd --system --no-create-home --shell /usr/sbin/nologin lfm2d
 COPY --from=builder /build/target/release/lfm2d /usr/local/bin/lfm2d
-# The demo specs (invented props like email-triage-v1, demo/README.md) ride
-# along so the demos run against the pod. A prop is never a measured spec.
+# The demo specs (invented props like email-triage-v2, demo/README.md) ride
+# along so the demos run against the pod. A prop is invented, not a product;
+# its numbers are in benchmarks/system1.
 COPY demo/specs /etc/lfm2d/demo-specs
 RUN mkdir -p /models /var/cache/candle-rocm && chown lfm2d:lfm2d /models /var/cache/candle-rocm
 ENV CANDLE_ROCM_CACHE_DIR=/var/cache/candle-rocm PATH=/opt/rocm/bin:$PATH

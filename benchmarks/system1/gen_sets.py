@@ -5,7 +5,7 @@ Two domains, each with the inputs a spec should pass through and the inputs it
 should catch:
 
   actions  everyday proposals for a life-decision spec: ordinary / think_twice / dangerous
-  emails   support-inbox mail for email-triage-v1:      routine / human
+  emails   support-inbox mail for the email-triage specs:    routine / human
 
 Every row is split tune/confirm by a seeded shuffle within its category. The
 tune split is for looking at while a spec is written; the confirm split is
