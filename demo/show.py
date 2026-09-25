@@ -20,6 +20,24 @@ HERE = Path(__file__).resolve().parent
 B, DIM, OFF = '\033[1m', '\033[2m', '\033[0m'
 PROMPT = '\u276f'  # the '❯' the act REPLs print before reading a line
 SPEC = 'email-triage-v2'  # demo/specs/<SPEC>.json, measured in benchmarks/system1
+# sha256 of those bytes, the id benchmarks/system1/results recorded; the
+# daemon's menu id for a boot spec is the same hash, so a show against
+# other bytes under this name refuses to start.
+SPEC_ID = '1c66281d9b83b805871aa8f6cf4a499e9bb31984c9548373684084118c5b39c8'
+
+
+def menu_problem(menu, url):
+    """Why this menu cannot run the show, or None. By name only: an upload's
+    `spec` is its content hash, never a file stem, so uploading would not put
+    this name on the menu."""
+    entry = next((m for m in menu if m['spec'] == SPEC), None)
+    if entry is None:
+        return (f'{SPEC} is not on {url}\'s boot menu: start the daemon with '
+                f'--opinion-spec demo/specs/{SPEC}.json')
+    if entry['id'] != SPEC_ID:
+        return (f'{url}\'s {SPEC} is not the measured bytes (id {entry["id"][:12]}, '
+                f'measured {SPEC_ID[:12]}): boot demo/specs/{SPEC}.json unedited')
+    return None
 
 
 def run_feed(master, lines, stop):
@@ -101,11 +119,9 @@ def main():
         menu = json.load(urllib.request.urlopen(a.url.rstrip('/') + '/v1/opinion/specs', timeout=5))
     except OSError:
         sys.exit(f'no daemon on {a.url} — start one first (demo/README.md)')
-    if SPEC not in {m['spec'] for m in menu}:
-        # By name only: an upload's `spec` is its content hash, never a file
-        # stem, so uploading would not put this name on the menu.
-        sys.exit(f'{SPEC} is not on {a.url}\'s boot menu: start the daemon with '
-                 f'--opinion-spec demo/specs/{SPEC}.json')
+    problem = menu_problem(menu, a.url)
+    if problem:
+        sys.exit(problem)
     print(f'{B}the system 1 matinee{OFF}  {DIM}{len(menu)} specs on the menu: '
           f'{", ".join(sorted(m["spec"] for m in menu))}{OFF}')
     stop = threading.Event()

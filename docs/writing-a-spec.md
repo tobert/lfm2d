@@ -9,9 +9,11 @@ with it, and what we learned about writing good ones. The API itself is in
 the consumer contract is [`integration.md`](integration.md).
 
 The measurements quoted below were taken on shell-command specs, the only
-ones measured so far. They describe how LFM2.5-8B-A1B behaves under the
-engine, so expect the same effects in your domain, but re-measure before
-you rely on a number.
+ones measured when they were written; the first on other inputs (everyday
+decisions, support email) are in
+[`benchmarks/system1`](../benchmarks/system1/README.md). They describe how
+LFM2.5-8B-A1B behaves under the engine, so expect the same effects in your
+domain, but re-measure before you rely on a number.
 
 ## A minimal spec
 

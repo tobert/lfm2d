@@ -248,7 +248,9 @@ upload's `spec` is its content hash, never a file stem.
   them and each next line waits for the child's own prompt. `--auto` skips
   the between-act pauses; `--acts 13` picks a subset (an unknown act is an
   error). It refuses to start when its `SPEC` (`email-triage-v2`) is not
-  on the menu; `test_show.py` checks that file is the measured one.
+  on the menu, or is there with bytes other than the measured ones (the
+  menu id is the sha256 `show.py` pins as `SPEC_ID`); `test_show.py`
+  checks the file, the pin, the image and the example manifest agree.
 - **`blink_anything.py --spec email-triage-v2 --field verdict`** — the
   verdict vocabulary is the app's, not ours. The primitive routes a
   support inbox (`auto_close` / `human_read`) over a spec written as a prop.

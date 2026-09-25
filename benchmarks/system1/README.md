@@ -11,7 +11,7 @@ the opinion engine").
 |---|---|
 | `gen_sets.py` | writes the sets with DeepSeek (`deepseek-flash`), splits each category tune/confirm by a seeded shuffle, prints counts only |
 | `measure.py` | uploads a spec's exact bytes, asks every row through `/v1/opinion` (every choice field, or only the scored one with `--ask-only`), prints aggregates; per-row reads go outside the repo |
-| `specs/` | every baseline and variant measured here (the Let You show's spec is `demo/web/static/life-decision-v2.json`; the email prop is `demo/specs/email-triage-v2.json`, the reworded spec below, same bytes) |
+| `specs/` | every baseline and variant measured here (the Let You show's spec is `demo/web/static/life-decision-v2.json`; the email prop is `demo/specs/email-triage-v2.json`: the "rules reworded" spec in the email table, moved there byte for byte) |
 | `results/` | one summary per spec and split: spec id, set hash, counts, AUCs, mass, and for live runs the adjudicator identity and latency. Tune and some confirm summaries were rebuilt from the saved reads with `measure.py --rows` (they say `derived_from_rows`). No rows |
 
 The sets live outside the repo (author's private notes). Regenerate your
