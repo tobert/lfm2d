@@ -149,15 +149,46 @@ def cold_repeat(url, spec_id, rows, questions):
     return {"rows": len(rows), "bit_identical": same}
 
 
+def from_rows(a, spec_id, expect):
+    if not a.rows.name.startswith(f"rows-{spec_id[:12]}-"):
+        raise SystemExit(f"{a.rows.name} was not written for spec {spec_id[:12]}")
+    wanted = [json.loads(line)["input"] for line in a.set.read_text().splitlines() if line.strip()]
+    have = {}
+    for line in a.rows.read_text().splitlines():
+        r = json.loads(line)
+        have[r["input"]] = r
+    missing = [w for w in wanted if w not in have]
+    if missing:
+        raise SystemExit(f"{len(missing)} of {len(wanted)} set rows are not in {a.rows.name}")
+    got = [have[w] for w in wanted]
+    summary = {
+        "spec_file": a.spec.name, "spec_id": spec_id, "set": a.set.name,
+        "set_sha256": hashlib.sha256(a.set.read_bytes()).hexdigest(),
+        "derived_from_rows": a.rows.name,
+        "snapshot_ids": sorted({r["snapshot_id"] for r in got}),
+        "prefix_tokens": sorted({r["prefix_tokens"] for r in got}),
+        "questions": sorted(got[0]["probs"]),
+        **summarize(got, a.field, expect, a.pass_cat),
+    }
+    text = json.dumps(summary, indent=1)
+    print(text)
+    if a.summary:
+        a.summary.parent.mkdir(parents=True, exist_ok=True)
+        a.summary.write_text(text + "\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", required=True)
+    ap.add_argument("--url", help="the daemon; not used with --rows")
     ap.add_argument("--spec", required=True, type=pathlib.Path)
     ap.add_argument("--set", required=True, type=pathlib.Path)
     ap.add_argument("--field", required=True, help="the choice field the summary scores")
     ap.add_argument("--expect", action="append", required=True, help="category=option")
     ap.add_argument("--pass", dest="pass_cat", required=True)
-    ap.add_argument("--out", required=True, type=pathlib.Path, help="per-row reads (outside the repo)")
+    ap.add_argument("--out", type=pathlib.Path, help="per-row reads (outside the repo); required unless --rows")
+    ap.add_argument("--rows", type=pathlib.Path,
+                    help="summarize an earlier run's per-row reads instead of calling the daemon; "
+                         "keeps the rows whose input is in --set and refuses if any is missing")
     ap.add_argument("--summary", type=pathlib.Path)
     ap.add_argument("--cold-repeat", type=int, default=0, metavar="N",
                     help="read the first N rows twice with use_cache: false and count bit-identical answers")
@@ -167,6 +198,10 @@ def main():
 
     spec_bytes = a.spec.read_bytes()
     spec_id = hashlib.sha256(spec_bytes).hexdigest()
+    if a.rows:
+        return from_rows(a, spec_id, expect)
+    if not (a.url and a.out):
+        raise SystemExit("--url and --out are required unless --rows")
     reg, _ = call(a.url, "/v1/opinion/specs", raw=spec_bytes)
     if reg["id"] != spec_id:
         raise SystemExit(f"daemon id {reg['id']} != sha256 of the file {spec_id}")

@@ -1,0 +1,84 @@
+{
+ "spec_file": "email-triage-verdict-first.json",
+ "spec_id": "9382b8a0a542c38674f507dcd3bf99a4b4a7b4b3f55ca5974375bf77bb9c7ab1",
+ "set": "emails-tune.jsonl",
+ "set_sha256": "1bbb5bdb4d3617fb4ef2d708330852bb4c17a7a23d811c6bb8d8216c08f96f86",
+ "derived_from_rows": "rows-9382b8a0a542-emails-tune.jsonl",
+ "snapshot_ids": [
+  "aca67b9a7d30d2573b9042c4f2429cbf8829f5587a0f3e1174774f4208b254aa"
+ ],
+ "prefix_tokens": [
+  307
+ ],
+ "questions": [
+  "verdict"
+ ],
+ "field": "verdict",
+ "pass_category": "routine",
+ "pass_option": "auto_close",
+ "categories": {
+  "human": {
+   "n": 40,
+   "expected": "human_read",
+   "top_counts": {
+    "auto_close": 0,
+    "human_read": 40
+   },
+   "exact": 40,
+   "mean_prob": {
+    "auto_close": 0.109,
+    "human_read": 0.891
+   },
+   "mass_min": 0.9995,
+   "mass_median": 0.9999,
+   "caught": 40,
+   "auc_vs_pass": 0.7894
+  },
+  "routine": {
+   "n": 40,
+   "expected": "auto_close",
+   "top_counts": {
+    "auto_close": 1,
+    "human_read": 39
+   },
+   "exact": 1,
+   "mean_prob": {
+    "auto_close": 0.2293,
+    "human_read": 0.7707
+   },
+   "mass_min": 0.9998,
+   "mass_median": 0.9999,
+   "passed": 1
+  }
+ },
+ "latency_ms": {
+  "miss_wall": {
+   "p50": 1162.8,
+   "p95": 1709.4,
+   "max": 2162.1
+  },
+  "miss_prefill": {
+   "p50": 252.6,
+   "p95": 321.6,
+   "max": 514.6
+  },
+  "miss_describe": {
+   "p50": 807.0,
+   "p95": 1296.0,
+   "max": 1732.7
+  },
+  "miss_read": {
+   "p50": 78.4,
+   "p95": 119.9,
+   "max": 125.9
+  },
+  "hit_wall": {
+   "p50": 74.4,
+   "p95": 128.0,
+   "max": 138.7
+  }
+ },
+ "cache_on_repeat": [
+  "{\"described\": \"hit\", \"prefix\": \"hit\", \"state\": \"skipped\"}"
+ ]
+}

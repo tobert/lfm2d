@@ -3,16 +3,16 @@
 Every opinion-engine number before 2026-09-25 was measured on shell
 commands. These are the first on other inputs: everyday decisions and
 support email, measured through the running daemon
-(lfm2d-system1 0.3.1, LFM2.5-8B-A1B Q5_K_M, `rocm:gfx1151:hip7.2`, candle
+(the lfm2d-system1 image 0.3.1, LFM2.5-8B-A1B Q5_K_M, `rocm:gfx1151:hip7.2`, candle
 `dda984e0`), with the rules in [`AGENTS.md`](../../AGENTS.md) ("Measuring
 the opinion engine").
 
 | file | what |
 |---|---|
 | `gen_sets.py` | writes the sets with DeepSeek (`deepseek-flash`), splits each category tune/confirm by a seeded shuffle, prints counts only |
-| `measure.py` | uploads a spec's exact bytes, asks every row through `/v1/opinion`, prints aggregates; per-row reads go outside the repo |
-| `specs/` | the baselines and variants measured here (the Let You show's spec is `demo/web/static/life-decision-v2.json`) |
-| `results/` | one summary per run: spec id, set hash, adjudicator identity, counts, AUCs, mass, latency. No rows |
+| `measure.py` | uploads a spec's exact bytes, asks every row through `/v1/opinion` (every choice field, or only the scored one with `--ask-only`), prints aggregates; per-row reads go outside the repo |
+| `specs/` | every baseline and variant measured here (the Let You show's spec is `demo/web/static/life-decision-v2.json`; the email prop is `demo/specs/email-triage-v1.json`) |
+| `results/` | one summary per spec and split: spec id, set hash, counts, AUCs, mass, and for live runs the adjudicator identity and latency. Tune and some confirm summaries were rebuilt from the saved reads with `measure.py --rows` (they say `derived_from_rows`). No rows |
 
 The sets live outside the repo (author's private notes). Regenerate your
 own with `gen_sets.py` and a DeepSeek key; numbers on a new draw will
@@ -82,18 +82,20 @@ wrong belief gives a confident wrong answer.
 Tune split, five variants of the same spec (ordinary 39 / think_twice 40 /
 dangerous 40):
 
-| variant | ordinary → go | not go, think_twice / dangerous | dangerous → stop |
+| variant (`specs/` or demo file) | ordinary → go | not go, think_twice / dangerous | dangerous → stop |
 |---|---|---|---|
 | v1 | 4 | 40 / 40 | 7 |
 | rules reworded (= v2) | 30 | 39 / 39 | 18 |
-| + plain effect, harm-shaped scope | 36 | 39 / 37 | 3 |
-| + plain effect, verdict next (= gate) | 36 | 40 / 39 | 3 |
-| gate with the stop rule stated first | **38** | 34 / 36 | 19 |
+| + plain effect, harm-shaped scope (`harm-scope`) | 36 | 39 / 37 | 3 |
+| + plain effect, verdict next (`gate`) | 36 | 40 / 39 | 3 |
+| gate with the stop rule stated first (`gate-stop-first`) | **38** | 34 / 36 | 19 |
+| harm-scope with the stop rule stated first | 36 | 40 / 37 | 24 |
 
 Stating the stop rule before the wait rule made the model say stop six
 times as often and pass two more ordinary rows, and let 10 risky rows
-through as go instead of 1. Tune numbers flattered every variant: gate's
-pass-through was 36/39 on tune, 31/40 on confirm and 53/61 held out.
+through as go instead of 1. Pass-through moves between draws of the same
+kind: gate passed 36/39 on tune, 31/40 on confirm and 53/61 held out, and
+v1 4/39, 9/40 and 3/61. One draw of 40 rows is a sketch, not a result.
 
 ## Support email: a harder question
 
@@ -102,7 +104,7 @@ pass-through was 36/39 on tune, 31/40 on confirm and 53/61 held out.
 
 | spec | routine → auto_close | human caught | AUC P(auto_close) |
 |---|---|---|---|
-| v1 | 20 / 40 | 32 / 40 | 0.76 |
+| v1 (read in one run over all 80+80; this is its confirm half) | 20 / 40 | 32 / 40 | 0.76 |
 | rules reworded (`specs/email-triage-reworded.json`) | 20 / 40 | **37 / 40** | **0.81** |
 
 Saying that routine mail stays routine "even when the customer is
@@ -110,7 +112,7 @@ impatient or annoyed", and naming privacy and data requests, caught five
 more of the emails a person must read, and left routine pass-through at
 20 of 40. Asking
 the verdict before `feeling` (the move that helped the actions spec) sent
-39 of 40 routine tune emails to a human. **A fix to one spec is a
+39 of 40 routine tune emails to a human (`specs/email-triage-verdict-first.json`). **A fix to one spec is a
 hypothesis for the next one.**
 
 ## Speed
@@ -140,5 +142,9 @@ python3 benchmarks/system1/measure.py --url http://<daemon>:8088 \
     --spec demo/web/static/life-decision-v2.json --set ~/sets/actions-confirm.jsonl \
     --field verdict --expect ordinary=go --expect think_twice=wait --expect dangerous=stop \
     --pass ordinary --out ~/sets/reads
+python3 benchmarks/system1/measure.py --url http://<daemon>:8088 \
+    --spec demo/specs/email-triage-v1.json --set ~/sets/emails-confirm.jsonl \
+    --field verdict --expect routine=auto_close --expect human=human_read \
+    --pass routine --ask-only --out ~/sets/reads    # the email runs asked one question
 python3 -m unittest discover -s benchmarks/system1
 ```
