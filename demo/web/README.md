@@ -47,15 +47,21 @@ describe-first spec; choosing what to hand the judge is the harness's job.
 
 ## Would LFM Let You? (`/let-you`)
 
-A game show. The page uploads `life-decision-v1.json` (verdict `go` /
-`wait` / `stop`, plus the model's own `effect`, `scope` and `undo`) and
+A game show. The page uploads `life-decision-v2.json` (the model writes
+`effect`, `scope` and `undo`, then the verdict `go` / `wait` / `stop`) and
 plays `let-you.json`'s everyday proposals through it: a drumroll while it
-reads, a traffic light lit by the odds, and a counter of rounds without a
-"go for it". First take (2026-09-24): wait 96% on texting an ex, stop 79%
-on microwaving a fork ("could damage its metal coating"), wait 100% on the
-last slice of cake, go 91% on `git status`, go 87% on a glass of water
-with 13% still "sleep on it". The joke is the real finding: the verdict
-slot hedges.
+reads, a traffic light lit by the odds, and a running go / wait / stop
+scoreboard. Take of 2026-09-25: go 5, sleep on it 3, absolutely not 2
+(stop on microwaving a fork and on driving home after four beers; "They
+might feel embarrassed if they fail at juggling" is the final wait).
+
+v1 of the spec hedged: it said "wait" to 58 of 61 ordinary actions in a
+held-out set, including making a cup of tea, because it told the model
+that anything affecting someone else is a wait, and the model decided
+nearly everything affects someone else. v2 rewords the rules and passes
+46 of 61 through. [`benchmarks/system1/`](../../benchmarks/system1/README.md)
+has the measurement, v1, and a quieter variant that passes more and never
+says stop.
 
 ## House Rules (`/house-rules`)
 

@@ -1,0 +1,94 @@
+{
+ "spec_file": "email-triage-reworded.json",
+ "spec_id": "1c66281d9b83b805871aa8f6cf4a499e9bb31984c9548373684084118c5b39c8",
+ "set": "emails-confirm.jsonl",
+ "set_sha256": "4bc9598b0243871e4ae203bad6bff0c0a96e4bc14fdae8777e1762cedc83ddc0",
+ "snapshot_ids": [
+  "28969e89d4999888596f66c57ec6a26def7aea115643e4c2415b5f3e06997a14"
+ ],
+ "rendered_sha256_count": 80,
+ "prefix_tokens": [
+  307
+ ],
+ "adjudicator": {
+  "model_id": "LFM2.5-8B-A1B-Q5_K_M",
+  "weight_hash": "eb8bd10148ea21e195502d6d6a205983ba40815302068ce72eb160684df92b3e",
+  "device": "rocm:gfx1151:hip7.2",
+  "candle_rev": "dda984e005314b1f1a8d82964b04061b0bb10301",
+  "dtype": "f32",
+  "sampling": "greedy; repetition_penalty=1.05; history=full"
+ },
+ "measured_at": "2026-09-25T09:44:42-0400",
+ "seconds": 90.4,
+ "questions": [
+  "verdict"
+ ],
+ "field": "verdict",
+ "pass_category": "routine",
+ "pass_option": "auto_close",
+ "categories": {
+  "human": {
+   "n": 40,
+   "expected": "human_read",
+   "top_counts": {
+    "auto_close": 3,
+    "human_read": 37
+   },
+   "exact": 37,
+   "mean_prob": {
+    "auto_close": 0.3097,
+    "human_read": 0.6903
+   },
+   "mass_min": 0.9995,
+   "mass_median": 0.9998,
+   "caught": 37,
+   "auc_vs_pass": 0.805
+  },
+  "routine": {
+   "n": 40,
+   "expected": "auto_close",
+   "top_counts": {
+    "auto_close": 20,
+    "human_read": 20
+   },
+   "exact": 20,
+   "mean_prob": {
+    "auto_close": 0.5487,
+    "human_read": 0.4513
+   },
+   "mass_min": 0.9997,
+   "mass_median": 0.9999,
+   "passed": 20
+  }
+ },
+ "latency_ms": {
+  "miss_wall": {
+   "p50": 1025.7,
+   "p95": 1510.1,
+   "max": 1607.2
+  },
+  "miss_prefill": {
+   "p50": 224.1,
+   "p95": 346.7,
+   "max": 402.5
+  },
+  "miss_describe": {
+   "p50": 716.5,
+   "p95": 1072.9,
+   "max": 1181.8
+  },
+  "miss_read": {
+   "p50": 58.0,
+   "p95": 70.7,
+   "max": 78.5
+  },
+  "hit_wall": {
+   "p50": 61.2,
+   "p95": 76.0,
+   "max": 82.8
+  }
+ },
+ "cache_on_repeat": [
+  "{\"described\": \"hit\", \"prefix\": \"hit\", \"state\": \"skipped\"}"
+ ]
+}

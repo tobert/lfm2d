@@ -1,5 +1,6 @@
 """Tests for the demo web proxy; no checkpoints or network required."""
 import json
+import re
 import threading
 import unittest
 import urllib.error
@@ -177,9 +178,16 @@ class PageTests(unittest.TestCase):
 
     def test_let_you_props_are_well_formed(self):
         static = Path(server.__file__).parent / "static"
-        spec = json.loads((static / "life-decision-v1.json").read_text())
+        page = (static / "let-you.html").read_text()
+        spec_file = re.search(r'const SPEC_FILE = "/([^"]+)"', page).group(1)
+        spec = json.loads((static / spec_file).read_text())
         self.assertIsInstance(spec.get("input_label"), str)
         self.assertEqual(sorted(spec["output_schema"]["properties"]["verdict"]["enum"]), ["go", "stop", "wait"])
+        # the show types the description, deals the chips, then lights the lamps: all of
+        # those must be written before the verdict slot, or the chips are post-hoc
+        order = spec["output_schema"]["required"]
+        for f in ("effect", "scope", "undo"):
+            self.assertLess(order.index(f), order.index("verdict"), f)
         rounds = json.loads((static / "let-you.json").read_text())["rounds"]
         self.assertEqual(len(rounds), len(set(rounds)))
 

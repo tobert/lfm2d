@@ -49,8 +49,8 @@
   #call.show { transform: none; opacity: 1; }
   #callsub { position: absolute; top: 780px; left: 32px; right: 32px; text-align: center; font-size: 17px; color: var(--mid); min-height: 48px; line-height: 1.35; }
   #hedge { position: absolute; top: 846px; left: 32px; right: 32px; font-family: var(--mono); font-size: 12px; color: var(--dim); }
-  #hedge .bar { margin-top: 5px; height: 8px; border-radius: 4px; background: #1f1630; overflow: hidden; }
-  #hedge .bar span { display: block; height: 100%; width: 0; background: var(--wait); transition: width .6s; }
+  #hedge .bar { margin-top: 5px; height: 8px; border-radius: 4px; background: #1f1630; overflow: hidden; display: flex; }
+  #hedge .bar span { display: block; height: 100%; transition: width .6s; }
   footer { position: absolute; bottom: 12px; left: 32px; right: 32px; font-family: var(--mono); font-size: 10px; color: var(--dim); line-height: 1.5; text-align: center; }
   #end { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 44px;
          background: var(--bg); opacity: 0; transition: opacity 1s; pointer-events: none; z-index: 4; }
@@ -76,18 +76,18 @@
   <div id="hedge"></div>
   <footer id="foot"></footer>
   <div id="end">
-    <h1>Would LFM let you?<br>Mostly: sleep on it.</h1>
-    <p id="endp">The same engine that judges shell commands, handed a new spec at load. LFM2.5-8B-A1B describes the idea, then reads its odds. Every call was live.</p>
+    <h1>Would LFM let you?</h1>
+    <p id="endp">LFM2.5-8B-A1B writes what happens next, then reads the odds of all three calls in one pass. The spec was uploaded at load; every call was live.</p>
     <p class="url">github.com/tobert/lfm2d</p>
   </div>
   <div id="gate"><h1>Would LFM let you?</h1><div id="gatemsg">warming up the studio…</div></div>
 </div>
 <script>
 "use strict";
-// A consumer page: it owns life-decision-v1.json and uploads it at load, then checks the
+// A consumer page: it owns life-decision-v2.json and uploads it at load, then checks the
 // field and option names it uses against the daemon's menu. The show reads every
 // verdict option's odds; which lamp lights is just the odds, not a rule of ours.
-const SPEC_FILE = "/life-decision-v1.json", SET_FILE = "/let-you.json";
+const SPEC_FILE = "/life-decision-v2.json", SET_FILE = "/let-you.json";
 const DESCRIBE = "effect", SCOPE = "scope", UNDO = "undo", VERDICT = "verdict";
 const LAMPS = { go: "--go", wait: "--wait", stop: "--stop" };   // this spec's verdict options, checked at load
 const CALLS = { go: "Go for it.", wait: "Sleep on it.", stop: "Absolutely not." };
@@ -209,9 +209,9 @@ async function round(act, n, tally) {
   $("callsub").innerHTML = top === "go" && r.verdict[second] >= 0.1
     ? `…but ${pct(r.verdict[second])} says ${esc(CALLS[second].toLowerCase().replace(".", ""))}.`
     : `${pct(r.verdict[top])} sure.`;
-  if (top !== "go") tally.hedged++;
-  tally.done++;
-  $("hedge").innerHTML = `rounds without a “go for it”: ${tally.hedged} of ${tally.done}<div class="bar"><span style="width:${(100 * tally.hedged / tally.done).toFixed(1)}%"></span></div>`;
+  tally[top]++; tally.done++;
+  $("hedge").innerHTML = D.opts.map(o => `<span style="color:var(${LAMPS[o]})">${esc(CALLS[o].replace(".", "").toLowerCase())} ${tally[o]}</span>`).join(" · ") +
+    `<div class="bar">${D.opts.map(o => `<span style="width:${(100 * tally[o] / tally.done).toFixed(1)}%;background:var(${LAMPS[o]})"></span>`).join("")}</div>`;
   await sleep(n === D.rounds.length - 1 ? 4200 : 2900);
   return { act, top, verdict: r.verdict };
 }
@@ -227,11 +227,11 @@ addEventListener("resize", fit); fit();
   if (!AUTO) await new Promise(r => $("gate").addEventListener("click", r, { once: true }));
   if (!MUTE) audioInit();
   $("gate").remove(); await sleep(500);
-  const tally = { hedged: 0, done: 0 }, results = [];
+  const tally = { go: 0, wait: 0, stop: 0, done: 0 }, results = [];
   try { for (const [n, act] of D.rounds.entries()) results.push(await round(act, n, tally)); }
   catch (e) { $("call").textContent = "Technical difficulties."; $("call").classList.add("show"); $("callsub").textContent = String(e.message ?? e); throw e; }
-  const goes = results.filter(r => r.top === "go").map(r => `“${r.act}”`);
-  $("endp").innerHTML = `It said go to ${goes.length ? goes.join(" and ") : "nothing"}. ` + $("endp").innerHTML;
+  const said = D.opts.map(o => `${esc(CALLS[o].replace(".", "").toLowerCase())} ${tally[o]}`).join(", ");
+  $("endp").innerHTML = `${said}. ` + $("endp").innerHTML;
   $("end").classList.add("show");
 })();
 </script>
