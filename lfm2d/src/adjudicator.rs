@@ -131,8 +131,8 @@ pub fn validate_text(s: &str) -> Result<(), String> {
     if s.trim().is_empty() {
         return Err("input must not be empty".into());
     }
-    if s.contains("<|") || s.contains("<think>") || s.contains("</think>") {
-        return Err("literal model control tokens are not allowed in prompt content".into());
+    if let Some(marker) = crate::chat::control_marker_in(s) {
+        return Err(format!("literal model control tokens ({marker:?}) are not allowed in prompt content"));
     }
     Ok(())
 }
@@ -193,7 +193,7 @@ impl PromptSpec {
         if label.contains(':') {
             return Err("input_label must not contain a colon; the renderer writes the one after it".into());
         }
-        if label.contains("<|") || label.contains("<think>") || label.contains("</think>") {
+        if crate::chat::control_marker_in(label).is_some() {
             return Err("input_label must not carry model control tokens".into());
         }
         if label.len() > MAX_INPUT_LABEL_BYTES {

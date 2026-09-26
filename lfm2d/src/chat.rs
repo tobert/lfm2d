@@ -47,6 +47,12 @@ pub const CONTINUE_FINAL_MESSAGE_TAG: &str = "CONTINUE_FINAL_MESSAGE_TAG ";
 /// `tests/chat_template.rs` checks against the real tokenizer.
 pub const CONTROL_MARKERS: [&str; 4] = ["<|", "<think>", "</think>", "<image>"];
 
+/// The first of [`CONTROL_MARKERS`] that `text` carries. Every check on text
+/// bound for a prompt goes through this, so the list has one home.
+pub fn control_marker_in(text: &str) -> Option<&'static str> {
+    CONTROL_MARKERS.into_iter().find(|m| text.contains(m))
+}
+
 /// A chat: the system prompt, the tools the system turn lists, and the turns
 /// after it. An empty system prompt with no tools renders no system turn.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -323,7 +329,7 @@ impl ToolCall {
 }
 
 fn refuse_control(what: &str, text: &str) -> Result<(), String> {
-    match CONTROL_MARKERS.iter().find(|m| text.contains(*m)) {
+    match control_marker_in(text) {
         Some(marker) => Err(format!(
             "{what} carries {marker:?}, a model control token; the renderer writes those"
         )),
