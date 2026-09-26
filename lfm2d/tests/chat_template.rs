@@ -5,7 +5,7 @@
 //! (`tests/reference/dump_chat_template.py`), never by us. The token-id test
 //! needs the real LFM2.5-8B-A1B tokenizer (no weights), resolved the way
 //! `probe_tokenize_telemetry_safety.rs` resolves it.
-use lfm2d::chat::{Chat, GENERATION_PROMPT, Message};
+use lfm2d::chat::{CONTROL_MARKERS, Chat, GENERATION_PROMPT, Message, TemplateValue};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -86,7 +86,7 @@ fn the_fixture_was_rendered_by_the_template_the_daemon_pins() {
 #[test]
 fn every_fixture_chat_renders_byte_for_byte() {
     let fixture = fixture();
-    assert!(fixture.cases.len() >= 9);
+    assert!(fixture.cases.len() >= 11);
     for case in &fixture.cases {
         let ours = our_prefixes(case);
         assert_eq!(ours.len(), case.prefixes.len(), "{}", case.name);
@@ -265,6 +265,10 @@ fn shapes_the_template_renders_ambiguously_are_refused() {
             r#"{"messages":[{"role":"assistant","content":"x CONTINUE_FINAL_MESSAGE_TAG "}]}"#,
             "CONTINUE_FINAL_MESSAGE_TAG",
         ),
+        (
+            r#"{"messages":[{"role":"assistant","content":"x CONTINUE_FINAL_MESSAGE_TAG y"}]}"#,
+            "CONTINUE_FINAL_MESSAGE_TAG",
+        ),
         (r#"{"messages":[{"role":"user","content":"  \n"}]}"#, "empty"),
         (r#"{"messages":[{"role":"assistant"}]}"#, "empty"),
         (r#"{"messages":[{"role":"assistant","tool_calls":[]}]}"#, "tool_calls"),
@@ -333,4 +337,124 @@ fn prompt_spec_tools_are_not_yet_the_templates_tojson() {
         spec_head, *template_head,
         "PromptSpec now renders tools as the template does: make this an equality"
     );
+}
+
+#[test]
+fn an_explicit_empty_system_message_renders_as_none_at_all() {
+    // The template tests the system content for truthiness, so `""` writes no
+    // system turn, the same bytes as a chat without a system message; that is
+    // why `Chat.system` is a `String` and not an `Option`. Whitespace alone is
+    // a system prompt.
+    let fixture = fixture();
+    let case = |name: &str| fixture.cases.iter().find(|c| c.name == name).unwrap();
+    let (empty, absent) = (case("empty_system_message"), case("no_system_message"));
+    assert_eq!(empty.prefixes[0], "<|startoftext|>");
+    assert_eq!(empty.with_generation_prompt, absent.with_generation_prompt);
+    assert_eq!(empty.chat.render(true).unwrap(), absent.chat.render(true).unwrap());
+    assert!(case("whitespace_only_system").prefixes[0].starts_with("<|startoftext|><|im_start|>system\n <|im_end|>"));
+}
+
+#[test]
+fn every_added_token_is_a_control_marker() {
+    // Refresh the tokenizer and this fails until CONTROL_MARKERS covers what
+    // the new one splits out, and until it drops markers that are gone.
+    let tokenizer = real_tokenizer();
+    let added = tokenizer.get_added_tokens_decoder();
+    assert!(added.len() > 100, "{} added tokens", added.len());
+    for (id, token) in &added {
+        assert!(
+            token.content.starts_with("<|") || CONTROL_MARKERS.contains(&token.content.as_str()),
+            "added token {id} {:?} is not refused by CONTROL_MARKERS",
+            token.content
+        );
+    }
+    for marker in CONTROL_MARKERS {
+        assert!(
+            marker == "<|" || added.values().any(|t| t.content == marker),
+            "{marker:?} is no longer an added token"
+        );
+    }
+}
+
+fn value(json: &str) -> Result<TemplateValue, String> {
+    serde_json::from_str(json).map_err(|e| e.to_string())
+}
+
+#[test]
+fn numbers_whose_parse_could_differ_from_pythons_are_refused() {
+    for (json, want) in [
+        ("18446744073709551615", TemplateValue::Int(18446744073709551615)),
+        ("-9223372036854775808", TemplateValue::Int(-9223372036854775808)),
+        ("0.30000000000000004", TemplateValue::Float(0.30000000000000004)),
+        ("0.3000000000000001", TemplateValue::Float(0.3000000000000001)),
+        ("6.02e-20", TemplateValue::Float(6.02e-20)),
+        ("1e19", TemplateValue::Float(1e19)),
+        ("-0.0", TemplateValue::Float(-0.0)),
+        // serde_json's default parser read these an ulp off.
+        ("6.02e-23", TemplateValue::Float(6.02e-23)),
+        ("9007199254740993e-22", TemplateValue::Float(9007199254740993e-22)),
+        ("5e-324", TemplateValue::Float(5e-324)),
+    ] {
+        assert_eq!(value(json), Ok(want), "{json}");
+    }
+    for json in [
+        // Integers past 64 bits reach us as floats; Python keeps them ints.
+        "18446744073709551616",
+        "-9223372036854775809",
+        "100000000000000000000",
+        "1e20",
+        "6.02e23",
+    ] {
+        assert!(value(json).is_err(), "{json}: {:?}", value(json));
+    }
+}
+
+/// A deterministic spread of finite doubles: random bit patterns, which cover
+/// every exponent, and short decimals near the point, which is what arguments
+/// mostly hold.
+fn float_sample() -> Vec<f64> {
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut next = move || {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state
+    };
+    let mut floats = Vec::new();
+    while floats.len() < 100_000 {
+        let f = f64::from_bits(next());
+        if f.is_finite() {
+            floats.push(f);
+        }
+    }
+    for _ in 0..100_000 {
+        let digits = next() % 100_000_000_000_000_000;
+        let exponent = (next() % 60) as i32 - 40;
+        floats.push(format!("{digits}e{exponent}").parse().unwrap());
+    }
+    floats
+}
+
+#[test]
+fn every_float_reads_as_python_reads_it() {
+    // Without serde_json's `float_roundtrip` this fails: its default parser
+    // misread 7,666 of 26,454 random doubles' shortest texts, an ulp or two
+    // off. Rust's `str::parse`, like Python's `float()`, rounds correctly.
+    let mut checked = 0;
+    for f in float_sample() {
+        for text in [serde_json::to_string(&f).unwrap(), format!("{f:e}"), format!("{f}")] {
+            let exact: f64 = text.parse().unwrap();
+            match value(&text) {
+                Ok(TemplateValue::Float(got)) => {
+                    assert_eq!(got.to_bits(), exact.to_bits(), "{text} was read as {got:e}");
+                    checked += 1;
+                }
+                Ok(TemplateValue::Int(_)) => {}
+                Ok(other) => panic!("{text} parsed as {other:?}"),
+                Err(e) => assert!(
+                    exact.fract() == 0.0 && exact.abs() >= 9223372036854775808.0,
+                    "{text}: {e}"
+                ),
+            }
+        }
+    }
+    assert!(checked > 300_000, "{checked}");
 }

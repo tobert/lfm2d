@@ -37,13 +37,15 @@ pub const TURN_END: &str = "<|im_end|>\n";
 /// the template does. See the module docs.
 pub const AFTER_EOS: &str = "\n";
 /// transformers' `continue_final_message` sentinel. The template strips it from
-/// an assistant's content and writes it back after the tool calls; content
-/// ending with it is refused rather than reproduced.
+/// the end of an assistant's content and writes it back after the tool calls;
+/// assistant content carrying it anywhere (with or without the space) is
+/// refused rather than reproduced.
 pub const CONTINUE_FINAL_MESSAGE_TAG: &str = "CONTINUE_FINAL_MESSAGE_TAG ";
 
-/// Substrings that would tokenize as model control tokens. Every special token
-/// in the tokenizer starts with `<|` except these three.
-const CONTROL_MARKERS: [&str; 4] = ["<|", "<think>", "</think>", "<image>"];
+/// Substrings that would tokenize as model control tokens. Every added token in
+/// the tokenizer starts with `<|` except the other three, which
+/// `tests/chat_template.rs` checks against the real tokenizer.
+pub const CONTROL_MARKERS: [&str; 4] = ["<|", "<think>", "</think>", "<image>"];
 
 /// A chat: the system prompt, the tools the system turn lists, and the turns
 /// after it. An empty system prompt with no tools renders no system turn.
@@ -127,11 +129,9 @@ impl TryFrom<WireToolCall> for ToolCall {
 /// Deserialize it from request text, never through `serde_json::Value`, which
 /// sorts object keys and would reorder every argument.
 ///
-/// Two places the parse can still differ from Python's: an integer beyond
-/// `u64` reaches us as a float (Python keeps it an int), and serde_json's
-/// default float parser (no `float_roundtrip`) is not guaranteed correctly
-/// rounded for long mantissas, so a float could render one ulp away. The
-/// fixtures' 17-digit `0.30000000000000004` round-trips.
+/// A number is refused where our parse could differ from Python's
+/// ([`check_float`]). The visitor sees only the parsed `f64`, never the text,
+/// so that rule is stated on the value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TemplateValue {
     Null,
@@ -167,9 +167,7 @@ impl<'de> Deserialize<'de> for TemplateValue {
                 Ok(TemplateValue::Int(v.into()))
             }
             fn visit_f64<E: de::Error>(self, v: f64) -> Result<TemplateValue, E> {
-                if !v.is_finite() {
-                    return Err(E::custom("numbers must be finite"));
-                }
+                check_float(v).map_err(E::custom)?;
                 Ok(TemplateValue::Float(v))
             }
             fn visit_str<E>(self, v: &str) -> Result<TemplateValue, E> {
@@ -267,9 +265,9 @@ impl Message {
                 }
                 if let Some(content) = content {
                     refuse_control("an assistant's content", content)?;
-                    if content.ends_with(CONTINUE_FINAL_MESSAGE_TAG) {
+                    if content.contains(CONTINUE_FINAL_MESSAGE_TAG.trim_end()) {
                         return Err(format!(
-                            "assistant content must not end with {CONTINUE_FINAL_MESSAGE_TAG:?}: the \
+                            "assistant content must not carry {CONTINUE_FINAL_MESSAGE_TAG:?}: the \
                              template moves it after the tool calls"
                         ));
                     }
@@ -478,15 +476,47 @@ fn py_str_repr(s: &str, out: &mut String) -> Result<(), String> {
     Ok(())
 }
 
+/// The shortest round-tripping decimal digits of `|f|` and the exponent of the
+/// first: `|f| = d.ddd × 10^exponent`.
+fn shortest_digits(f: f64) -> (String, i32) {
+    let sci = format!("{:e}", f.abs());
+    let (mantissa, exponent) = sci.split_once('e').expect("`{:e}` always writes an exponent");
+    let digits = mantissa.chars().filter(|c| *c != '.').collect();
+    (digits, exponent.parse().expect("`{:e}` writes an integer exponent"))
+}
+
+/// Floats whose parse could differ from Python's `json.loads`, refused: a
+/// whole number at or beyond 2^64 (or at or below -2^63). An integer written
+/// there overflows serde_json's `u64`/`i64` and arrives as a float, where
+/// Python keeps an int (`100000000000000000000`, not `1e+20`), and from the
+/// value alone the two cannot be told apart.
+///
+/// Every other float is read exactly: the crate turns on serde_json's
+/// `float_roundtrip`, whose parse is correctly rounded as Python's is. Without
+/// it serde_json computes `D as f64` and one multiply or divide by `10^e`, off
+/// by an ulp past `D > 2^53` or `|e| > 22` (it read `6.02e-23` as
+/// `6.019999999999999e-23`); `tests/chat_template.rs` holds the parse to
+/// Rust's own, which is exact, over a sample of doubles.
+fn check_float(f: f64) -> Result<(), String> {
+    if !f.is_finite() {
+        return Err("a float must be finite".into());
+    }
+    if f.fract() == 0.0 && (f >= 18446744073709551616.0 || f <= -9223372036854775808.0) {
+        return Err(format!(
+            "the float {} is a whole number beyond 64-bit integers, where an integer arrives as a \
+             float too, so which one Python would render is unknown",
+            py_float_repr(f)
+        ));
+    }
+    Ok(())
+}
+
 /// Python's `float.__repr__`: the shortest digits that round-trip (as Rust
 /// finds them too), positional when the decimal point falls within
 /// `-4 < decpt <= 16`, otherwise `d.ddde±XX` with at least two exponent digits;
 /// a whole number keeps `.0`.
 fn py_float_repr(f: f64) -> String {
-    let sci = format!("{:e}", f.abs());
-    let (mantissa, exponent) = sci.split_once('e').expect("`{:e}` always writes an exponent");
-    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
-    let exponent: i32 = exponent.parse().expect("`{:e}` writes an integer exponent");
+    let (digits, exponent) = shortest_digits(f);
     let decpt = exponent + 1;
     let n = digits.len() as i32;
     let mut out = String::new();
