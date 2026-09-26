@@ -22,8 +22,9 @@
 //! Content carries no model control tokens; the renderer supplies them, and
 //! refuses (never escapes) text that would forge one.
 use serde::{
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize, Serializer,
     de::{self, MapAccess, SeqAccess, Visitor},
+    ser::{self, SerializeMap},
 };
 use std::fmt;
 
@@ -149,6 +150,41 @@ pub enum TemplateValue {
     Map(Vec<(String, TemplateValue)>),
 }
 
+impl TemplateValue {
+    /// A map's value under `key`; `None` for a missing key or a non-map.
+    pub fn get(&self, key: &str) -> Option<&TemplateValue> {
+        match self {
+            TemplateValue::Map(entries) => entries.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+}
+
+/// Writes the value back as JSON, keys in their own order.
+impl Serialize for TemplateValue {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            TemplateValue::Null => serializer.serialize_unit(),
+            TemplateValue::Bool(b) => serializer.serialize_bool(*b),
+            TemplateValue::Int(i) => match (i64::try_from(*i), u64::try_from(*i)) {
+                (Ok(i), _) => serializer.serialize_i64(i),
+                (_, Ok(u)) => serializer.serialize_u64(u),
+                _ => Err(ser::Error::custom("an integer beyond 64 bits")),
+            },
+            TemplateValue::Float(f) => serializer.serialize_f64(*f),
+            TemplateValue::Str(s) => serializer.serialize_str(s),
+            TemplateValue::List(items) => items.serialize(serializer),
+            TemplateValue::Map(entries) => {
+                let mut map = serializer.serialize_map(Some(entries.len()))?;
+                for (k, v) in entries {
+                    map.serialize_entry(k, v)?;
+                }
+                map.end()
+            }
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for TemplateValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct V;
@@ -226,7 +262,7 @@ pub fn render_head(system: &str, tools: &[TemplateValue]) -> Result<String, Stri
 
 /// [`render_head`] over tools already rendered to text: the template's
 /// `ns.system_prompt` assembly.
-pub(crate) fn head_with_rendered_tools(system: &str, tools: &[String]) -> Result<String, String> {
+fn head_with_rendered_tools(system: &str, tools: &[String]) -> Result<String, String> {
     refuse_control("the system prompt", system)?;
     let mut prompt = system.to_owned();
     if !tools.is_empty() {
@@ -621,21 +657,19 @@ mod tests {
     }
 
     #[test]
-    fn a_tools_spec_single_turn_prompt_is_a_system_and_user_chat_given_its_tool_text() {
-        // `PromptSpec` writes each tool with `serde_json::to_string`, compact
-        // and key-sorted, where the template's `tojson` writes `", "`/`": "`
-        // in document order (`tests/chat_template.rs` pins that divergence).
-        // Given the same tool text, everything around it is the same bytes.
+    fn a_tools_spec_single_turn_prompt_is_a_system_and_user_chat() {
         let mut p: PromptSpec =
             serde_json::from_str(include_str!("../tests/fixtures/specs/email-triage-tools-v1.json")).unwrap();
         assert!(p.output_schema.is_none() && !p.tools.is_empty());
         for reasoning in [Reasoning::Open, Reasoning::Closed] {
             p.reasoning = reasoning;
-            let tools: Vec<String> = p.tools.iter().map(|t| serde_json::to_string(t).unwrap()).collect();
-            let head = head_with_rendered_tools(&p.system, &tools).unwrap();
-            let user = Message::User { content: INPUT.into() }.render().unwrap();
+            let chat = Chat {
+                system: p.system.clone(),
+                tools: p.tools.clone(),
+                messages: vec![Message::User { content: INPUT.into() }],
+            };
             assert_eq!(
-                format!("{head}{user}{GENERATION_PROMPT}{}", opening(reasoning)),
+                chat.render(true).unwrap() + opening(reasoning),
                 p.render_prefix().unwrap() + &p.render_user_turn(INPUT),
                 "{reasoning:?}"
             );

@@ -309,34 +309,33 @@ fn shapes_the_template_renders_ambiguously_are_refused() {
 }
 
 #[test]
-fn prompt_spec_tools_are_not_yet_the_templates_tojson() {
-    // A known divergence, pinned so it cannot move unnoticed.
-    // `PromptSpec::render_prefix` writes each tool with `serde_json::to_string`:
-    // compact separators, keys sorted. The template's `tojson` writes `", "` and
-    // `": "` in document order, which is what `lfm2d::chat` reproduces. When
-    // PromptSpec moves to the template's form this becomes an equality, and
-    // every tools spec's rendered bytes (and `snapshot_id`) move with it.
+fn prompt_spec_tools_render_as_the_template_does() {
+    // Until 2026-09-26 `PromptSpec::render_prefix` wrote each tool with
+    // `serde_json::to_string`: compact separators, keys sorted. It now renders
+    // through `lfm2d::chat`, so a tools spec's system turn is the template's.
     let spec: lfm2d::adjudicator::PromptSpec =
         serde_json::from_str(include_str!("fixtures/specs/email-triage-tools-v1.json")).unwrap();
     let fixture = fixture();
     let case = fixture.cases.iter().find(|c| c.name == "prompt_spec_tools").unwrap();
-    let template_head = &case.prefixes[0];
-    assert_eq!(case.chat.render_head().unwrap(), *template_head);
-
     let spec_head = spec.render_prefix().unwrap();
-    let split = |s: &str| {
-        let (before, tools) = s.split_once("\nList of tools: [").unwrap();
-        (before.to_owned(), tools.to_owned())
-    };
-    let (spec_before, spec_tools) = split(&spec_head);
-    let (template_before, template_tools) = split(template_head);
-    assert_eq!(spec_before, template_before, "everything before the tool list agrees");
-    assert!(spec_tools.starts_with(r#"{"function":{"description":"#), "{spec_tools}");
-    assert!(template_tools.starts_with(r#"{"type": "function", "function": {"name": "#), "{template_tools}");
-    assert_ne!(
-        spec_head, *template_head,
-        "PromptSpec now renders tools as the template does: make this an equality"
-    );
+    assert!(spec_head == case.prefixes[0], "{}", first_difference(&case.prefixes[0], &spec_head));
+    // And the single turn the daemon runs is that chat's.
+    let user = case.chat.render(true).unwrap();
+    assert_eq!(spec_head + &spec.render_user_turn("Email:\nWhere is my order?"), user);
+}
+
+#[test]
+fn a_tools_spec_names_its_template_version_and_a_schema_spec_keeps_its_own() {
+    use lfm2d::adjudicator::{PromptSpec, Reasoning};
+    let mut tools: PromptSpec =
+        serde_json::from_str(include_str!("fixtures/specs/email-triage-tools-v1.json")).unwrap();
+    assert_eq!(tools.template_version(), "lfm25-single-user-v3-open");
+    tools.reasoning = Reasoning::Closed;
+    assert_eq!(tools.template_version(), "lfm25-single-user-v3-closed");
+    // No tools, the same bytes as before, so the same version and snapshot.
+    let schema: PromptSpec =
+        serde_json::from_str(include_str!("fixtures/specs/email-triage-v1.json")).unwrap();
+    assert_eq!(schema.template_version(), "lfm25-single-user-v2-closed");
 }
 
 #[test]
