@@ -505,10 +505,10 @@ pub trait YieldPoint<G: ?Sized> {
     /// once its caller is gone or the daemon is stopping, `Deadline` once
     /// its deadline (from enqueue) passes.
     fn check(&self) -> Result<(), Failure>;
-    /// `check`, then serve every pending job of a higher class on
-    /// `generator`, then `check` again: time spent serving counts against
-    /// the paused job's deadline, exactly as if those jobs had been queued
-    /// ahead of it.
+    /// Serve every pending job of a higher class on `generator`, with
+    /// `check` before, between and after them: time spent serving counts
+    /// against the paused job's deadline, and a paused job that is
+    /// cancelled or out of time stops at the next boundary between them.
     fn pause(&self, generator: &mut G) -> Result<(), Failure>;
 }
 impl<G: ?Sized, F: Fn() -> Result<(), Failure>> YieldPoint<G> for F {
@@ -3052,10 +3052,20 @@ const MAX_SPEC_BYTES: usize = 1_048_576;
 /// job goes on. Within a class, jobs keep their arrival order and never
 /// overtake one another.
 ///
+/// A higher class goes first without limit: a steady stream of reads
+/// postpones a waiting generation until the stream stops or the
+/// generation's own deadline passes. Reads are short, and that is the
+/// point of the order; aging is the lever if it ever starves generation.
+///
 /// Adding a class is adding a variant here, a place in [`Priority::ALL`],
 /// and a `Job::priority` arm; the queues, the pick and the pause all follow
 /// from `ALL`. Background prefill (a class below `Generative`, pausing like
-/// a generation does) is the one planned (`docs/chat-tail-plan.md`, piece 6).
+/// a generation does) is the one planned (`docs/chat-tail-plan.md`, piece
+/// 6). It must keep one invariant this order gives today for free: nothing
+/// served at a pause removes a spec. Its pauses would serve `Generative`,
+/// which holds registration and deletion, so either those move to a class
+/// that is never served at a pause, or background prefill re-resolves its
+/// spec after its pauses and treats a vanished spec as nothing to publish.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Priority {
     /// Generative adjudication, and spec registration and deletion. The
@@ -3362,18 +3372,27 @@ impl<G: Generator> YieldPoint<G> for Pause<'_> {
         (self.check)()
     }
     fn pause(&self, generator: &mut G) -> Result<(), Failure> {
-        (self.check)()?;
         let begin = Instant::now();
         let mut served = 0;
-        while let Some(work) = self.worker.next_above(self.class) {
+        // Checked before, between and after the jobs served here: a paused
+        // job that is cancelled or out of time stops at the next boundary,
+        // not once the higher queues run dry, and what is still waiting
+        // goes to the worker's next pick.
+        let result = loop {
+            if let Err(e) = (self.check)() {
+                break Err(e);
+            }
+            let Some(work) = self.worker.next_above(self.class) else {
+                break Ok(());
+            };
             self.worker.run(generator, work);
             served += 1;
-        }
+        };
         if served > 0 {
             self.served.set(self.served.get() + served);
             self.paused.set(self.paused.get() + begin.elapsed());
         }
-        (self.check)()
+        result
     }
 }
 

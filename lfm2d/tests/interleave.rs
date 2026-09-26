@@ -60,6 +60,8 @@ enum Event {
     Read(String),
     Probe,
     Register,
+    /// Generation `name` stopped at a pause: cancelled or out of time.
+    Stopped(String),
 }
 
 #[derive(Clone, Default)]
@@ -106,7 +108,10 @@ impl Generator for Stub {
         let steps: usize = parts.next().unwrap().parse().unwrap();
         let ms: u64 = parts.next().unwrap().parse().unwrap();
         for i in 0..steps {
-            at.pause(self)?;
+            if let Err(e) = at.pause(self) {
+                self.0.push(Event::Stopped(name));
+                return Err(e);
+            }
             self.0.push(Event::Step(name.clone(), i));
             std::thread::sleep(Duration::from_millis(ms));
         }
@@ -121,7 +126,7 @@ impl Generator for Stub {
         check: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<OpinionResponse, Failure> {
         check()?;
-        if request.state.input == "slow" {
+        if request.state.input.starts_with("slow") {
             let begin = Instant::now();
             while begin.elapsed() < Duration::from_millis(400) {
                 check()?;
@@ -390,6 +395,39 @@ async fn a_read_served_at_a_pause_spends_the_generations_deadline_not_its_own() 
         !events[read_at..].iter().any(|e| matches!(e, Event::Step(n, _) if n == "short")),
         "no generation step after the pause that overran its deadline: {:?}",
         &events[read_at..]
+    );
+}
+
+/// The paused generation's own check runs between the jobs served at its
+/// pause, not only once they run dry: out of time after the first of three
+/// queued reads, it stops there, and the other two are served after it.
+#[tokio::test]
+async fn a_paused_generation_is_checked_between_the_reads_served_at_its_pause() {
+    let (h, log) = spawn();
+    let gen_task = tokio::spawn({
+        let h = h.clone();
+        async move { h.evaluate(generation("between:1000:1", 250)).await }
+    });
+    log.wait_for(Event::Step("between".into(), 2)).await;
+    let reads: Vec<_> = ["slow 1", "slow 2", "slow 3"]
+        .into_iter()
+        .map(|input| {
+            let h = h.clone();
+            tokio::spawn(async move { h.opine(read(input)).await })
+        })
+        .collect();
+    for task in reads {
+        task.await.unwrap().expect("every read is served");
+    }
+    assert_eq!(gen_task.await.unwrap().unwrap_err().status(), 504);
+    let at = |e: Event| log.position(&e).unwrap_or_else(|| panic!("{e:?}: {:?}", log.events()));
+    let stopped = at(Event::Stopped("between".into()));
+    let reads: Vec<usize> = ["slow 1", "slow 2", "slow 3"].map(|r| at(Event::Read(r.into()))).into();
+    assert_eq!(
+        reads.iter().filter(|&&r| r < stopped).count(),
+        1,
+        "stopped after the first read, not after all three: {:?}",
+        log.events().iter().filter(|e| !matches!(e, Event::Step(..))).collect::<Vec<_>>()
     );
 }
 
