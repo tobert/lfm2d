@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-26",
+  "scope": "Opinion-read latency while a generative adjudication runs, before and after the interleaving worker (reads served at the generation's pauses). benchmarks/lfm25/interleave_latency.py against one daemon at a time, baseline and interleave alternating, two rounds of n=20 per binary. Reads are full misses (distinct inputs). Latencies are client wall-clock ms over HTTP on localhost.",
+  "host": "zorak, gfx1151, ROCm, --device=rocm --threads=8 --adjudicator-context=4096",
+  "model": "LFM2.5-8B-A1B-Q5_K_M.gguf",
+  "spec": "lfm2d/tests/fixtures/specs/email-triage-v1.json",
+  "workload": "generation: 309-token single-line email, 94.5 completion tokens p50 (a schema report), ~1.4 s wall alone; read: 13-token email, questions [verdict], ~0.55 s of work (prefill + describe + score)",
+  "conditions": "Shared GPU: the live lfm2d-system1 pod (mostly idle) and a kaiseki torch process holding 68 GB were resident in every round; a candle-batch decode benchmark ran during an earlier pair of rounds (not these; those are not reported). Rounds alternate binaries so drift lands on both.",
+  "binary_sha256": {
+    "baseline": "6f8f6eb1bd4f8cf99d2d98df1d3a29db907158515e11330017294470ff0bd849",
+    "interleave": "3ab8099c877bdbaa6cc2481050ae6906f0912136dad5cdb7136b54f18ac86e29"
+  },
+  "commits": {"baseline": "a82f920", "interleave": "177b39e"},
+  "rounds": {
+    "baseline-r1": {
+      "read_idle_ms": {"n": 20, "p50": 820, "p90": 1426, "max": 1798},
+      "read_during_generation_ms": {"n": 20, "p50": 1114, "p90": 1411, "max": 1814},
+      "read_during_generation_queue_ms": {"n": 20, "p50": 573, "p90": 843, "max": 1301},
+      "read_work_ms": {"n": 20, "p50": 540, "p90": 554, "max": 741},
+      "generation_alone_ms": {"n": 20, "p50": 2164, "p90": 2857, "max": 4778},
+      "generation_with_read_ms": {"n": 20, "p50": 1403, "p90": 1624, "max": 2361},
+      "decode_tok_s_alone_p50": 76.8
+    },
+    "interleave-r1": {
+      "read_idle_ms": {"n": 20, "p50": 627, "p90": 699, "max": 716},
+      "read_during_generation_ms": {"n": 20, "p50": 563, "p90": 615, "max": 684},
+      "read_during_generation_queue_ms": {"n": 20, "p50": 9, "p90": 48, "max": 153},
+      "read_work_ms": {"n": 20, "p50": 537, "p90": 559, "max": 603},
+      "generation_alone_ms": {"n": 20, "p50": 1480, "p90": 2052, "max": 2760},
+      "generation_with_read_ms": {"n": 20, "p50": 1959, "p90": 2121, "max": 2131},
+      "generation_added_beyond_read_work_ms": {"n": 20, "p50": -46, "p90": 10, "max": 29},
+      "decode_tok_s_alone_p50": 100.9
+    },
+    "baseline-r2": {
+      "read_idle_ms": {"n": 20, "p50": 635, "p90": 665, "max": 780},
+      "read_during_generation_ms": {"n": 20, "p50": 1327, "p90": 1518, "max": 1651},
+      "read_during_generation_queue_ms": {"n": 20, "p50": 804, "p90": 990, "max": 1121},
+      "read_work_ms": {"n": 20, "p50": 547, "p90": 575, "max": 587},
+      "generation_alone_ms": {"n": 20, "p50": 1418, "p90": 1595, "max": 1935},
+      "generation_with_read_ms": {"n": 20, "p50": 1436, "p90": 1587, "max": 1641},
+      "decode_tok_s_alone_p50": 104.6
+    },
+    "interleave-r2": {
+      "read_idle_ms": {"n": 20, "p50": 553, "p90": 589, "max": 603},
+      "read_during_generation_ms": {"n": 20, "p50": 585, "p90": 715, "max": 762},
+      "read_during_generation_queue_ms": {"n": 20, "p50": 9, "p90": 105, "max": 175},
+      "read_work_ms": {"n": 20, "p50": 563, "p90": 710, "max": 759},
+      "generation_alone_ms": {"n": 20, "p50": 1435, "p90": 1680, "max": 1770},
+      "generation_with_read_ms": {"n": 20, "p50": 2024, "p90": 2496, "max": 2691},
+      "generation_added_beyond_read_work_ms": {"n": 20, "p50": 20, "p90": 299, "max": 366},
+      "decode_tok_s_alone_p50": 102.6
+    }
+  },
+  "reading": "A read fired during a generation waited for the rest of it before (queue p50 573/804 ms, p90 843/990); now it waits for the generation's next pause (queue p50 9 ms, max 153/175 ms, about one 128-token prefill chunk; a decode pause is one token, ~10 ms). The generation grows by about the read's own work (added beyond it: p50 -46/+20 ms, p90 +10/+299 ms), and its text and token count match its alone run in every pair (asserted). Baseline's generation_with_read is not comparable to its alone column: there the read ran after the generation, outside its wall time. baseline-r1's generation_alone includes slow outliers (max 4778 ms) the other rounds do not."
+}
