@@ -75,7 +75,7 @@ impl Generator for Fake {
     fn generate(
         &mut self,
         _: &AdjudicateRequest,
-        _: &dyn Fn() -> Result<(), Failure>,
+        _: &dyn lfm2d::adjudicator::YieldPoint<Self>,
     ) -> Result<AdjudicateResponse, Failure> {
         Err(Failure::Internal("this fake only opines".into()))
     }

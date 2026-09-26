@@ -881,8 +881,15 @@ The [KV allocator](lfm25-kv-cache.md) amortizes prefix copying over a linear
 continuation. Branches copy their prefix when their desired tail is occupied.
 Attention still materializes repeated KV heads; paged attention is not present.
 The daemon owns one fixed prefix and one complete-input checkpoint with
-saved logits, a bounded queue of eight, and one generation worker. Exact
-input repeats reuse the latter; `cached_tokens` then equals `prompt_tokens`.
+saved logits, and one worker thread with two bounded queues of eight: opinion
+reads and probes in one, generation and spec registration/deletion in the
+other. A generation pauses before every prefill chunk and decoded token, and
+the worker serves waiting reads and probes there, so a read waits one chunk
+or one token, not a whole generation; the generation's output does not move
+(`lfm2d/tests/interleave_real.rs`), and its `prefill_ms`/`decode_ms` and
+deadline include the reads it paused for. Generations and spec admin never
+overtake each other. Exact input repeats reuse the complete-input
+checkpoint; `cached_tokens` then equals `prompt_tokens`.
 `input_cache_capacity: 1` advertises this behavior. Cold requests bypass
 cache reads and writes. Deadlines, disconnected callers, and shutdown discard the current
 branch. The encoder worker is separate. Shutdown waits for both models to

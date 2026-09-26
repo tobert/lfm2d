@@ -38,6 +38,12 @@ sha2 = "0.10"
 # directly since we call its builder API ourselves.
 rayon = "1"
 
+# The adjudicator worker's per-priority queues: one bounded channel per
+# class, and a `Select` to block on all of them at once, which std's mpsc
+# cannot do. Same bounded/try_send/disconnect semantics as the
+# `sync_channel` it replaces. Already in the tree's crossbeam family.
+crossbeam-channel = "0.5"
+
 # --- tracing + OTLP export (metrics + traces + logs) ---
 # Amy's explicit preference over bare Prometheus: one pipe for all three
 # signals. rustls everywhere (never openssl); the capture server this was

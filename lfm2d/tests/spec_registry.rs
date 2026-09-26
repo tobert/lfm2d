@@ -94,7 +94,7 @@ impl Generator for Fake {
     fn generate(
         &mut self,
         request: &AdjudicateRequest,
-        _: &dyn Fn() -> Result<(), Failure>,
+        _: &dyn lfm2d::adjudicator::YieldPoint<Self>,
     ) -> Result<AdjudicateResponse, Failure> {
         self.0.lock().unwrap().last_generate_spec = request.spec.clone();
         Ok(AdjudicateResponse {

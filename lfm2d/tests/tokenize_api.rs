@@ -134,10 +134,10 @@ impl Generator for BlockingGenerator {
     fn generate(
         &mut self,
         _: &AdjudicateRequest,
-        check: &dyn Fn() -> Result<(), Failure>,
+        at: &dyn lfm2d::adjudicator::YieldPoint<Self>,
     ) -> Result<AdjudicateResponse, Failure> {
         loop {
-            check()?;
+            at.check()?;
             std::thread::sleep(Duration::from_millis(1));
         }
     }

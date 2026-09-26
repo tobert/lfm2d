@@ -24,7 +24,6 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc,
     },
     time::{Duration, Instant},
 };
@@ -476,11 +475,58 @@ impl IntoResponse for Failure {
     }
 }
 
+/// A long job's view of the worker at the points where it may pause.
+///
+/// The worker runs one job at a time on one thread, but it does not have to
+/// run a long one to completion before anything else: a generative
+/// adjudication (seconds of decode) calls [`YieldPoint::pause`] before every
+/// prefill chunk and every decoded token, and the worker serves the pending
+/// jobs of a HIGHER priority class there, to completion, on the same
+/// generator, before the paused job goes on (see `Priority` and `Pause`).
+/// So an opinion read waits at most one chunk or one token, not a whole
+/// generation.
+///
+/// Why nested at the pause and not resumable step machines: a paused job's
+/// progress is already plain owned values (a `ModelState` it cloned out of
+/// the caches, its logits, its sampler), so the only thing in the way of
+/// running another job at its pause is the `&mut` generator borrow — and
+/// `pause` takes that borrow back as an argument. The price is a rule the
+/// generator must keep: hold NO borrow into its own caches or spec store
+/// across a `pause`, and publish to a cache only after the last pause, from
+/// a complete result, re-resolving the entry it publishes into
+/// (`Adjudicator::generate` shows the pattern). Reads served at a pause never
+/// pause themselves, so they may hold their borrows as before.
+///
+/// Every `Fn() -> Result<(), Failure>` is a yield point that serves nothing:
+/// `pause` is then exactly `check`. Direct callers (the real-model tests,
+/// the examiner) keep passing a plain check closure.
+pub trait YieldPoint<G: ?Sized> {
+    /// The paused job's own cancellation and deadline, unchanged: `Cancelled`
+    /// once its caller is gone or the daemon is stopping, `Deadline` once
+    /// its deadline (from enqueue) passes.
+    fn check(&self) -> Result<(), Failure>;
+    /// `check`, then serve every pending job of a higher class on
+    /// `generator`, then `check` again: time spent serving counts against
+    /// the paused job's deadline, exactly as if those jobs had been queued
+    /// ahead of it.
+    fn pause(&self, generator: &mut G) -> Result<(), Failure>;
+}
+impl<G: ?Sized, F: Fn() -> Result<(), Failure>> YieldPoint<G> for F {
+    fn check(&self) -> Result<(), Failure> {
+        self()
+    }
+    fn pause(&self, _: &mut G) -> Result<(), Failure> {
+        self()
+    }
+}
+
 pub trait Generator: Send + 'static {
+    /// Generative adjudication, the one job that pauses: see [`YieldPoint`]
+    /// for what an implementation owes the jobs served at its pauses.
     fn generate(
         &mut self,
         request: &AdjudicateRequest,
-        check: &dyn Fn() -> Result<(), Failure>,
+        at: &dyn YieldPoint<Self>,
     ) -> Result<AdjudicateResponse, Failure>;
     /// Describe-then-read for `/v1/opinion`: `questions` were resolved
     /// against the spec's menu by the handler, in emission order. See
@@ -577,7 +623,7 @@ fn forward_chunks(
     state: &mut ModelState,
     ids: &[u32],
     chunk_size: usize,
-    check: &dyn Fn() -> Result<(), Failure>,
+    check: &mut dyn FnMut() -> Result<(), Failure>,
 ) -> Result<Tensor, Failure> {
     let mut logits = None;
     for chunk in ids.chunks(chunk_size) {
@@ -737,15 +783,20 @@ struct PromptCache {
     prefix_ids: Vec<u32>,
     ready: Option<PreparedPrompt>,
 }
+/// What [`PromptCache::lookup`] found for an input: the ready entry (a
+/// complete evaluation, cloned out), or where a prefill has to start.
+enum Lookup {
+    Ready(PreparedEvaluation),
+    Cold { state: ModelState, start: usize },
+}
 impl PromptCache {
-    fn prepare(
-        &mut self,
-        model: &Model,
-        full: &[u32],
-        use_cache: bool,
-        check: &dyn Fn() -> Result<(), Failure>,
-    ) -> Result<PreparedEvaluation, Failure> {
-        check()?;
+    /// The read half of [`PromptCache::prepare`]. Everything it returns is
+    /// cloned out (`State::clone` shares the immutable prefix buffers), so
+    /// the caller holds no borrow of the cache while it prefills: a
+    /// generative adjudication pauses there, and an opinion read served at
+    /// the pause may prepare on this same cache
+    /// ([`YieldPoint::pause`]).
+    fn lookup(&self, model: &Model, full: &[u32], use_cache: bool) -> Result<Lookup, Failure> {
         if !model.owns_state(&self.prefix) {
             return Err(Failure::Internal(
                 "input checkpoint belongs to another model".into(),
@@ -760,28 +811,53 @@ impl PromptCache {
             && let Some(ready) = &self.ready
             && ready.token_ids == full
         {
-            return Ok(PreparedEvaluation {
+            return Ok(Lookup::Ready(PreparedEvaluation {
                 state: ready.state.clone(),
                 logits: ready.logits.clone(),
                 cached_tokens: full.len(),
-            });
+            }));
         }
-        let (mut state, start) = if use_cache {
-            (self.prefix.clone(), self.prefix_ids.len())
+        Ok(if use_cache {
+            Lookup::Cold {
+                state: self.prefix.clone(),
+                start: self.prefix_ids.len(),
+            }
         } else {
-            (model.new_state(), 0)
+            Lookup::Cold {
+                state: model.new_state(),
+                start: 0,
+            }
+        })
+    }
+    /// The write half: replace the one ready entry with a COMPLETE prefill
+    /// of `full`. Callers publish only after the last chunk, a device
+    /// synchronize and a final check, so a failed or cancelled preparation
+    /// leaves the previous entry; later decode never mutates the saved
+    /// state/logits (they are clones).
+    fn publish(&mut self, full: &[u32], state: &ModelState, logits: &Tensor) {
+        self.ready = Some(PreparedPrompt {
+            token_ids: full.to_vec(),
+            state: state.clone(),
+            logits: logits.clone(),
+        });
+    }
+    fn prepare(
+        &mut self,
+        model: &Model,
+        full: &[u32],
+        use_cache: bool,
+        check: &dyn Fn() -> Result<(), Failure>,
+    ) -> Result<PreparedEvaluation, Failure> {
+        check()?;
+        let (mut state, start) = match self.lookup(model, full, use_cache)? {
+            Lookup::Ready(ready) => return Ok(ready),
+            Lookup::Cold { state, start } => (state, start),
         };
-        let logits = forward_chunks(model, &mut state, &full[start..], CHUNK, check)?;
-        // Publish only complete prefill. A failed/cancelled preparation retains
-        // the previous entry; later decode never mutates the saved state/logits.
+        let logits = forward_chunks(model, &mut state, &full[start..], CHUNK, &mut || check())?;
         logits.device().synchronize()?;
         check()?;
         if use_cache {
-            self.ready = Some(PreparedPrompt {
-                token_ids: full.to_vec(),
-                state: state.clone(),
-                logits: logits.clone(),
-            });
+            self.publish(full, &state, &logits);
         }
         Ok(PreparedEvaluation {
             state,
@@ -1491,6 +1567,15 @@ impl<T: SpecIdentity> SpecStore<T> {
         }
         None
     }
+    /// The spec whose id is exactly `id`, boot or uploaded, WITHOUT touching
+    /// LRU order: a job returning to a spec it already resolved (and
+    /// touched) once, to publish into its caches, is not a second use.
+    fn get_mut(&mut self, id: &str) -> Option<&mut T> {
+        self.boot
+            .iter_mut()
+            .chain(self.uploaded.iter_mut())
+            .find(|s| s.id() == id)
+    }
     /// `/v1/probe`'s warm-prefix resume: the spec (boot or uploaded) whose
     /// resident prefix is the LONGEST STRICT match for `ids`
     /// ([`best_prefix_match`] — deterministic regardless of iteration or
@@ -1579,7 +1664,9 @@ fn unknown_spec(key: &str) -> Failure {
 }
 
 pub struct Adjudicator {
-    model: Model,
+    /// Shared so a generative adjudication can forward through its own
+    /// handle while `pause` holds `&mut self` (see [`YieldPoint`]).
+    model: Arc<Model>,
     tokenizer: tokenizers::Tokenizer,
     eos: u32,
     repeat_penalty: f32,
@@ -1667,7 +1754,7 @@ impl Adjudicator {
             execution,
         } = checkpoint;
         Ok(Self {
-            model,
+            model: Arc::new(model),
             tokenizer,
             eos: EOS,
             repeat_penalty: cli.adjudicator_repeat_penalty,
@@ -1723,14 +1810,19 @@ impl Adjudicator {
     }
 }
 impl Generator for Adjudicator {
+    /// Pauses before every prefill chunk and every decoded token. Every
+    /// borrow of `self.specs` is scoped to end before the first pause: what
+    /// the loop needs from the spec is cloned out up front, and the prefill
+    /// is published afterwards through a fresh lookup by id (see
+    /// [`YieldPoint`]).
     fn generate(
         &mut self,
         request: &AdjudicateRequest,
-        check: &dyn Fn() -> Result<(), Failure>,
+        at: &dyn YieldPoint<Self>,
     ) -> Result<AdjudicateResponse, Failure> {
         request.validate().map_err(Failure::BadRequest)?;
         if request.opinion {
-            return self.opinion(request, check);
+            return self.opinion(request, &|| at.check());
         }
         let key = request.spec_key().map_err(Failure::BadRequest)?;
         let spec = self
@@ -1747,7 +1839,7 @@ impl Generator for Adjudicator {
                 ));
             }
         }
-        check()?;
+        at.check()?;
         let suffix = spec.prompt.render_user_turn(&request.input);
         let full = self
             .tokenizer
@@ -1778,20 +1870,55 @@ impl Generator for Adjudicator {
         } else {
             None
         };
-        let (mut state, mut logits, cached_tokens, mut generated, resumed_tokens) = match resumed {
-            Some((generated, _, state, logits)) => {
+        // Resumed, ready, or a prefill still to run: all three are owned
+        // values from here on, so the lookup's borrow of the spec ends.
+        let resumed_or_lookup = match resumed {
+            Some(resumed) => Ok(resumed),
+            None => Err(spec.cache.lookup(&self.model, &full, request.use_cache)?),
+        };
+        // What the rest of this job reads from the spec, cloned while it is
+        // still borrowed: an opinion read served at a pause below resolves
+        // the spec store itself.
+        let spec_id = spec.id.clone();
+        let spec_info = spec.info.clone();
+        let grammar = spec.grammar.clone();
+        let output_schema = spec.prompt.output_schema.clone();
+        let (mut state, mut logits, cached_tokens, mut generated, resumed_tokens) = match resumed_or_lookup {
+            Ok((generated, _, state, logits)) => {
                 let n = generated.len();
                 (state, logits, full.len(), generated, Some(n))
             }
-            None => {
-                let PreparedEvaluation {
-                    state,
-                    logits,
-                    cached_tokens,
-                } = spec
-                    .cache
-                    .prepare(&self.model, &full, request.use_cache, check)?;
-                (state, logits, cached_tokens, Vec::new(), None)
+            Err(Lookup::Ready(PreparedEvaluation {
+                state,
+                logits,
+                cached_tokens,
+            })) => (state, logits, cached_tokens, Vec::new(), None),
+            Err(Lookup::Cold { mut state, start }) => {
+                // `PromptCache::prepare`'s cold branch, with pauses between
+                // chunks: the same chunk boundaries, so the same numerics.
+                let model = self.model.clone();
+                let logits = forward_chunks(&model, &mut state, &full[start..], CHUNK, &mut || at.pause(self))?;
+                logits.device().synchronize()?;
+                at.check()?;
+                if request.use_cache {
+                    // Complete, synchronized and still wanted: only now does
+                    // it reach the cache. Reads served at the pauses may
+                    // have replaced `ready` meanwhile; this replaces theirs,
+                    // as a later request would. The spec cannot have left
+                    // the store (only registration and deletion remove one,
+                    // and they never run at a pause), so its absence is a
+                    // bug, not a miss.
+                    self.specs
+                        .get_mut(&spec_id)
+                        .ok_or_else(|| {
+                            Failure::Internal(format!(
+                                "spec {spec_id} left the store while its generation was paused"
+                            ))
+                        })?
+                        .cache
+                        .publish(&full, &state, &logits);
+                }
+                (state, logits, start, Vec::new(), None)
             }
         };
         let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
@@ -1807,7 +1934,7 @@ impl Generator for Adjudicator {
         // grammar, exactly as if this loop had sampled it.
         let history: Vec<u32> = full.iter().chain(&generated).copied().collect();
         let mut sampler = crate::constrain::Decoder::new(
-            spec.grammar.as_ref(),
+            grammar.as_ref(),
             logits.device(),
             self.model.vocab_size(),
             &history,
@@ -1822,7 +1949,7 @@ impl Generator for Adjudicator {
             .map(|_| Vec::with_capacity(request.max_tokens));
         let mut finish_reason = "length";
         for i in generated.len()..request.max_tokens {
-            check()?;
+            at.pause(self)?;
             // One call selects AND records, so the record cannot be moved
             // to the wrong side of the grammar mask: see `Decoder::step`.
             let (token, step) = sampler.step(&logits, request.distributions.as_ref(), |id| {
@@ -1848,7 +1975,7 @@ impl Generator for Adjudicator {
                 logits = self.model.forward(&[token], &mut state)?;
             }
         }
-        check()?;
+        at.check()?;
         // Nothing is stripped but the terminating im_end: tool delimiters, and
         // anything else the model wrote, reach `output` as generated.
         let content = if generated.last() == Some(&self.eos) {
@@ -1860,7 +1987,7 @@ impl Generator for Adjudicator {
             .tokenizer
             .decode(content, false)
             .map_err(|e| Failure::Internal(e.to_string()))?;
-        let (report, report_error) = match &spec.prompt.output_schema {
+        let (report, report_error) = match &output_schema {
             None => (None, None),
             Some(schema) => match validate_report(&output, schema, finish_reason) {
                 Ok(report) => (Some(report), None),
@@ -1868,7 +1995,7 @@ impl Generator for Adjudicator {
             },
         };
         Ok(AdjudicateResponse {
-            prefix: spec.info.clone(),
+            prefix: spec_info,
             output,
             report,
             report_error,
@@ -2408,7 +2535,7 @@ impl Adjudicator {
         let mut logits = if bulk_ids.is_empty() {
             None
         } else {
-            Some(forward_chunks(&self.model, &mut state, bulk_ids, CHUNK, check)?)
+            Some(forward_chunks(&self.model, &mut state, bulk_ids, CHUNK, &mut || check())?)
         };
         let prefill_tokens = decode_from_k;
 
@@ -2419,7 +2546,7 @@ impl Adjudicator {
         // reused rather than reimplemented (see `forward_chunks`'s docs).
         let stepwise_ids = &full_ids[decode_from_k..];
         if !stepwise_ids.is_empty() {
-            logits = Some(forward_chunks(&self.model, &mut state, stepwise_ids, 1, check)?);
+            logits = Some(forward_chunks(&self.model, &mut state, stepwise_ids, 1, &mut || check())?);
         }
         let stepwise_tokens = stepwise_ids.len();
         // Invariant, not a caller mistake: `full_ids` was already checked
@@ -2918,6 +3045,44 @@ const SPEC_ADMIN_TIMEOUT_MS: u64 = 60_000;
 /// over any shipped spec, not a tuned limit.
 const MAX_SPEC_BYTES: usize = 1_048_576;
 
+/// A job's scheduling class. Each class has its own bounded queue
+/// ([`QUEUE_DEPTH`] deep). The worker picks the highest class with work
+/// waiting, and at a running job's [`YieldPoint::pause`] it serves every
+/// pending job of a strictly HIGHER class to completion before the paused
+/// job goes on. Within a class, jobs keep their arrival order and never
+/// overtake one another.
+///
+/// Adding a class is adding a variant here, a place in [`Priority::ALL`],
+/// and a `Job::priority` arm; the queues, the pick and the pause all follow
+/// from `ALL`. Background prefill (a class below `Generative`, pausing like
+/// a generation does) is the one planned (`docs/chat-tail-plan.md`, piece 6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Priority {
+    /// Generative adjudication, and spec registration and deletion. The
+    /// admin jobs sit here, not higher, because they remove specs: served at
+    /// a pause, a deletion or an eviction would pull a spec out from under
+    /// the paused generation, which publishes into that spec's cache when
+    /// its prefill completes.
+    Generative,
+    /// Opinion reads (`/v1/opinion`, and `/v1/adjudicate` with `opinion:
+    /// true`) and probes: short, and they never pause, so one never waits
+    /// behind another's pause.
+    Interactive,
+}
+impl Priority {
+    /// Every class, lowest first. A class's position is its queue's index.
+    const ALL: [Priority; 2] = [Priority::Generative, Priority::Interactive];
+    fn index(self) -> usize {
+        Priority::ALL
+            .iter()
+            .position(|p| *p == self)
+            .expect("every class is listed in Priority::ALL")
+    }
+}
+/// How many jobs each class's queue holds before `submit` answers
+/// `503 overloaded`.
+const QUEUE_DEPTH: usize = 8;
+
 enum Job {
     Adjudicate(AdjudicateRequest),
     Opinion(
@@ -2935,6 +3100,14 @@ impl Job {
             Job::Opinion(r, _) => r.timeout_ms,
             Job::Register(..) | Job::Unregister(_) => SPEC_ADMIN_TIMEOUT_MS,
             Job::Probe(r) => r.timeout_ms,
+        }
+    }
+    /// Which queue this job waits in: see [`Priority`].
+    fn priority(&self) -> Priority {
+        match self {
+            Job::Adjudicate(r) if r.opinion => Priority::Interactive,
+            Job::Opinion(..) | Job::Probe(_) => Priority::Interactive,
+            Job::Adjudicate(_) | Job::Register(..) | Job::Unregister(_) => Priority::Generative,
         }
     }
     fn operation(&self) -> &'static str {
@@ -2960,9 +3133,254 @@ struct Work {
     enqueued: Instant,
     span: tracing::Span,
 }
+/// The worker thread's side of the queues: it owns the generator (passed
+/// in, never stored) and runs one job at a time on it.
+struct Worker {
+    queues: Vec<crossbeam_channel::Receiver<Work>>,
+    stopping: Arc<AtomicBool>,
+    menu: Arc<std::sync::RwLock<Vec<crate::opinion_api::SpecMenuEntry>>>,
+}
+impl Worker {
+    /// Run jobs, highest class first, until every `Handle` is gone and
+    /// every queue is drained — what `while let Ok(work) = rx.recv()` did
+    /// over the single queue this replaces: work already queued when the
+    /// last `Handle` drops still runs (and, once stopping, is refused by
+    /// its own check).
+    fn serve<G: Generator>(&self, generator: &mut G) {
+        let mut open = vec![true; self.queues.len()];
+        loop {
+            let mut next = None;
+            for class in Priority::ALL.iter().rev() {
+                let i = class.index();
+                if !open[i] {
+                    continue;
+                }
+                match self.queues[i].try_recv() {
+                    Ok(work) => {
+                        next = Some(work);
+                        break;
+                    }
+                    // All senders gone AND nothing left: closed for good.
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => open[i] = false,
+                    Err(crossbeam_channel::TryRecvError::Empty) => {}
+                }
+            }
+            if let Some(work) = next {
+                self.run(generator, work);
+                continue;
+            }
+            if !open.contains(&true) {
+                return;
+            }
+            // Nothing waiting: sleep until some open queue has work or
+            // closes, then pick again by class.
+            let mut select = crossbeam_channel::Select::new();
+            for (queue, _) in self.queues.iter().zip(&open).filter(|(_, open)| **open) {
+                select.recv(queue);
+            }
+            select.ready();
+        }
+    }
+    /// The next waiting job of a class strictly above `floor`, highest
+    /// first, without blocking.
+    fn next_above(&self, floor: Priority) -> Option<Work> {
+        Priority::ALL
+            .iter()
+            .rev()
+            .take_while(|class| **class > floor)
+            .find_map(|class| self.queues[class.index()].try_recv().ok())
+    }
+    /// One job, start to finish (pauses included), and its reply.
+    fn run<G: Generator>(&self, generator: &mut G, work: Work) {
+        let deadline = work.enqueued + Duration::from_millis(work.job.timeout_ms());
+        let check = || {
+            if work.reply.is_closed() || self.stopping.load(Ordering::SeqCst) {
+                Err(Failure::Cancelled)
+            } else if Instant::now() >= deadline {
+                Err(Failure::Deadline)
+            } else {
+                Ok(())
+            }
+        };
+        let pause = Pause {
+            worker: self,
+            class: work.job.priority(),
+            check: &check,
+            served: std::cell::Cell::new(0),
+            paused: std::cell::Cell::new(Duration::ZERO),
+        };
+        let _span = work.span.enter();
+        let queue_ms = work.enqueued.elapsed().as_secs_f64() * 1000.;
+        let operation = work.job.operation();
+        let start = Instant::now();
+            let result = match &work.job {
+                Job::Adjudicate(request) => check()
+                    .and_then(|()| generator.generate(request, &pause))
+                    .map(|mut r| {
+                        r.queue_ms = queue_ms;
+                        tracing::info!(
+                            cached_tokens = r.cached_tokens,
+                            prompt_tokens = r.prompt_tokens,
+                            completion_tokens = r.completion_tokens,
+                            prefill_ms = r.prefill_ms,
+                            decode_ms = r.decode_ms,
+                            "adjudication complete"
+                        );
+                        Reply::Adjudicate(r)
+                    }),
+                Job::Opinion(request, questions) => check()
+                    .and_then(|()| generator.opine(request, questions, &check))
+                    .map(|mut r| {
+                        r.queue_ms = queue_ms;
+                        tracing::info!(
+                            spec = %r.spec,
+                            // One key whatever the count, so a
+                            // single-question query still matches.
+                            field = %questions
+                                .iter()
+                                .map(|q| q.field.as_str())
+                                .collect::<Vec<_>>()
+                                .join(","),
+                            cached_tokens = r.cached_tokens,
+                            prompt_tokens = r.prompt_tokens,
+                            described_tokens = r.described_tokens,
+                            described_cache = %r.cache.described,
+                            prefill_ms = r.prefill_ms,
+                            describe_ms = r.describe_ms,
+                            read_ms = r.read_ms,
+                            "opinion read complete"
+                        );
+                        Reply::Opinion(r)
+                    }),
+                // Register/Unregister publish `worker_menu` HERE, on
+                // this thread, unconditionally once `generator`
+                // reports the store changed — never deferred to the
+                // async task that submitted the job. That task's
+                // oneshot receiver can already be gone by the time
+                // we get here (the caller disconnected, or hit its
+                // own client-side deadline) and `work.reply.send`
+                // below is allowed to fail silently for exactly
+                // that reason; if publishing waited for a
+                // successful reply, a disconnected caller's
+                // registration would sit in the store forever
+                // without ever reaching `Handle.menu`, and a caller
+                // whose reply raced another admin request could
+                // publish an older snapshot last. Publishing here,
+                // on the single serial worker thread, in the same
+                // order jobs are dequeued, closes both: by the time
+                // ANY reply is sent (or not), the store and the
+                // published menu already agree.
+                Job::Register(id, prompt) => check()
+                    .and_then(|()| generator.register(id.clone(), prompt.clone(), &check))
+                    .map(|r| {
+                        *self.menu.write().expect("menu lock poisoned") = r.menu.clone();
+                        tracing::info!(
+                            id = %r.entry.id,
+                            snapshot_id = %r.entry.snapshot_id,
+                            newly_loaded = r.newly_loaded,
+                            evicted = ?r.evicted,
+                            load_ms = r.load_ms,
+                            "opinion spec registered"
+                        );
+                        Reply::Register(r)
+                    }),
+                Job::Unregister(id) => check().map(|()| {
+                    let outcome = generator.unregister(id);
+                    match &outcome {
+                        UnregisterOutcome::Deleted { entry, menu } => {
+                            *self.menu.write().expect("menu lock poisoned") = menu.clone();
+                            tracing::info!(
+                                id = %entry.id,
+                                snapshot_id = %entry.snapshot_id,
+                                "opinion spec deleted"
+                            );
+                        }
+                        UnregisterOutcome::BootSpec => {
+                            tracing::warn!(
+                                id = %id,
+                                "refused to delete a boot-time opinion spec"
+                            );
+                        }
+                        UnregisterOutcome::NotFound => {
+                            tracing::info!(
+                                id = %id,
+                                "delete requested for an unknown opinion spec"
+                            );
+                        }
+                    }
+                    Reply::Unregister(outcome)
+                }),
+                Job::Probe(request) => check()
+                    .and_then(|()| generator.probe(request, &check))
+                    .map(|mut r| {
+                        r.queue_ms = queue_ms;
+                        tracing::info!(
+                            input_tokens = r.input_tokens,
+                            used_cache = r.cache.used_cache,
+                            cached_tokens = r.cache.cached_tokens,
+                            continuations = r.continuations.as_ref().map(|c| c.options.len()).unwrap_or(0),
+                            generated = r.generated.len(),
+                            prefill_ms = r.prefill_ms,
+                            score_ms = r.score_ms,
+                            "probe complete"
+                        );
+                        Reply::Probe(r)
+                    }),
+            };
+            if let Err(e) = &result {
+                let kind = match e {
+                    Failure::BadRequest(_) => "bad_request",
+                    Failure::NotFound(_) => "not_found",
+                    Failure::Unprocessable(_) => "unprocessable",
+                    Failure::Forbidden(_) => "forbidden",
+                    Failure::Internal(_) => "internal",
+                    Failure::Cancelled => "cancelled",
+                    Failure::Deadline => "deadline",
+                };
+                tracing::warn!(error_kind = kind, operation, "adjudicator work failed");
+            }
+            // The jobs served at this job's pauses recorded their own durations.
+        crate::telemetry::record_inference_duration(operation, start.elapsed() - pause.paused.get());
+            let _ = work.reply.send(result);
+    }
+}
+
+/// The [`YieldPoint`] the worker hands a running job: its own `check`, and
+/// at `pause` the jobs of a higher class, served nested on the same thread
+/// and the same generator.
+struct Pause<'a> {
+    worker: &'a Worker,
+    class: Priority,
+    check: &'a dyn Fn() -> Result<(), Failure>,
+    /// How many jobs ran at this job's pauses, and for how long: logged
+    /// with the job, and kept out of its own inference duration.
+    served: std::cell::Cell<usize>,
+    paused: std::cell::Cell<Duration>,
+}
+impl<G: Generator> YieldPoint<G> for Pause<'_> {
+    fn check(&self) -> Result<(), Failure> {
+        (self.check)()
+    }
+    fn pause(&self, generator: &mut G) -> Result<(), Failure> {
+        (self.check)()?;
+        let begin = Instant::now();
+        let mut served = 0;
+        while let Some(work) = self.worker.next_above(self.class) {
+            self.worker.run(generator, work);
+            served += 1;
+        }
+        if served > 0 {
+            self.served.set(self.served.get() + served);
+            self.paused.set(self.paused.get() + begin.elapsed());
+        }
+        (self.check)()
+    }
+}
+
 #[derive(Clone)]
 pub struct Handle {
-    tx: mpsc::SyncSender<Work>,
+    /// One queue per [`Priority`], indexed by [`Priority::index`].
+    queues: Vec<crossbeam_channel::Sender<Work>>,
     info: AdjudicatorInfo,
     /// What `/v1/opinion` may be asked: read off the loaded specs, so a
     /// question is refused at the handler and never queued. A `RwLock`
@@ -2979,166 +3397,27 @@ pub struct Handle {
 }
 impl Handle {
     pub fn spawn<G: Generator>(mut generator: G, info: AdjudicatorInfo) -> Self {
-        let (tx, rx) = mpsc::sync_channel::<Work>(8);
+        let (queues, receivers): (Vec<_>, Vec<_>) =
+            Priority::ALL.iter().map(|_| crossbeam_channel::bounded::<Work>(QUEUE_DEPTH)).unzip();
         let exit = WorkerExit::default();
         let finished = exit.clone();
         let stopping = Arc::new(AtomicBool::new(false));
-        let worker_stopping = stopping.clone();
         // Created here, before the worker thread starts, and cloned into
         // it: the WORKER publishes every registration/eviction/delete to
         // this directly, synchronously, as part of processing that job —
         // never the async request task that happened to submit it. See the
-        // long comment on the `Job::Register`/`Job::Unregister` arms below
-        // for why that distinction is the whole fix.
+        // long comment on the `Job::Register`/`Job::Unregister` arms in
+        // `Worker::run` for why that distinction is the whole fix.
         let menu = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let worker_menu = menu.clone();
+        let worker = Worker {
+            queues: receivers,
+            stopping: stopping.clone(),
+            menu: menu.clone(),
+        };
         let worker = std::thread::Builder::new()
             .name("lfm2d-adjudicator".into())
             .spawn(move || {
-                while let Ok(work) = rx.recv() {
-                    let deadline = work.enqueued + Duration::from_millis(work.job.timeout_ms());
-                    let check = || {
-                        if work.reply.is_closed() || worker_stopping.load(Ordering::SeqCst) {
-                            Err(Failure::Cancelled)
-                        } else if Instant::now() >= deadline {
-                            Err(Failure::Deadline)
-                        } else {
-                            Ok(())
-                        }
-                    };
-                    let _span = work.span.enter();
-                    let queue_ms = work.enqueued.elapsed().as_secs_f64() * 1000.;
-                    let operation = work.job.operation();
-                    let start = Instant::now();
-                    let result = match &work.job {
-                        Job::Adjudicate(request) => check()
-                            .and_then(|()| generator.generate(request, &check))
-                            .map(|mut r| {
-                                r.queue_ms = queue_ms;
-                                tracing::info!(
-                                    cached_tokens = r.cached_tokens,
-                                    prompt_tokens = r.prompt_tokens,
-                                    completion_tokens = r.completion_tokens,
-                                    prefill_ms = r.prefill_ms,
-                                    decode_ms = r.decode_ms,
-                                    "adjudication complete"
-                                );
-                                Reply::Adjudicate(r)
-                            }),
-                        Job::Opinion(request, questions) => check()
-                            .and_then(|()| generator.opine(request, questions, &check))
-                            .map(|mut r| {
-                                r.queue_ms = queue_ms;
-                                tracing::info!(
-                                    spec = %r.spec,
-                                    // One key whatever the count, so a
-                                    // single-question query still matches.
-                                    field = %questions
-                                        .iter()
-                                        .map(|q| q.field.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join(","),
-                                    cached_tokens = r.cached_tokens,
-                                    prompt_tokens = r.prompt_tokens,
-                                    described_tokens = r.described_tokens,
-                                    described_cache = %r.cache.described,
-                                    prefill_ms = r.prefill_ms,
-                                    describe_ms = r.describe_ms,
-                                    read_ms = r.read_ms,
-                                    "opinion read complete"
-                                );
-                                Reply::Opinion(r)
-                            }),
-                        // Register/Unregister publish `worker_menu` HERE, on
-                        // this thread, unconditionally once `generator`
-                        // reports the store changed — never deferred to the
-                        // async task that submitted the job. That task's
-                        // oneshot receiver can already be gone by the time
-                        // we get here (the caller disconnected, or hit its
-                        // own client-side deadline) and `work.reply.send`
-                        // below is allowed to fail silently for exactly
-                        // that reason; if publishing waited for a
-                        // successful reply, a disconnected caller's
-                        // registration would sit in the store forever
-                        // without ever reaching `Handle.menu`, and a caller
-                        // whose reply raced another admin request could
-                        // publish an older snapshot last. Publishing here,
-                        // on the single serial worker thread, in the same
-                        // order jobs are dequeued, closes both: by the time
-                        // ANY reply is sent (or not), the store and the
-                        // published menu already agree.
-                        Job::Register(id, prompt) => check()
-                            .and_then(|()| generator.register(id.clone(), prompt.clone(), &check))
-                            .map(|r| {
-                                *worker_menu.write().expect("menu lock poisoned") = r.menu.clone();
-                                tracing::info!(
-                                    id = %r.entry.id,
-                                    snapshot_id = %r.entry.snapshot_id,
-                                    newly_loaded = r.newly_loaded,
-                                    evicted = ?r.evicted,
-                                    load_ms = r.load_ms,
-                                    "opinion spec registered"
-                                );
-                                Reply::Register(r)
-                            }),
-                        Job::Unregister(id) => check().map(|()| {
-                            let outcome = generator.unregister(id);
-                            match &outcome {
-                                UnregisterOutcome::Deleted { entry, menu } => {
-                                    *worker_menu.write().expect("menu lock poisoned") = menu.clone();
-                                    tracing::info!(
-                                        id = %entry.id,
-                                        snapshot_id = %entry.snapshot_id,
-                                        "opinion spec deleted"
-                                    );
-                                }
-                                UnregisterOutcome::BootSpec => {
-                                    tracing::warn!(
-                                        id = %id,
-                                        "refused to delete a boot-time opinion spec"
-                                    );
-                                }
-                                UnregisterOutcome::NotFound => {
-                                    tracing::info!(
-                                        id = %id,
-                                        "delete requested for an unknown opinion spec"
-                                    );
-                                }
-                            }
-                            Reply::Unregister(outcome)
-                        }),
-                        Job::Probe(request) => check()
-                            .and_then(|()| generator.probe(request, &check))
-                            .map(|mut r| {
-                                r.queue_ms = queue_ms;
-                                tracing::info!(
-                                    input_tokens = r.input_tokens,
-                                    used_cache = r.cache.used_cache,
-                                    cached_tokens = r.cache.cached_tokens,
-                                    continuations = r.continuations.as_ref().map(|c| c.options.len()).unwrap_or(0),
-                                    generated = r.generated.len(),
-                                    prefill_ms = r.prefill_ms,
-                                    score_ms = r.score_ms,
-                                    "probe complete"
-                                );
-                                Reply::Probe(r)
-                            }),
-                    };
-                    if let Err(e) = &result {
-                        let kind = match e {
-                            Failure::BadRequest(_) => "bad_request",
-                            Failure::NotFound(_) => "not_found",
-                            Failure::Unprocessable(_) => "unprocessable",
-                            Failure::Forbidden(_) => "forbidden",
-                            Failure::Internal(_) => "internal",
-                            Failure::Cancelled => "cancelled",
-                            Failure::Deadline => "deadline",
-                        };
-                        tracing::warn!(error_kind = kind, operation, "adjudicator work failed");
-                    }
-                    crate::telemetry::record_inference_duration(operation, start.elapsed());
-                    let _ = work.reply.send(result);
-                }
+                worker.serve(&mut generator);
                 drop(generator);
                 finished.mark();
             })
@@ -3149,7 +3428,7 @@ impl Handle {
                 std::process::exit(1);
             }
         });
-        Self { tx, info, menu, exit, stopping }
+        Self { queues, info, menu, exit, stopping }
     }
     /// The specs `/v1/opinion` serves at boot. Without this, every opinion
     /// request is refused as naming an unknown spec. Registration and
@@ -3194,9 +3473,9 @@ impl Handle {
             enqueued: Instant::now(),
             span: tracing::info_span!("adjudicator", operation = span),
         };
-        self.tx.try_send(work).map_err(|e|match e {
-            mpsc::TrySendError::Full(_)=>(StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":{"type":"overloaded","message":"adjudicator queue is full"}}))).into_response(),
-            mpsc::TrySendError::Disconnected(_)=>Failure::Internal("adjudicator worker unavailable".into()).into_response(),
+        self.queues[work.job.priority().index()].try_send(work).map_err(|e|match e {
+            crossbeam_channel::TrySendError::Full(_)=>(StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":{"type":"overloaded","message":"adjudicator queue is full"}}))).into_response(),
+            crossbeam_channel::TrySendError::Disconnected(_)=>Failure::Internal("adjudicator worker unavailable".into()).into_response(),
         })?;
         match tokio::time::timeout(timeout, rx).await {
             Err(_) => Err(Failure::Deadline.into_response()),
@@ -3736,6 +4015,72 @@ mod prompt_cache_tests {
         );
         assert_eq!(cache.prefix.len(), 3);
     }
+    /// What `Adjudicator::generate` does across its prefill pauses, on the
+    /// tiny model: look up, forward chunk by chunk with a read served at
+    /// every pause (`prepare` on the SAME cache, publishing its own ready
+    /// entry), and publish only after the last chunk. The paused prefill
+    /// computes exactly what it computes alone; nothing of it is visible in
+    /// the cache until it publishes; a ready entry the paused job cloned out
+    /// is unaffected by the read that replaces it; and the reads compute
+    /// what they compute alone.
+    #[test]
+    fn reads_at_a_paused_prefill_neither_see_nor_disturb_it() {
+        let (model, mut cache) = fixture();
+        let ok = || Ok(());
+        let a: Vec<u32> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let reads: [&[u32]; 3] = [&[1, 2, 3, 10], &[1, 2, 3, 11, 12], &[1, 2, 3, 13]];
+        // Alone: `a` forwarded in chunks of two from the resident prefix,
+        // and each read prepared on a cache of its own.
+        let fresh = |cache: &PromptCache| PromptCache {
+            prefix: cache.prefix.clone(),
+            prefix_ids: cache.prefix_ids.clone(),
+            ready: None,
+        };
+        let Lookup::Cold { mut state, start } = fresh(&cache).lookup(&model, &a, true).unwrap() else {
+            panic!("an empty cache has nothing ready")
+        };
+        let alone = forward_chunks(&model, &mut state, &a[start..], 2, &mut || Ok(())).unwrap();
+        let alone_next = model.forward(&[14], &mut state).unwrap();
+        let reads_alone: Vec<Vec<f32>> = reads
+            .iter()
+            .map(|r| values(&fresh(&cache).prepare(&model, r, true, &ok).unwrap().logits))
+            .collect();
+
+        // Paused: the same prefill with a read at every pause.
+        let Lookup::Cold { mut state, start } = cache.lookup(&model, &a, true).unwrap() else {
+            panic!("nothing ready yet")
+        };
+        let served = std::cell::RefCell::new(Vec::new());
+        let pauses = Cell::new(0);
+        let logits = forward_chunks(&model, &mut state, &a[start..], 2, &mut || {
+            let n = pauses.get();
+            pauses.set(n + 1);
+            if let Some(r) = reads.get(n) {
+                served.borrow_mut().push(values(&cache.prepare(&model, r, true, &ok)?.logits));
+                // Every pause sees the read's entry, never the paused job's.
+                assert_eq!(cache.ready.as_ref().map(|p| p.token_ids.as_slice()), Some(*r));
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(pauses.get(), 3, "six suffix tokens, chunks of two");
+        assert_eq!(values(&logits), values(&alone), "the paused prefill is the one it computes alone");
+        assert_eq!(*served.borrow(), reads_alone, "and the reads are the ones they compute alone");
+        cache.publish(&a, &state, &logits);
+        let hit = cache.prepare(&model, &a, true, &ok).unwrap();
+        assert_eq!(hit.cached_tokens, a.len(), "published once complete");
+        assert_eq!(values(&hit.logits), values(&alone));
+
+        // A ready entry cloned out before a read replaces it decodes on as
+        // if nothing had happened: clones share no mutable state.
+        let Lookup::Ready(mut paused) = cache.lookup(&model, &a, true).unwrap() else {
+            panic!("`a` is ready")
+        };
+        cache.prepare(&model, reads[0], true, &ok).unwrap();
+        let next = model.forward(&[14], &mut paused.state).unwrap();
+        assert_eq!(values(&next), values(&alone_next));
+    }
+
     #[test]
     fn ready_input_cannot_cross_model_instances() {
         let (model, mut cache) = fixture();
@@ -4043,6 +4388,54 @@ mod prompt_cache_tests {
     }
 }
 
+#[cfg(test)]
+mod priority_tests {
+    use super::*;
+
+    /// `ALL` is the class order the pick and the pause walk, and `Ord` is
+    /// what `next_above` compares: a class added out of place in either
+    /// would serve the wrong jobs at a pause.
+    #[test]
+    fn all_lists_every_class_once_lowest_first() {
+        let mut sorted = Priority::ALL.to_vec();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted, Priority::ALL);
+        for (i, class) in Priority::ALL.iter().enumerate() {
+            assert_eq!(class.index(), i);
+        }
+    }
+
+    /// Only reads and probes overtake. The F8 read travels as an
+    /// `AdjudicateRequest`, so the flag, not the job type, decides.
+    #[test]
+    fn reads_and_probes_are_interactive_and_everything_that_removes_or_generates_is_not() {
+        let adjudicate = |opinion: bool| -> AdjudicateRequest {
+            serde_json::from_value(serde_json::json!({"spec": "s", "input": "x", "opinion": opinion})).unwrap()
+        };
+        let opinion: crate::opinion_api::OpinionRequest = serde_json::from_value(serde_json::json!({
+            "spec": "s", "state": {"input": "x"}, "questions": [{"field": "f"}]
+        }))
+        .unwrap();
+        let probe: crate::probe_api::ProbeRequest =
+            serde_json::from_value(serde_json::json!({"text": "x"})).unwrap();
+        let prompt: PromptSpec = serde_json::from_value(serde_json::json!({
+            "input_label": "Input", "system": "Judge."
+        }))
+        .unwrap();
+        for (job, class) in [
+            (Job::Adjudicate(adjudicate(true)), Priority::Interactive),
+            (Job::Opinion(opinion, vec![]), Priority::Interactive),
+            (Job::Probe(probe), Priority::Interactive),
+            (Job::Adjudicate(adjudicate(false)), Priority::Generative),
+            (Job::Register("id".into(), prompt), Priority::Generative),
+            (Job::Unregister("id".into()), Priority::Generative),
+        ] {
+            assert_eq!(job.priority(), class, "{}", job.operation());
+        }
+    }
+}
+
 /// Whether the live `Handle.menu` a caller reads stays in step with the
 /// worker's own `specs` — the property "MENU CAN FALL BEHIND THE WORKER"
 /// named. A job whose caller is ALREADY gone before the worker even looks
@@ -4106,7 +4499,7 @@ mod handle_menu_tests {
         fn generate(
             &mut self,
             _: &AdjudicateRequest,
-            _: &dyn Fn() -> Result<(), Failure>,
+            _: &dyn YieldPoint<Self>,
         ) -> Result<AdjudicateResponse, Failure> {
             Err(Failure::Internal("not exercised here".into()))
         }
@@ -4183,8 +4576,7 @@ mod handle_menu_tests {
         );
         let (reply, rx) = oneshot::channel();
         drop(rx);
-        handle
-            .tx
+        handle.queues[Priority::Generative.index()]
             .send(Work {
                 job: Job::Register("id1".into(), prompt("one")),
                 reply,

@@ -124,16 +124,16 @@ impl Generator for Fake {
     fn generate(
         &mut self,
         r: &AdjudicateRequest,
-        check: &dyn Fn() -> Result<(), Failure>,
+        at: &dyn lfm2d::adjudicator::YieldPoint<Self>,
     ) -> Result<AdjudicateResponse, Failure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if r.input == "slow" {
             loop {
-                check()?;
+                at.check()?;
                 std::thread::sleep(Duration::from_millis(1));
             }
         }
-        check()?;
+        at.check()?;
         // Fake generator stands in for the real decode loop: it echoes back
         // one canned step per requested token set, so HTTP-level tests can
         // check the wire shape without a loaded model.
