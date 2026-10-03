@@ -21,11 +21,18 @@ same operations as lfm2d/src/pool.rs) and stops the job loudly on any difference
 both pools (the ternary plot's two stars), the pooled verdict (the top option, ties to the earlier one: the daemon
 never picks), and leave-one-out.
 
-Specs: two, consumer-owned, in static/ (uploaded at boot, content-addressed): council-verdict-v2 asks the verdict
-cold, at the first slot, like the megakernel's letters; council-describe-v2 has each context describe the action first
-and then reads the verdict, so every description comes from inside its own context. Field and option names come from
-GET /v1/opinion/specs, never from this file; the two specs must ask the same options. The options run from routine to
-loudest, so the last one is the louder ask the page alarms on.
+Specs: two, consumer-owned, in static/ (uploaded at boot, content-addressed): council-describe-v3, the default, has
+each context describe the action first and then reads the verdict, so every description comes from inside its own
+context; council-verdict-v3 asks the verdict cold, at the first slot, like the megakernel's letters. Both name the
+agent as the proposer ("nobody here requested it") and label the input "Action proposed by the agent". Field and
+option names come from GET /v1/opinion/specs, never from this file; the two specs must ask the same options. The
+options run from routine to loudest, so the last one is the louder ask the page alarms on. The v1 and v2 specs stay in
+static/ (the benchmarks name them) and are not loaded.
+
+The fence: every read sends the action set off on its own lines (FENCE, the fence the 2026-10-03 speaker-and-quoting
+run pre-registered in benchmarks/lfm25/council/speaker-v1-prereg.json): on an unseen scenario describe-first passed the
+bar only fenced (docs/lfm25-adjudicator.md, "Speaker and quoting"). The fence is the read's rendering: decisions and
+the page keep the action as typed. An action holding a line that opens or closes a fence is refused (400).
 
 Backfill: when the set of contexts changes (an edit, an ask's reply, an include toggle, a tab added or removed) or the
 spec does, the last BACKFILL_K decisions are re-read under the new set, one read each, and each card whose pooled
@@ -43,7 +50,7 @@ still holds exactly what that chat held (later notes are appended as user turns)
 longer continue (edited since, evicted, restarted) refuses the ask with a 400 that says so: delete the reply, or add
 the question as a note.
 
-Trust: an action is the read's `state.input`. The daemon refuses control-token text in it (400) instead of escaping
+Trust: an action is the read's `state.input`, fenced. The daemon refuses control-token text in it (400) instead of escaping
 it, so this module needs no denylist; the refusal goes to the page as the daemon wrote it.
 
 One engine thread owns the daemon calls; every change runs there in order. The page gets server-sent events.
@@ -85,7 +92,12 @@ import council_pool
 import council_scenario as scenario
 
 STATIC = Path(__file__).resolve().parent / "static"
-SPEC_FILES = ["council-verdict-v2.json", "council-describe-v2.json"]
+# Describe-first first: the default, and what reset returns to.
+SPEC_FILES = ["council-describe-v3.json", "council-verdict-v3.json"]
+# How a read renders an action (as benchmarks/lfm25/council/speaker-v1-prereg.json's "fence"); every read is built
+# through fenced(), so decide, backfill and replay send the same bytes.
+FENCE = "```\n{action}\n```"
+_FENCE_LINE = re.compile(r"^[ \t]*```", re.MULTILINE)  # a line that would open or close a fence
 MAX_TABS = 8  # /v1/opinion reads after 1 to 8 contexts
 BACKFILL_K = 12
 MAX_BODY = 64 * 1024
@@ -107,7 +119,8 @@ DEFAULT_POOL = {"method": "loglinear", "weights": "uniform"}
 MIN_MASS = 0.5  # under this much raw mass on the options, the page flags a read (as tail.html does)
 # One per tab: each is its identity everywhere on the page. None is green, amber or red, the verdict colors.
 PALETTE = ["#22e4ff", "#ff4fd8", "#a98bff", "#4d9dff", "#e6e6f0", "#ff8fb8", "#d4a8ff", "#9ff3ff"]
-TRUST = ("An action is the read's input, rendered after each context. The daemon refuses control-token text in it, "
+TRUST = ("An action is the read's input, fenced on its own lines, rendered after each context; an action with a "
+         "line that would open or close the fence is refused. The daemon refuses control-token text in it, "
          "and in every tab's turns, rather than escaping it (a 400 shown here as it came), so no action or tab text "
          "can forge a chat turn.")
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
@@ -214,7 +227,15 @@ def _check_action(action) -> str:
         raise Refused("action must be a non-empty string")
     if len(action) > MAX_ACTION:
         raise Refused(f"the action is too long ({len(action)} characters, at most {MAX_ACTION})")
+    if _FENCE_LINE.search(action):
+        raise Refused("the action has a line starting with ``` : a read quotes the action inside a ``` fence, and "
+                      "that line would close the fence early; write it without a line that starts with ```")
     return action.strip()
+
+
+def fenced(action: str) -> str:
+    """The action as a read's input: fenced on its own lines (FENCE)."""
+    return FENCE.replace("{action}", action)
 
 
 def _check_name(name) -> str:
@@ -710,7 +731,7 @@ class Council:
         return tabs
 
     def opinion(self, spec: dict, action: str, ids: list[str]) -> tuple[dict, float]:
-        body = {"spec": spec["id"], "state": {"input": action}, "questions": [{"field": spec["field"]}],
+        body = {"spec": spec["id"], "state": {"input": fenced(action)}, "questions": [{"field": spec["field"]}],
                 "contexts": ids, "pool": dict(self.pool), "timeout_ms": READ_TIMEOUT_MS}
         t0 = time.perf_counter()
         r = self.daemon.post("/v1/opinion", body)

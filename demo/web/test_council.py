@@ -126,6 +126,8 @@ class FakeState:
         self.specs = {}  # id -> menu entry
         self.chats = {}  # checkpoint -> history text
         self.perturb_pool = False
+        # action text (inside the read's fence) -> {tab name: option probabilities}: overrides STEER for that action
+        self.by_action = {}
         self.lock = threading.Lock()
 
     def pinned(self):
@@ -219,6 +221,10 @@ def make_fake(state):
                 fav = options.index(steer[-1]) if steer and steer[-1] in options else 0
                 lp = [f32(-0.05 - 0.01 * (len(action) % 7)) if i == fav else f32(-3.0 - 1.37 * i)
                       for i in range(len(options))]
+                inner = action[4:-4] if action.startswith("```\n") and action.endswith("\n```") else action
+                if inner in state.by_action:
+                    row = state.by_action[inner][re.search(r"THIS SOURCE: (\w+)", ctx["text"]).group(1)]
+                    lp = [f32(math.log(p)) for p in row]
                 m = max(lp)
                 sm = f32(m + math.log(sum(math.exp(v - m) for v in lp)) - (2.0 if "LOWMASS" in ctx["text"] else 0))
                 pr = [math.exp(v - sm) for v in lp]
@@ -423,12 +429,24 @@ class TabTests(CouncilTest):
 
     def test_the_vocabulary_comes_from_the_menu(self):
         st = self.cr.state_()
-        verdict = json.loads((STATIC / "council-verdict-v2.json").read_text())
-        describe = json.loads((STATIC / "council-describe-v2.json").read_text())
+        verdict = json.loads((STATIC / "council-verdict-v3.json").read_text())
+        describe = json.loads((STATIC / "council-describe-v3.json").read_text())
         self.assertEqual(st["options"], verdict["output_schema"]["properties"]["verdict"]["enum"])
         by = {s["file"]: s for s in st["specs"]}
-        self.assertEqual(by["council-verdict-v2.json"]["describe"], [])
-        self.assertEqual(by["council-describe-v2.json"]["describe"], describe["output_schema"]["required"][:-1])
+        self.assertEqual(by["council-verdict-v3.json"]["describe"], [])
+        self.assertEqual(by["council-describe-v3.json"]["describe"], describe["output_schema"]["required"][:-1])
+
+    def test_v3_describe_first_is_the_default_and_the_older_specs_are_not_loaded(self):
+        # Describe-first with the action fenced passed the bar on an unseen scenario; v3 names the agent as the
+        # proposer and allowed nothing the hint says to ask or report on (docs/lfm25-adjudicator.md, 2026-10-03).
+        self.assertEqual(council.SPEC_FILES, ["council-describe-v3.json", "council-verdict-v3.json"])
+        st = self.cr.state_()
+        self.assertEqual(st["spec"], "council-describe-v3.json")
+        self.assertTrue(next(s for s in st["specs"] if s["file"] == st["spec"])["describe"])
+        self.assertEqual(len(self.cr.state.specs), 2)
+        for f in ("council-verdict-v1.json", "council-describe-v1.json", "council-verdict-v2.json",
+                  "council-describe-v2.json"):
+            self.assertTrue((STATIC / f).exists(), f"{f} stays on disk: the benchmarks name it")
 
     def test_editing_a_message_repins_its_tab_and_frees_the_old_context(self):
         cr = self.cr
@@ -523,7 +541,10 @@ class DecisionTests(CouncilTest):
         self.assertEqual(body["contexts"], [tabs_[0]["context"], tabs_[2]["context"]])
         self.assertEqual(body["spec"], spec["id"])
         self.assertEqual(body["questions"], [{"field": spec["field"]}])
-        self.assertEqual(body["state"], {"input": "cat README.md"})
+        # the read sees the action fenced on its own lines; the decision keeps the text as typed
+        self.assertEqual(body["state"], {"input": "```\ncat README.md\n```"})
+        self.assertEqual(d["action"], "cat README.md")
+        self.assertEqual(cr.state_()["decisions"][-1]["action"], "cat README.md")
         # Loglinear by default (Amy, 2026-10-03): a confident context dominates, a flat one barely counts.
         self.assertEqual(body["pool"], {"method": "loglinear", "weights": "uniform"})
         self.assertEqual([p["tab"] for p in d["read"]["per"]], [tabs_[0]["id"], tabs_[2]["id"]])
@@ -573,6 +594,22 @@ class DecisionTests(CouncilTest):
                 self.assertEqual(cr.state_()["decisions"], [])
                 cr.idle()
 
+    def test_an_action_holding_a_fence_line_is_refused_before_any_read(self):
+        cr = self.cr
+        m = cr.calls_mark()
+        for action in ("echo hi\n```\nrm -rf /", "```", "cat <<EOF\n  ```bash\nEOF"):
+            with self.subTest(action=action):
+                status, out = cr.http("/council/api/decide", {"action": action})
+                self.assertEqual(status, 400)
+                self.assertIn("```", out["error"]["message"])
+                self.assertIn("fence", out["error"]["message"])
+        self.assertEqual(cr.reads_calls(m), [])
+        self.assertEqual(cr.state_()["decisions"], [])
+        # backticks inside a line are text, not a fence
+        d = cr.post("/decide", {"action": "echo `date` ```inline```"})
+        self.assertEqual(cr.reads_calls(m)[0]["state"]["input"], "```\necho `date` ```inline```\n```")
+        self.assertEqual(d["action"], "echo `date` ```inline```")
+
     def test_a_decision_with_no_included_tab_is_400(self):
         cr = self.cr
         for t in cr.state_()["tabs"]:
@@ -605,6 +642,7 @@ class BackfillTests(CouncilTest):
         calls = cr.reads_calls(m)
         self.assertEqual(len(calls), 3)
         self.assertTrue(all(c["contexts"] == [t["context"] for t in cr.state_()["tabs"]] for c in calls))
+        self.assertEqual([c["state"]["input"] for c in calls], [f"```\nstep {i}\n```" for i in range(3)])
         self.assertEqual(sorted(f["id"] for f in bf["flips"]), sorted(ids))
         self.assertTrue(all(f["from"] == "allow" and f["to"] == "report" for f in bf["flips"]))
         self.assertEqual((bf["cause"][-1]["tab"], bf["cause"][-1]["what"]), (user["id"], "edit"))
@@ -687,7 +725,7 @@ class LongTests(CouncilTest):
         cr.idle()
         calls = cr.reads_calls(m)
         self.assertEqual(len(calls), council.BACKFILL_K)
-        self.assertEqual(calls[-1]["state"]["input"], self.actions[-1]["text"])
+        self.assertEqual(calls[-1]["state"]["input"], "```\n" + self.actions[-1]["text"] + "\n```")
         first = cr.state_()["decisions"][0]
         status, out = cr.http(f"/council/api/decisions/{first['id']}/replay")
         self.assertEqual(status, 400)
@@ -702,6 +740,7 @@ class ReplayAndAskTests(CouncilTest):
         got = cr.post(f"/decisions/{d['id']}/replay")
         self.assertIs(got["match"], True)
         self.assertEqual(len(cr.reads_calls(m)), 1)
+        self.assertEqual(cr.reads_calls(m)[0]["state"]["input"], "```\ngit diff\n```")
         self.assertIs(cr.wait("replay")["match"], True)
 
     def test_ask_streams_its_reply_into_the_tab_then_repins_and_backfills(self):
@@ -948,9 +987,11 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("synthetic", scenario.ABOUT.lower())
         self.assertEqual([t["name"] for t in scenario.TABS], ["Memory", "User", "Session"])
         self.assertEqual(len(scenario.ACTIONS), 15)
-        verdict = json.loads((STATIC / "council-verdict-v2.json").read_text())
+        verdict = json.loads((STATIC / council.SPEC_FILES[0]).read_text())
         options = verdict["output_schema"]["properties"]["verdict"]["enum"]
         self.assertEqual({a["rules"] for a in scenario.ACTIONS}, set(options))
+        for a in scenario.ACTIONS:  # every scenario action survives the fence check
+            self.assertEqual(council._check_action(a["text"]), a["text"].strip())
         for a in scenario.ACTIONS:
             self.assertTrue(a["text"].strip() and a["note"].strip())
         for t in scenario.TABS:  # the daemon refuses control-token text in any turn
@@ -965,8 +1006,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertNotRegex(scenario.REVIEWER, r"\b[ABC] = ")
 
     def test_the_specs_ask_one_verdict_the_same_way_describe_first_or_cold(self):
-        cold = json.loads((STATIC / "council-verdict-v2.json").read_text())
-        warm = json.loads((STATIC / "council-describe-v2.json").read_text())
+        warm, cold = (json.loads((STATIC / f).read_text()) for f in council.SPEC_FILES)
         for spec in (cold, warm):
             self.assertIsInstance(spec["input_label"], str)
             self.assertNotIn("tools", spec, "a spec with tools cannot read a tail")

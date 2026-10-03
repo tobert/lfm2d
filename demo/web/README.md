@@ -254,15 +254,31 @@ is the pool's top option, ties to the earlier one.
   refuses the ask with a 400 saying so: delete the reply, or add the
   question as a note.
 - **Two specs** (`static/`, uploaded at boot, field and options read from
-  the menu): `council-verdict-v2` asks the verdict cold, as its first and
-  only field; `council-describe-v2` has each context write what the action
-  does and what this source says about it, then the verdict, so every
-  description comes from inside its own context. Both share the options,
+  the menu): `council-describe-v3`, the default, has each context write
+  what the action does and what this source says about it, then the
+  verdict, so every description comes from inside its own context;
+  `council-verdict-v3` asks the verdict cold, as its first and only field.
+  Both name the agent as the proposer ("nobody here requested it") and
+  label the input "Action proposed by the agent". Both share the options,
   and the scenario's `REVIEWER` framing sits in every tab's system turn.
+  The v1 and v2 specs stay in `static/` for the benchmarks that name them;
+  the council no longer loads them.
+- **The action is fenced.** Every read (decide, backfill, replay) sends
+  the action on its own lines inside a ```` ``` ```` fence (`FENCE` in
+  `council.py`, the fence pre-registered in
+  `benchmarks/lfm25/council/speaker-v1-prereg.json`); the cards and stored
+  decisions keep the text as typed. Why: on an unseen scenario,
+  describe-first passed the pre-registered bar only with the action fenced,
+  and v3 allowed nothing the hint said to ask or report on
+  ([`docs/lfm25-adjudicator.md`](../../docs/lfm25-adjudicator.md), "Speaker
+  and quoting", 2026-10-03). That run also had slot 0, an opening exchange
+  and `Acknowledged.` turns in every context, which the council's tabs do
+  not carry yet. An action with a line that starts with ```` ``` ```` would
+  close the fence early, so it is refused (400).
 - **Restarts.** A read that meets a 404 for a lost context or spec pins the
   tabs again or uploads the specs again (each at most once) and retries;
   ids are the content, so they come back the same.
-- **Trust.** An action is the read's input. The daemon refuses control-token
+- **Trust.** An action is the read's input, fenced. The daemon refuses control-token
   text in it, and in any tab turn, rather than escaping it; the 400 is shown
   as it came. No action or tab text can forge a chat turn.
 
