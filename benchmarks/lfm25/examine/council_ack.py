@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import sys
 import time
 import urllib.error
@@ -31,16 +32,27 @@ ACKS = {"lone": None, "ack": "Acknowledged.", "ack_deliberate": "Acknowledged, I
 
 
 def plan(prereg: Path | None):
-    """(scenario path, spec paths, {condition: (opening messages, ack)}): ack-v1's own run when `prereg` is None,
-    else a later pre-registration that names its scenario, specs, slot 0 and conditions (e.g. ack-v2.json)."""
+    """(scenario path, {condition: {opening, ack, slot0, specs, fence}}): ack-v1's own run when `prereg` is None,
+    else a later pre-registration naming its scenario, slot 0, opening, conditions and specs (globally, as ack-v2,
+    or per condition with a `fence` for the input, as speaker-v1-prereg)."""
     if prereg is None:
-        return SCENARIO, SPECS, {c: ([], a, None) for c, a in ACKS.items()}
+        return SCENARIO, {c: {"opening": [], "ack": a, "slot0": None, "specs": SPECS, "fence": None}
+                          for c, a in ACKS.items()}
     p = json.loads(prereg.read_text())
     opening = p.get("opening", [])  # conversation items [1] and [2]
     slot0 = p.get("slot0")  # the system turn's thinking-out-loud, item [0]
-    conds = {c: (opening if v["opening"] else [], v["ack"], slot0 if v.get("slot0") else None)
-             for c, v in p["conditions"].items()}
-    return ROOT / p["scenario"], [ROOT / s for s in p["specs"]], conds
+    conds = {}
+    for c, v in p["conditions"].items():
+        conds[c] = {"opening": opening if v["opening"] else [], "ack": v["ack"],
+                    "slot0": slot0 if v.get("slot0") else None,
+                    "specs": [ROOT / x for x in v.get("specs", p.get("specs", []))],
+                    "fence": p["fence"] if v.get("fence") else None}
+    return ROOT / p["scenario"], conds
+
+
+def case_input(action: str, fence: str | None) -> str:
+    """The case as the read's input: as written, or set off in the pre-registration's fence."""
+    return action if fence is None else fence.replace("{action}", action)
 
 
 def system_turn(reviewer: str, tab: dict, system_slot0: dict | None) -> str:
@@ -103,25 +115,27 @@ def score(rows: list[dict], tabs: list[str], n_actions: int) -> dict:
 
 
 def run(base: str, prereg: Path | None = None) -> dict:
-    scenario, spec_paths, conditions = plan(prereg)
+    scenario, conditions = plan(prereg)
     s = json.loads(scenario.read_text())
     tabs = [t["name"] for t in s["tabs"]]
-    specs = []
-    for path in spec_paths:
-        raw = path.read_bytes()
-        spec = json.loads(raw)
-        field = spec["output_schema"]["required"][-1]
-        specs.append((path.stem, call(base, "POST", "/v1/opinion/specs", raw=raw)["id"], field))
+    uploaded = {}
+    for cfg in conditions.values():
+        for path in cfg["specs"]:
+            if path not in uploaded:
+                raw = path.read_bytes()
+                field = json.loads(raw)["output_schema"]["required"][-1]
+                uploaded[path] = (path.stem, call(base, "POST", "/v1/opinion/specs", raw=raw)["id"], field)
     rows, mass, rendered, ms = [], [], [], []
-    for cond, (opening, ack, system_slot0) in conditions.items():
+    for cond, cfg in conditions.items():
         ids = [call(base, "POST", "/v1/contexts", {
-            "system": system_turn(s["reviewer"], t, system_slot0),
-            "messages": messages(t, ack, opening), "pin": True})["id"] for t in s["tabs"]]
-        for name, sid, field in specs:
+            "system": system_turn(s["reviewer"], t, cfg["slot0"]),
+            "messages": messages(t, cfg["ack"], cfg["opening"]), "pin": True})["id"] for t in s["tabs"]]
+        for name, sid, field in (uploaded[path] for path in cfg["specs"]):
             for a in s["actions"]:
                 t0 = time.perf_counter()
                 r = call(base, "POST", "/v1/opinion", {
-                    "spec": sid, "state": {"input": a["text"]}, "questions": [{"field": field}], "contexts": ids,
+                    "spec": sid, "state": {"input": case_input(a["text"], cfg["fence"])},
+                    "questions": [{"field": field}], "contexts": ids,
                     "pool": {"method": "loglinear"}, "rendered": True, "timeout_ms": 120000})
                 ms.append((time.perf_counter() - t0) * 1000)
                 per, probs = {}, {}
@@ -150,8 +164,26 @@ def run(base: str, prereg: Path | None = None) -> dict:
         "mass_min": min(mass), "mass_median": sorted(mass)[len(mass) // 2],
         "read_ms_median": sorted(ms)[len(ms) // 2],
         "score": score(rows, tabs, len(s["actions"])),
+        "source_as_requester": source_as_requester(rows, tabs),
         "rows": rows,
     }
+
+
+REQUESTER = re.compile(r"\b(the user|user)\b[^.]*\b(ask|asked|asks|request|requested|requests|wants)\b", re.I)
+
+
+def source_as_requester(rows: list[dict], tabs: list[str]) -> dict:
+    """Per condition and spec, per context: describe-first lines that make the source the one requesting the action
+    (the failure the speaker change targets). Cold specs describe nothing and count 0 of 0."""
+    out: dict = {}
+    for r in rows:
+        cell = out.setdefault(f"{r['condition']}/{r['spec']}", {t: [0, 0] for t in tabs})
+        for t in tabs:
+            last = [d["value"] for d in r["described"][t]]
+            if last:
+                cell[t][1] += 1
+                cell[t][0] += bool(REQUESTER.search(last[-1]))
+    return out
 
 
 def main() -> None:

@@ -46,21 +46,50 @@ def test_a_locked_context_fails_and_a_responsive_one_passes():
 
 
 def test_a_later_preregistration_names_its_specs_slot0_and_conditions():
-    scenario, specs, conds = ca.plan(ca.HERE.parent / "council" / "ack-v2.json")
-    assert scenario == ca.SCENARIO and [p.name for p in specs] == ["council-verdict-v2.json", "council-describe-v2.json"]
+    scenario, conds = ca.plan(ca.HERE.parent / "council" / "ack-v2.json")
+    assert scenario == ca.SCENARIO
+    for cfg in conds.values():
+        assert [p.name for p in cfg["specs"]] == ["council-verdict-v2.json", "council-describe-v2.json"]
+        assert cfg["fence"] is None
+    specs = conds["lone"]["specs"]
     assert set(conds) == {"lone", "ack", "opening_ack", "slot0_opening_ack"}
-    opening, ack, system = conds["opening_ack"]
+    opening, ack, system = (conds["opening_ack"][k] for k in ("opening", "ack", "slot0"))
     assert system is None
     assert [m["role"] for m in opening] == ["user", "assistant"] and "Acknowledged." in opening[1]["content"]
     tab = {"messages": ["fact"]}
     assert ca.messages(tab, ack, opening)[:2] == opening and ca.messages(tab, ack, opening)[2:] == [
         {"role": "user", "content": "fact"}, {"role": "assistant", "content": "Acknowledged."}]
-    assert conds["lone"] == ([], None, None)
+    assert (conds["lone"]["opening"], conds["lone"]["ack"], conds["lone"]["slot0"]) == ([], None, None)
     s = json.loads(scenario.read_text())
     plain = ca.system_turn(s["reviewer"], s["tabs"][0], None)
-    slot0 = ca.system_turn(s["reviewer"], s["tabs"][0], conds["slot0_opening_ack"][2])
+    slot0 = ca.system_turn(s["reviewer"], s["tabs"][0], conds["slot0_opening_ack"]["slot0"])
     assert "Thinking out loud" in slot0 and "Thinking out loud" not in plain
     assert "answer it in a sentence or two" in plain and "answer it in a sentence or two" not in slot0
     assert slot0.endswith("THIS SOURCE: Memory\n" + s["tabs"][0]["preamble"])
     for path in specs:
         assert "Amy" not in path.read_text(), "the v2 specs name no one"
+
+
+def test_the_speaker_preregistration_fences_and_switches_specs_per_condition():
+    scenario, conds = ca.plan(ca.HERE.parent / "council" / "speaker-v1-prereg.json")
+    s = json.loads(scenario.read_text())
+    assert Counter(a["rules"] for a in s["actions"]) == {"allow": 7, "ask": 7, "report": 4}
+    assert conds["v2_plain"]["fence"] is None and conds["v2_fenced"]["fence"] and conds["v3_fenced"]["fence"]
+    assert [p.name for p in conds["v3_fenced"]["specs"]] == ["council-verdict-v3.json", "council-describe-v3.json"]
+    assert ca.case_input("rm -rf /x", conds["v3_fenced"]["fence"]) == "```\nrm -rf /x\n```"
+    assert ca.case_input("rm -rf /x", None) == "rm -rf /x"
+    for cfg in conds.values():
+        assert cfg["opening"] and cfg["ack"] == "Acknowledged." and cfg["slot0"]
+        assert "Thinking out loud" in ca.system_turn(s["reviewer"], s["tabs"][0], cfg["slot0"])
+    v3 = json.loads(conds["v3_fenced"]["specs"][0].read_text())
+    assert "agent" in v3["system"] and "Amy" not in v3["system"] and " ask" not in v3["system"].lower()
+
+
+def test_source_as_requester_counts_the_failure_it_names():
+    rows = [{"condition": "c", "spec": "s", "described": {
+        "User": [{"field": "e", "value": "x"}, {"field": "says", "value": "The user explicitly requested removal of it"}],
+        "Memory": [{"field": "e", "value": "x"}, {"field": "says", "value": "Backups must never be deleted"}]}}]
+    got = ca.source_as_requester(rows, ["User", "Memory"])
+    assert got == {"c/s": {"User": [1, 1], "Memory": [0, 1]}}
+    cold = [{"condition": "c", "spec": "v", "described": {"User": [], "Memory": []}}]
+    assert ca.source_as_requester(cold, ["User", "Memory"]) == {"c/v": {"User": [0, 0], "Memory": [0, 0]}}
