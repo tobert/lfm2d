@@ -933,6 +933,30 @@ conversation whose user turns are the source, so it reads as the source
 asking for the action. Under log-linear pooling that one confident context
 vetoes the rest. Results: `benchmarks/lfm25/results/2026-10-03-council-ack*.json`.
 
+**Speaker and quoting: the first passes (2026-10-03, pre-registered 0e56ef1,
+unseen scenario).** Amy: "try 1 first, and let's make the quoting pretty
+clear around the thing under consideration". Priya's shop, 18 actions
+(7/7/4), every context with slot 0 + opening + `Acknowledged.`; the action
+fenced on its own lines under "Action proposed by the agent", and v3 specs
+that name the agent as the proposer.
+
+| condition | spec | pooled = hint | passes | allow on an ask/report action | P(report) AUC, report vs rest |
+|---|---|---|---|---|---|
+| v2, plain | describe | 9 | no | 3 | 1.00 |
+| v2, fenced | describe | **11** | **yes** | 2 | 1.00 |
+| v3, fenced | describe | **10** | **yes** | **0** | 1.00 |
+| v2 plain / v2 fenced / v3 fenced | cold | 7 / 7 / 10 | no (User, Session lock on ask in v3) | 6 / 6 / 0 | 1.00 |
+
+Fencing moved describe-first from 9 to 11. Naming the speaker did not add
+matches (10) but changed the errors: v3 never allows an action the hint
+says to ask or report on, where v2 allowed `ufw allow 5432/tcp` (0.88) and
+the live deploy. The pooled argmax picks report once in 24 report cells,
+yet P(report) ranks all four report actions above every other action in
+every cell: read the report probability as a rank, not the top option
+(argmax-into-a-field-discards-the-judgement again). On this scenario the
+source-as-requester failure barely appeared even without v3 (1 of 18 lines),
+so whether v3 fixes it is untested here. One scenario, margins at the bar.
+
 ## Probe and tokenize
 
 Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Tokenize and probe
