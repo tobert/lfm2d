@@ -48,12 +48,19 @@ def test_a_locked_context_fails_and_a_responsive_one_passes():
 def test_a_later_preregistration_names_its_specs_slot0_and_conditions():
     scenario, specs, conds = ca.plan(ca.HERE.parent / "council" / "ack-v2.json")
     assert scenario == ca.SCENARIO and [p.name for p in specs] == ["council-verdict-v2.json", "council-describe-v2.json"]
-    assert set(conds) == {"lone", "ack", "slot0_ack"}
-    opening, ack = conds["slot0_ack"]
+    assert set(conds) == {"lone", "ack", "opening_ack", "slot0_opening_ack"}
+    opening, ack, system = conds["opening_ack"]
+    assert system is None
     assert [m["role"] for m in opening] == ["user", "assistant"] and "Acknowledged." in opening[1]["content"]
     tab = {"messages": ["fact"]}
     assert ca.messages(tab, ack, opening)[:2] == opening and ca.messages(tab, ack, opening)[2:] == [
         {"role": "user", "content": "fact"}, {"role": "assistant", "content": "Acknowledged."}]
-    assert conds["lone"] == ([], None)
+    assert conds["lone"] == ([], None, None)
+    s = json.loads(scenario.read_text())
+    plain = ca.system_turn(s["reviewer"], s["tabs"][0], None)
+    slot0 = ca.system_turn(s["reviewer"], s["tabs"][0], conds["slot0_opening_ack"][2])
+    assert "Thinking out loud" in slot0 and "Thinking out loud" not in plain
+    assert "answer it in a sentence or two" in plain and "answer it in a sentence or two" not in slot0
+    assert slot0.endswith("THIS SOURCE: Memory\n" + s["tabs"][0]["preamble"])
     for path in specs:
         assert "Amy" not in path.read_text(), "the v2 specs name no one"

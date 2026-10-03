@@ -34,11 +34,23 @@ def plan(prereg: Path | None):
     """(scenario path, spec paths, {condition: (opening messages, ack)}): ack-v1's own run when `prereg` is None,
     else a later pre-registration that names its scenario, specs, slot 0 and conditions (e.g. ack-v2.json)."""
     if prereg is None:
-        return SCENARIO, SPECS, {c: ([], a) for c, a in ACKS.items()}
+        return SCENARIO, SPECS, {c: ([], a, None) for c, a in ACKS.items()}
     p = json.loads(prereg.read_text())
-    slot0 = p.get("slot0", [])
-    conds = {c: (slot0 if v["slot0"] else [], v["ack"]) for c, v in p["conditions"].items()}
+    opening = p.get("opening", [])  # conversation items [1] and [2]
+    slot0 = p.get("slot0")  # the system turn's thinking-out-loud, item [0]
+    conds = {c: (opening if v["opening"] else [], v["ack"], slot0 if v.get("slot0") else None)
+             for c, v in p["conditions"].items()}
     return ROOT / p["scenario"], [ROOT / s for s in p["specs"]], conds
+
+
+def system_turn(reviewer: str, tab: dict, system_slot0: dict | None) -> str:
+    """[0]: the reviewer framing (with slot 0's thinking-out-loud in place of the sentence it would contradict),
+    then the source's name and preamble."""
+    if system_slot0 is not None:
+        if system_slot0["drop"] not in reviewer:
+            raise ValueError("slot 0 replaces a sentence the reviewer framing does not hold")
+        reviewer = reviewer.replace(system_slot0["drop"], system_slot0["text"])
+    return f"{reviewer}\n\nTHIS SOURCE: {tab['name']}\n{tab['preamble']}"
 
 
 def call(base, method, path, body=None, raw=None):
@@ -101,9 +113,9 @@ def run(base: str, prereg: Path | None = None) -> dict:
         field = spec["output_schema"]["required"][-1]
         specs.append((path.stem, call(base, "POST", "/v1/opinion/specs", raw=raw)["id"], field))
     rows, mass, rendered, ms = [], [], [], []
-    for cond, (opening, ack) in conditions.items():
+    for cond, (opening, ack, system_slot0) in conditions.items():
         ids = [call(base, "POST", "/v1/contexts", {
-            "system": f"{s['reviewer']}\n\nTHIS SOURCE: {t['name']}\n{t['preamble']}",
+            "system": system_turn(s["reviewer"], t, system_slot0),
             "messages": messages(t, ack, opening), "pin": True})["id"] for t in s["tabs"]]
         for name, sid, field in specs:
             for a in s["actions"]:
