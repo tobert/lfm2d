@@ -254,8 +254,8 @@ is the pool's top option, ties to the earlier one.
   refuses the ask with a 400 saying so: delete the reply, or add the
   question as a note.
 - **Two specs** (`static/`, uploaded at boot, field and options read from
-  the menu): `council-verdict-v1` asks the verdict cold, as its first and
-  only field; `council-describe-v1` has each context write what the action
+  the menu): `council-verdict-v2` asks the verdict cold, as its first and
+  only field; `council-describe-v2` has each context write what the action
   does and what this source says about it, then the verdict, so every
   description comes from inside its own context. Both share the options,
   and the scenario's `REVIEWER` framing sits in every tab's system turn.

@@ -423,12 +423,12 @@ class TabTests(CouncilTest):
 
     def test_the_vocabulary_comes_from_the_menu(self):
         st = self.cr.state_()
-        verdict = json.loads((STATIC / "council-verdict-v1.json").read_text())
-        describe = json.loads((STATIC / "council-describe-v1.json").read_text())
+        verdict = json.loads((STATIC / "council-verdict-v2.json").read_text())
+        describe = json.loads((STATIC / "council-describe-v2.json").read_text())
         self.assertEqual(st["options"], verdict["output_schema"]["properties"]["verdict"]["enum"])
         by = {s["file"]: s for s in st["specs"]}
-        self.assertEqual(by["council-verdict-v1.json"]["describe"], [])
-        self.assertEqual(by["council-describe-v1.json"]["describe"], describe["output_schema"]["required"][:-1])
+        self.assertEqual(by["council-verdict-v2.json"]["describe"], [])
+        self.assertEqual(by["council-describe-v2.json"]["describe"], describe["output_schema"]["required"][:-1])
 
     def test_editing_a_message_repins_its_tab_and_frees_the_old_context(self):
         cr = self.cr
@@ -948,7 +948,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("synthetic", scenario.ABOUT.lower())
         self.assertEqual([t["name"] for t in scenario.TABS], ["Memory", "User", "Session"])
         self.assertEqual(len(scenario.ACTIONS), 15)
-        verdict = json.loads((STATIC / "council-verdict-v1.json").read_text())
+        verdict = json.loads((STATIC / "council-verdict-v2.json").read_text())
         options = verdict["output_schema"]["properties"]["verdict"]["enum"]
         self.assertEqual({a["rules"] for a in scenario.ACTIONS}, set(options))
         for a in scenario.ACTIONS:
@@ -965,8 +965,8 @@ class ScenarioTests(unittest.TestCase):
         self.assertNotRegex(scenario.REVIEWER, r"\b[ABC] = ")
 
     def test_the_specs_ask_one_verdict_the_same_way_describe_first_or_cold(self):
-        cold = json.loads((STATIC / "council-verdict-v1.json").read_text())
-        warm = json.loads((STATIC / "council-describe-v1.json").read_text())
+        cold = json.loads((STATIC / "council-verdict-v2.json").read_text())
+        warm = json.loads((STATIC / "council-describe-v2.json").read_text())
         for spec in (cold, warm):
             self.assertIsInstance(spec["input_label"], str)
             self.assertNotIn("tools", spec, "a spec with tools cannot read a tail")

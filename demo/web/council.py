@@ -21,8 +21,8 @@ same operations as lfm2d/src/pool.rs) and stops the job loudly on any difference
 both pools (the ternary plot's two stars), the pooled verdict (the top option, ties to the earlier one: the daemon
 never picks), and leave-one-out.
 
-Specs: two, consumer-owned, in static/ (uploaded at boot, content-addressed): council-verdict-v1 asks the verdict
-cold, at the first slot, like the megakernel's letters; council-describe-v1 has each context describe the action first
+Specs: two, consumer-owned, in static/ (uploaded at boot, content-addressed): council-verdict-v2 asks the verdict
+cold, at the first slot, like the megakernel's letters; council-describe-v2 has each context describe the action first
 and then reads the verdict, so every description comes from inside its own context. Field and option names come from
 GET /v1/opinion/specs, never from this file; the two specs must ask the same options. The options run from routine to
 loudest, so the last one is the louder ask the page alarms on.
@@ -85,7 +85,7 @@ import council_pool
 import council_scenario as scenario
 
 STATIC = Path(__file__).resolve().parent / "static"
-SPEC_FILES = ["council-verdict-v1.json", "council-describe-v1.json"]
+SPEC_FILES = ["council-verdict-v2.json", "council-describe-v2.json"]
 MAX_TABS = 8  # /v1/opinion reads after 1 to 8 contexts
 BACKFILL_K = 12
 MAX_BODY = 64 * 1024
