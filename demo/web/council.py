@@ -40,6 +40,13 @@ verdict changed is marked with the flip (old -> new) and what caused it. A pool 
 read). Replay re-reads one decision under the same contexts and spec and compares the bits: a repeated read is
 identical (invariant 17), so a mismatch is a bug, shown as one.
 
+P(loudest): the pooled argmax picked the loudest option once in 24 reads of actions the hint says to report, yet
+the pooled probability of the loudest option ranked every such action above every other (docs/lfm25-adjudicator.md,
+"Speaker and quoting"). So each decision also carries `loud_p` (that probability, under the pool the page uses),
+`loud_rank` (1 = highest among the current decisions, ties to the earlier decision) and `loud_elevated` (rank_loud's
+rule). It is a rank within this page's decisions, not a calibrated probability, and it is recomputed after every
+change to the decisions or the pool; a `loud` event carries every decision's three fields.
+
 Restarts: a daemon restart forgets every context and uploaded spec. A read that meets a 404 for either pins every tab
 again (or uploads the specs again) and retries once; the ids are the content, so they come back the same.
 
@@ -57,7 +64,7 @@ One engine thread owns the daemon calls; every change runs there in order. The p
 
   GET  /council/api/state                 the snapshot
   GET  /council/api/events                SSE: hello (the snapshot), then status, tab, tab_removed, token, ask_done,
-                                          aborted, decision, backfill, replay, reset, spec, error, repinned
+                                          aborted, decision, backfill, replay, reset, spec, error, repinned, loud
   POST /council/api/decide {action}       one decision, answered when read
   POST /council/api/scenario              queue the scripted actions (202)
   POST /council/api/pool {method?, weights?}   re-pools every decision
@@ -80,6 +87,7 @@ import json
 import math
 import queue
 import re
+import statistics
 import threading
 import time
 import traceback
@@ -116,6 +124,11 @@ BOOT_RETRY_S = 5.0
 # are its confidence; a product lets a confident context dominate and a flat one barely count. Each context's own
 # odds always show beside the pool.
 DEFAULT_POOL = {"method": "loglinear", "weights": "uniform"}
+# Elevated P(loudest), ranked within the page's decisions, never against a fixed threshold (rank within, don't
+# threshold across): at least `min_n` decisions, in the top 1/`quarter` by loud_p (rank <= ceil(n / quarter)), and
+# loud_p at least `median_x` times the median loud_p of all current decisions. A page-relative rank, not a calibrated
+# probability: the same action can be elevated on one page and not on another.
+LOUD_RULE = {"min_n": 4, "quarter": 4, "median_x": 2.0}
 MIN_MASS = 0.5  # under this much raw mass on the options, the page flags a read (as tail.html does)
 # One per tab: each is its identity everywhere on the page. None is green, amber or red, the verdict colors.
 PALETTE = ["#22e4ff", "#ff4fd8", "#a98bff", "#4d9dff", "#e6e6f0", "#ff8fb8", "#d4a8ff", "#9ff3ff"]
@@ -824,6 +837,31 @@ class Council:
                        for p, x in zip(read["per"], pooled["leave_one_out"])]
         return read
 
+    def rank_loud(self) -> None:
+        """Set every decision's loud_p, loud_rank and loud_elevated (LOUD_RULE) from its current pooled read, and send
+        the page all of them. The loudest option is the menu's last; loud_p is its pooled probability."""
+        with self.lock:
+            ds = self.decisions
+            for d in ds:
+                p = d["read"]["pooled"]["probs"][-1]
+                if not (isinstance(p, float) and math.isfinite(p)):
+                    raise RuntimeError(f"decision {d['id']}'s pooled probability of {d['read']['options'][-1]!r} is "
+                                       f"{p!r}: nothing to rank")
+                d["loud_p"] = p
+            n = len(ds)
+            order = sorted(range(n), key=lambda k: (-ds[k]["loud_p"], ds[k]["n"]))
+            top = math.ceil(n / LOUD_RULE["quarter"])
+            median = statistics.median(d["loud_p"] for d in ds) if ds else 0.0
+            for rank, k in enumerate(order, 1):
+                d = ds[k]
+                d["loud_rank"] = rank
+                # loud_p > 0 too: under a median of 0, "twice the median" would otherwise hold for nothing at all
+                d["loud_elevated"] = (n >= LOUD_RULE["min_n"] and rank <= top
+                                      and d["loud_p"] >= LOUD_RULE["median_x"] * median and d["loud_p"] > 0)
+            view = [{"id": ds[k]["id"], **{f: ds[k][f] for f in ("loud_p", "loud_rank", "loud_elevated")}}
+                    for k in order]
+        self.emit({"type": "loud", "n": n, "median": median, "decisions": view})
+
     def do_decide(self, action: str, source: str = "typed", rules: str | None = None, note: str | None = None) -> dict:
         self.set_status("reading", action[:60])
         read = self.read_one(action, self.included())
@@ -833,6 +871,7 @@ class Council:
         with self.lock:
             self.decisions.append(d)
             del self.decisions[:-MAX_DECISIONS]
+        self.rank_loud()
         self.emit({"type": "decision", "decision": d})
         return d
 
@@ -872,6 +911,7 @@ class Council:
                 d["replay"] = None
                 if a != b:
                     flips.append({"id": d["id"], "from": a, "to": b})
+        self.rank_loud()
         self.emit({"type": "backfill", "cause": causes, "reread": len(todo), "flips": flips,
                    "decisions": [json.loads(json.dumps(d)) for d in todo]})
         return {"reread": len(todo), "flips": flips}
@@ -892,6 +932,7 @@ class Council:
                 d["flip"] = {"from": a, "to": b, "cause": cause} if a != b else None
                 if a != b:
                     flips.append({"id": d["id"], "from": a, "to": b})
+            self.rank_loud()
             changed = json.loads(json.dumps(self.decisions))
         self.emit({"type": "backfill", "cause": [cause], "reread": 0, "flips": flips, "decisions": changed,
                    "pool": dict(self.pool)})
@@ -923,6 +964,7 @@ class Council:
         match = not diffs
         with self.lock:
             d["replay"] = {"match": match, "t": time.time(), "diffs": diffs, "ms": new["ms"]}
+        self.rank_loud()  # the stored read stands, so the ranks do too; sent again so the page is never behind
         self.emit({"type": "replay", "id": did, "match": match, "diffs": diffs, "ms": new["ms"]})
         if not match:
             self.emit({"type": "error", "job": "replay", "message": f"replay of {did} differs from its read in "
@@ -935,6 +977,7 @@ class Council:
             self.tabs, self.decisions, self.causes = [], [], []
             self.spec = self.spec_files[0]
         self.seed_tabs()
+        self.rank_loud()
         self.emit({"type": "reset", **self.snapshot()})
         for c in dict.fromkeys(old):
             self.retire(c)  # a seed head that came back under the same id is held again, and stays
@@ -950,7 +993,7 @@ class Council:
                 "specs": [{k: s[k] for k in ("file", "id", "field", "options", "describe", "input_label")}
                           for s in self.specs.values()],
                 "palette": PALETTE, "backfill_k": BACKFILL_K, "max_tabs": MAX_TABS, "max_decisions": MAX_DECISIONS,
-                "min_mass": MIN_MASS, "model": self.model, "about": scenario.ABOUT, "trust": TRUST,
+                "min_mass": MIN_MASS, "loud_rule": LOUD_RULE, "model": self.model, "about": scenario.ABOUT, "trust": TRUST,
                 "synthetic": scenario.SYNTHETIC, "actions": self.actions}))
 
     # --- HTTP ---------------------------------------------------------------------

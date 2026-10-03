@@ -275,6 +275,21 @@ is the pool's top option, ties to the earlier one.
   and `Acknowledged.` turns in every context, which the council's tabs do
   not carry yet. An action with a line that starts with ```` ``` ```` would
   close the fence early, so it is refused (400).
+- **P(loudest), ranked.** Each card shows the pooled probability of the
+  spec's loudest option (the menu's last) under the pool in use, and its
+  rank among the page's decisions ("#2 of 15"); a "watch" panel lists the
+  top five. `council.py` computes `loud_p`, `loud_rank` (ties to the
+  earlier decision) and `loud_elevated` after every change to the
+  decisions or the pool (decide, backfill, re-pool, replay, reset) and
+  sends all of them in a `loud` event. A decision is elevated when the
+  page holds at least 4 decisions, it is in the top quarter by `loud_p`,
+  and its `loud_p` is at least twice the median (`LOUD_RULE`); an
+  elevated decision raises the same alert as a pooled loudest verdict,
+  kept up until acknowledged. It is a page-relative rank, not a calibrated
+  probability. Why: in the speaker-and-quoting run the pooled argmax
+  picked report once in 24 report-action reads, yet P(report) ranked every
+  report action above every other action in every cell
+  ([`docs/lfm25-adjudicator.md`](../../docs/lfm25-adjudicator.md)).
 - **Restarts.** A read that meets a 404 for a lost context or spec pins the
   tabs again or uploads the specs again (each at most once) and retries;
   ids are the content, so they come back the same.

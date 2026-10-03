@@ -102,7 +102,7 @@ main { display: grid; grid-template-columns: 600px 1fr; height: calc(100% - 60px
 #composer .row { display: flex; gap: 8px; align-items: center; }
 #composer .hint { color: var(--ink-3); font-size: 13px; flex: 1; }
 
-#right { display: grid; grid-template-rows: auto auto auto 1fr; min-height: 0; min-width: 0; }
+#right { display: grid; grid-template-rows: auto auto auto auto 1fr; min-height: 0; min-width: 0; }
 #bar { display: flex; gap: 10px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); background: #090b12; flex-wrap: wrap; }
 #action { font: 16px var(--mono); padding: 10px 12px; flex: 1; min-width: 200px; }
 .seg { display: inline-flex; border: 1px solid var(--line-2); }
@@ -154,6 +154,20 @@ main { display: grid; grid-template-columns: 600px 1fr; height: calc(100% - 60px
 .flipbadge { font: 600 12px var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 1px 7px; border: 1px solid var(--fc); color: var(--fc); }
 .replay-ok { color: var(--v0); } .replay-bad { color: var(--v2); font-weight: 700; }
 .lowmass { color: var(--v1); font-weight: 600; }
+/* P(loudest): a page-relative rank of the pooled probability of the loudest option, beside the argmax */
+.loud { font: 12px var(--mono); padding: 0 6px; border: 1px solid color-mix(in srgb, var(--v2) 45%, var(--line-2)); color: var(--ink-2); }
+.loud.elev { border-color: var(--v2); color: #ffd0d8; font-weight: 600; }
+#watch { display: flex; align-items: flex-start; gap: 12px; padding: 8px 18px; border-bottom: 1px solid var(--line); background: #0a0c14; min-width: 0; }
+#watch:empty { display: none; }
+#watch .panel-title { flex: none; padding-top: 3px; }
+#watch ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+#watch li { display: grid; grid-template-columns: 34px 46px minmax(0, 1fr) auto; gap: 8px; align-items: center; font: 12px var(--mono); color: var(--ink-2); cursor: pointer; padding: 1px 6px; min-width: 0; }
+#watch li:hover { background: var(--panel-2); }
+#watch li.sel { box-shadow: inset 3px 0 0 #fff; }
+#watch li.elev { color: #ffd0d8; background: color-mix(in srgb, var(--v2) 12%, transparent); }
+#watch li .wa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+#watch li .we { font: 700 11px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--v2); }
+#watch .wnote { flex: none; max-width: 15em; font-size: 12px; color: var(--ink-3); }
 
 #detail { overflow-y: auto; overflow-x: hidden; padding: 16px 20px; min-width: 0; }
 #detail h2 { margin: 0 0 4px; font: 600 13px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); }
@@ -249,6 +263,7 @@ svg text { font-family: var(--display); }
       <div class="poolbox"><span class="panel-title">weights</span><span class="seg" id="weights"><button data-v="uniform">uniform</button><button data-v="mass">mass</button></span></div>
     </div>
     <div id="council"></div>
+    <div id="watch" aria-label="ranked by the pooled probability of the loudest option"></div>
     <div id="split">
       <div id="stream"></div>
       <div id="detail"></div>
@@ -262,6 +277,7 @@ svg text { font-family: var(--display); }
   <p>The pooled verdict combines them: <b>linear</b> averages the probabilities (some context supports it), <b>loglinear</b> multiplies them (the contexts agree on it). <b>Mass</b> weights trust a context by how much of its probability landed on the options at all. The daemon never picks: the verdict here is the pool's top option, ties to the earlier one. The page recomputes the daemon's pool from the reads and stops loudly if the two differ.</p>
   <p>Two specs: one reads the verdict <b>cold</b>, at the first slot; the other has each context <b>describe</b> the action first, so every description comes from inside its own context. Switching re-reads the recent decisions.</p>
   <p>Change a context (edit, ask, include or exclude) and the last decisions are re-read under the new set: the cards whose verdict <b>flipped</b> light up in the color of the context that changed. Replay re-reads one: a repeated read is identical, so the bits match.</p>
+  <p id="about-loud">Every card also shows <b>P(loudest)</b>: the pooled probability of the spec's loudest option, and its rank among this page's decisions. The pooled top option rarely is the loudest one, yet this probability ranked every action that called for it above every other on an unseen scenario, so it is read as a rank. It is a <b>page-relative rank, not a calibrated probability</b>: the same action can be elevated here and not on another page. <span id="about-loud-rule"></span></p>
   <p>Ask runs a chat in that tab and the reply joins it. A chat never takes a reply back as text, so a tab's later asks continue the chat that wrote its replies, and a tab whose replies no chat holds any more (edited, restarted) can't be asked until the reply is deleted.</p>
   <p id="about-scn"></p>
   <p class="trust" id="about-trust"></p>
@@ -442,24 +458,48 @@ setInterval(showBanner, 2000);
 // ---------------- right: the decision stream ----------------
 function renderStream() {
   const s = $("stream"); s.replaceChildren();
-  if (!S.decisions.length) { const e = el("div"); e.id = "empty"; e.innerText = "Type an action above, or play the scenario.\nEach one is read by every included context."; s.append(e); renderAlert(); return; }
+  if (!S.decisions.length) { const e = el("div"); e.id = "empty"; e.innerText = "Type an action above, or play the scenario.\nEach one is read by every included context."; s.append(e); renderAlert(); renderWatch(); return; }
   for (const d of [...S.decisions].reverse()) s.append(cardEl(d));
-  renderAlert();
+  renderAlert(); renderWatch();
 }
 
 // Every pooled loudest verdict not yet acknowledged keeps the alert up: it is an ask, louder, and an agent running on
-// its own would be halted until Amy answers (Amy, 2026-10-02).
+// its own would be halted until Amy answers (Amy, 2026-10-02). So does every decision whose P(loudest) is elevated
+// (council.py LOUD_RULE: a rank within this page's decisions): the argmax picks the loudest option rarely, the
+// probability ranks it well (Amy approved the ranked alert, 2026-10-03).
 const acked = new Set();
+const isLoud = (d) => d.read.pooled.verdict === loudest();
+const rankWords = (d) => `ranked #${d.loud_rank} of ${S.decisions.length}`;
+const elevWords = (d) => `elevated ${loudest()} risk (${rankWords(d)})`;
 function renderAlert() {
   const A = $("alert");
-  const open = S.decisions.filter((d) => d.read.pooled.verdict === loudest() && !acked.has(d.id));
+  const open = S.decisions.filter((d) => (isLoud(d) || d.loud_elevated) && !acked.has(d.id));
   if (!open.length) { A.style.display = "none"; A.replaceChildren(); return; }
   const last = open[open.length - 1];
   const act = el("span", "act-a"); act.textContent = last.action;
   const btn = el("button", "", "acknowledge");
   btn.onclick = () => { for (const d of open) acked.add(d.id); renderAlert(); };
-  A.replaceChildren(el("b", "", "⚠ " + loudest()), el("span", "", open.length > 1 ? `${open.length} open ·` : "an ask, louder ·"), act, el("span", "", "· an autonomous agent halts here"), btn);
+  const why = isLoud(last) ? (last.loud_elevated ? `an ask, louder · ${elevWords(last)} ·` : "an ask, louder ·") : `${elevWords(last)} ·`;
+  A.replaceChildren(el("b", "", "⚠ " + loudest()), el("span", "", (open.length > 1 ? `${open.length} open · ` : "") + why), act, el("span", "", "· an autonomous agent halts here"), btn);
   A.style.display = "flex";
+}
+
+// The loud watch: the top five decisions by P(loudest), from the ranks council.py keeps.
+function renderWatch() {
+  const W = $("watch"); W.replaceChildren();
+  const ranked = S.decisions.filter((d) => d.loud_rank != null).sort((a, b) => a.loud_rank - b.loud_rank).slice(0, 5);
+  if (!ranked.length) return;
+  W.append(el("span", "panel-title", `${loudest()} watch`));
+  const ol = el("ol"), cur = currentSel();
+  for (const d of ranked) {
+    const li = el("li", (d.loud_elevated ? "elev" : "") + (cur && cur.id === d.id ? " sel" : ""));
+    li.title = `${d.action}\nP(${loudest()}) ${(d.loud_p * 100).toFixed(2)}% · ${rankWords(d)}${d.loud_elevated ? " · elevated" : ""}`;
+    li.append(el("span", "", `#${d.loud_rank}`), el("span", "", pct(d.loud_p)), el("span", "wa", d.action), el("span", "we", d.loud_elevated ? "elevated" : ""));
+    li.onclick = () => { selDec = d.id; renderStream(); renderDetail(); const c = document.querySelector(`.card[data-id="${d.id}"]`); if (c) c.scrollIntoView({ block: "nearest", behavior: "smooth" }); };
+    ol.append(li);
+  }
+  const R = S.loud_rule, n = S.decisions.length;
+  W.append(ol, el("span", "wnote", n < R.min_n ? `elevated needs ${R.min_n}+ decisions (${n} so far)` : `elevated: top ${Math.ceil(n / R.quarter)} of ${n} and ≥ ${R.median_x}× the median · a page rank, not a probability`));
 }
 function currentSel() { return selDec && S.decisions.find((d) => d.id === selDec) || S.decisions[S.decisions.length - 1]; }
 
@@ -475,7 +515,7 @@ function lanesEl(read) {
 
 function cardEl(d) {
   const r = d.read, v = r.pooled.verdict;
-  const c = el("div", "card" + (currentSel() && currentSel().id === d.id ? " sel" : ""));
+  const c = el("div", "card" + (currentSel() && currentSel().id === d.id ? " sel" : "")); c.dataset.id = d.id;
   if (d.flip) {
     c.classList.add("flipped"); c.style.setProperty("--fc", causeColor(d.flip.cause || {}));
     if (d._flash) { c.classList.add("flash"); d._flash = false; }
@@ -490,8 +530,11 @@ function cardEl(d) {
   if (d.rules && d.rules !== v) sub.append(el("span", "hintmiss", `hint: ${d.rules}`));
   if (d.flip) { const f = el("span", "flipbadge", `${d.flip.from} → ${d.flip.to}`); f.style.setProperty("--fc", c.style.getPropertyValue("--fc")); sub.append(f); }
   if (d.replay) sub.append(el("span", d.replay.match ? "replay-ok" : "replay-bad", d.replay.match ? "replay ✓" : "replay ✗"));
+  if (d.loud_rank != null) { const L = el("span", "loud" + (d.loud_elevated ? " elev" : ""), `${loudest()} ${pct(d.loud_p)} · #${d.loud_rank} of ${S.decisions.length}`);
+    L.title = `P(${loudest()}), pooled: a rank within this page's decisions, not a calibrated probability`; sub.append(L); }
   c.append(chip, act, lanesEl(r), sub);
-  if (v === loudest()) { c.classList.add("alarm"); c.append(el("div", "alarmline", "⚠ ask, louder · halts an autonomous agent")); }
+  if (v === loudest()) { c.classList.add("alarm"); c.append(el("div", "alarmline", "⚠ ask, louder · halts an autonomous agent" + (d.loud_elevated ? ` · ${elevWords(d)}` : ""))); }
+  else if (d.loud_elevated) { c.classList.add("alarm"); c.append(el("div", "alarmline", `⚠ ${elevWords(d)}`)); }
   c.onclick = () => { selDec = d.id; renderStream(); renderDetail(); };
   return c;
 }
@@ -561,7 +604,9 @@ function renderDetail() {
   meta.append(el("span", r.pooled.agree ? "agree" : "split", r.pooled.agree ? "the contexts agree" : `◆ the contexts split · spread ${pct(r.pooled.spread)}`));
   if (d.rules) { const s = el("span", "", "the rules hint: "); const c2 = el("span", "chip sm", d.rules); c2.style.setProperty("--v", vhex(d.rules)); s.append(c2); meta.append(s); }
   if (d.note) meta.append(el("span", "", d.note));
+  if (d.loud_rank != null) meta.append(el("span", "loud" + (d.loud_elevated ? " elev" : ""), `P(${loudest()}) ${pct(d.loud_p)} · ${rankWords(d)}${d.loud_elevated ? " · elevated" : ""}`));
   D.append(meta);
+  if (v !== loudest() && d.loud_elevated) { const w = el("div", "alarmline", `⚠ ${elevWords(d)}: the pool's top option is ${v}, but its P(${loudest()}) ranks near the top of this page.`); w.style.cssText = "margin-top:8px;font-size:13px;color:#ffd0d8"; D.append(w); }
   if (d.flip) {
     const cause = d.flip.cause || {};
     const who = cause.what === "pool" ? "pool " : cause.what === "spec" ? "spec " : cause.name + " ";
@@ -660,6 +705,8 @@ function renderAll() {
   $("model").textContent = S.model ? `${S.model.model_id || "?"} · ${S.model.backend || "?"}` : "—";
   $("synth").style.display = S.synthetic ? "" : "none";
   $("about-scn").textContent = S.about; $("about-trust").textContent = "Trust: " + S.trust;
+  const R = S.loud_rule;
+  $("about-loud-rule").textContent = `A decision is elevated when the page holds at least ${R.min_n} decisions, it is in the top 1/${R.quarter} by P(loudest), and its P(loudest) is at least ${R.median_x}× the median of all of them. Elevated decisions raise the same alert as a pooled ${loudest()} verdict, until acknowledged.`;
 }
 function upsertDecision(d) {
   const k = S.decisions.findIndex((x) => x.id === d.id);
@@ -683,6 +730,8 @@ function onEvent(e) {
       lastBackfill = { cause: e.cause, flips: e.flips, reread: e.reread, t: Date.now() };
       if (e.note) toast(e.note);
       renderPool(); renderCouncil(); renderStream(); renderDetail(); break;
+    case "loud": for (const x of e.decisions) { const d = S.decisions.find((y) => y.id === x.id); if (d) Object.assign(d, { loud_p: x.loud_p, loud_rank: x.loud_rank, loud_elevated: x.loud_elevated }); }
+      renderStream(); renderDetail(); break;
     case "replay": { const d = S.decisions.find((x) => x.id === e.id); if (d) d.replay = { match: e.match, diffs: e.diffs, ms: e.ms }; renderStream(); renderDetail(); break; }
     case "error": toast(`${e.job}: ${e.message}`); break;
     case "repinned": toast(e.message); break;

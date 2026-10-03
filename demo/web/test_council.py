@@ -732,6 +732,111 @@ class LongTests(CouncilTest):
         self.assertIn("contexts", out["error"]["message"])
 
 
+def flat(loud):
+    """Every tab reads the same option probabilities, the loudest option at `loud`: the pool is that row."""
+    row = [1.0 - loud - 0.005, 0.005, loud]
+    return {n: row for n in ("Memory", "User", "Session")}
+
+
+QUIET = flat(0.01)["Memory"]  # a tab that sees nothing loud: the same row as flat(0.01), so they tie exactly
+
+
+class LoudTests(CouncilTest):
+    """P(loudest): the pooled probability of the menu's last option, ranked within the page's own decisions."""
+
+    def decide(self, louds, prefix="case"):
+        ids = []
+        for i, loud in enumerate(louds):
+            key = f"{prefix} {i}"
+            self.cr.state.by_action[key] = loud if isinstance(loud, dict) else flat(loud)
+            ids.append(self.cr.post("/decide", {"action": key})["id"])
+        self.cr.idle()
+        return ids
+
+    def table(self):
+        return [(d["loud_rank"], d["loud_elevated"]) for d in self.cr.state_()["decisions"]]
+
+    def test_loud_p_is_the_pooled_probability_of_the_last_option(self):
+        self.decide([0.3, 0.1])
+        for d in self.cr.state_()["decisions"]:
+            self.assertEqual(d["loud_p"], d["read"]["pooled"]["probs"][-1])
+        self.assertAlmostEqual(self.cr.state_()["decisions"][0]["loud_p"], 0.3, places=5)
+
+    def test_ranks_go_by_loud_p_and_ties_go_to_the_earlier_decision(self):
+        self.decide([0.1, 0.3, 0.3, 0.05])
+        self.assertEqual([r for r, _ in self.table()], [3, 1, 2, 4])
+
+    def test_elevated_needs_four_decisions(self):
+        self.decide([0.01, 0.01, 0.9])
+        self.assertEqual(self.table(), [(2, False), (3, False), (1, False)])
+        self.decide([0.01], prefix="more")
+        self.assertEqual(self.table(), [(2, False), (3, False), (1, True), (4, False)])
+
+    def test_elevated_needs_the_top_quarter(self):
+        # 8 decisions: ceil(8/4) = 2, so 0.7 at rank 3 is not elevated though it is 70x the median
+        self.decide([0.9, 0.8, 0.7] + [0.01] * 5)
+        self.assertEqual([e for _, e in self.table()], [True, True, False] + [False] * 5)
+
+    def test_elevated_needs_twice_the_median(self):
+        # rank 1 of 4, but 0.3 < 2 x median 0.225
+        self.decide([0.3, 0.25, 0.2, 0.2])
+        self.assertEqual(self.table(), [(1, False), (2, False), (3, False), (4, False)])
+
+    def test_the_page_gets_every_decisions_rank_after_each_change(self):
+        cr = self.cr
+        e0 = cr.mark()
+        self.decide([0.1, 0.5])
+        ev = cr.of("loud", e0)[-1]
+        self.assertEqual({x["id"]: (x["loud_rank"], x["loud_elevated"]) for x in ev["decisions"]},
+                         {d["id"]: (d["loud_rank"], d["loud_elevated"]) for d in cr.state_()["decisions"]})
+        self.assertEqual(ev["n"], 2)
+        # the newest decision's own event carries its fields too
+        dec = cr.of("decision", e0)[-1]["decision"]
+        self.assertEqual((dec["loud_rank"], dec["loud_elevated"]), (1, False))
+
+    def test_a_pool_change_reranks(self):
+        cr = self.cr
+        # one loud tab among two quiet ones: a linear pool keeps its 0.9 (about 0.31), a loglinear one outvotes it
+        lone = {"Memory": [0.05, 0.05, 0.9], "User": QUIET, "Session": QUIET}
+        ids = self.decide([lone, 0.2, 0.01, 0.01])
+        self.assertEqual(self.table()[:2], [(2, False), (1, True)])  # loglinear, the default
+        e0 = cr.mark()
+        cr.post("/pool", {"method": "linear"})
+        cr.idle()
+        self.assertEqual(self.table()[:2], [(1, True), (2, False)])
+        ev = cr.of("loud", e0)[-1]
+        self.assertEqual(next(x for x in ev["decisions"] if x["id"] == ids[0])["loud_rank"], 1)
+        bf = cr.wait("backfill", after=e0)
+        self.assertEqual(next(d for d in bf["decisions"] if d["id"] == ids[0])["loud_rank"], 1)
+
+    def test_a_backfill_reranks(self):
+        cr = self.cr
+        mem = {"Memory": [0.01, 0.01, 0.98], "User": QUIET, "Session": QUIET}
+        self.decide([0.01, 0.01, mem, 0.2])
+        self.assertEqual([r for r, _ in self.table()], [3, 4, 2, 1])
+        e0 = cr.mark()
+        cr.post(f"/tabs/{cr.tab('Memory')['id']}/remove")  # the only tab that heard it
+        cr.wait("backfill", after=e0)
+        cr.idle()
+        st = cr.state_()["decisions"]
+        self.assertEqual([r for r, _ in self.table()], [2, 3, 4, 1])
+        self.assertAlmostEqual(st[2]["loud_p"], 0.01, places=5)
+        self.assertIn(st[2]["id"], {x["id"] for x in cr.of("loud", e0)[-1]["decisions"]})
+
+    def test_reset_leaves_nothing_to_rank(self):
+        cr = self.cr
+        self.decide([0.1, 0.2])
+        e0 = cr.mark()
+        cr.post("/reset")
+        cr.idle()
+        self.assertEqual(cr.state_()["decisions"], [])
+        self.assertEqual(cr.of("loud", e0)[-1]["decisions"], [])
+
+    def test_the_rule_rides_the_snapshot(self):
+        rule = self.cr.state_()["loud_rule"]
+        self.assertEqual(rule, {"min_n": 4, "quarter": 4, "median_x": 2.0})
+
+
 class ReplayAndAskTests(CouncilTest):
     def test_replay_rereads_under_the_same_contexts_and_matches_bits(self):
         cr = self.cr
@@ -895,7 +1000,7 @@ class ViewAndRefusalTests(CouncilTest):
             h = json.loads(line[6:])
         self.assertEqual(h["type"], "hello")
         for k in ("tabs", "decisions", "pool", "spec", "specs", "options", "status", "model", "about", "synthetic",
-                  "palette", "trust", "min_mass", "actions"):
+                  "palette", "trust", "min_mass", "actions", "loud_rule"):
             self.assertIn(k, h)
         self.assertIs(h["synthetic"], True)
 
@@ -1018,6 +1123,17 @@ class ScenarioTests(unittest.TestCase):
         before = warm["output_schema"]["required"][:-1]
         self.assertTrue(1 <= len(before) <= 2)
         self.assertTrue(all("enum" not in warm["output_schema"]["properties"][f] for f in before))
+
+    def test_the_page_reads_the_loud_fields_and_says_what_they_are(self):
+        page = (STATIC / "council.html").read_text()
+        script = page[page.index("<script>"):]
+        for name in ("loud_p", "loud_rank", "loud_elevated", "loud_rule", "min_n", "quarter", "median_x"):
+            with self.subTest(name=name):
+                self.assertIn(name, script)
+        self.assertIn('case "loud":', script)
+        self.assertIn('id="watch"', page)
+        self.assertIn("page-relative", page)
+        self.assertIn("not a calibrated probability", page)
 
     def test_the_page_reads_its_vocabulary_from_the_snapshot(self):
         page = (STATIC / "council.html").read_text()
