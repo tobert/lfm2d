@@ -43,3 +43,17 @@ def test_a_locked_context_fails_and_a_responsive_one_passes():
     # Responsive pool but one context still locked: fails on the lock rule alone.
     one_locked = rows("ack", [{"Memory": "ask", "User": r, "Session": r} for r in rules], rules, rules)
     assert ca.score(one_locked, TABS, 18)["s"]["ack"]["success"] is False
+
+
+def test_a_later_preregistration_names_its_specs_slot0_and_conditions():
+    scenario, specs, conds = ca.plan(ca.HERE.parent / "council" / "ack-v2.json")
+    assert scenario == ca.SCENARIO and [p.name for p in specs] == ["council-verdict-v2.json", "council-describe-v2.json"]
+    assert set(conds) == {"lone", "ack", "slot0_ack"}
+    opening, ack = conds["slot0_ack"]
+    assert [m["role"] for m in opening] == ["user", "assistant"] and "Acknowledged." in opening[1]["content"]
+    tab = {"messages": ["fact"]}
+    assert ca.messages(tab, ack, opening)[:2] == opening and ca.messages(tab, ack, opening)[2:] == [
+        {"role": "user", "content": "fact"}, {"role": "assistant", "content": "Acknowledged."}]
+    assert conds["lone"] == ([], None)
+    for path in specs:
+        assert "Amy" not in path.read_text(), "the v2 specs name no one"

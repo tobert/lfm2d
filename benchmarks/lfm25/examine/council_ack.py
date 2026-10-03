@@ -30,6 +30,17 @@ SPECS = [ROOT / "demo/web/static/council-verdict-v1.json", ROOT / "demo/web/stat
 ACKS = {"lone": None, "ack": "Acknowledged.", "ack_deliberate": "Acknowledged, I will use this in my deliberations."}
 
 
+def plan(prereg: Path | None):
+    """(scenario path, spec paths, {condition: (opening messages, ack)}): ack-v1's own run when `prereg` is None,
+    else a later pre-registration that names its scenario, specs, slot 0 and conditions (e.g. ack-v2.json)."""
+    if prereg is None:
+        return SCENARIO, SPECS, {c: ([], a) for c, a in ACKS.items()}
+    p = json.loads(prereg.read_text())
+    slot0 = p.get("slot0", [])
+    conds = {c: (slot0 if v["slot0"] else [], v["ack"]) for c, v in p["conditions"].items()}
+    return ROOT / p["scenario"], [ROOT / s for s in p["specs"]], conds
+
+
 def call(base, method, path, body=None, raw=None):
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
     req = urllib.request.Request(base + path, data=data, method=method,
@@ -41,8 +52,8 @@ def call(base, method, path, body=None, raw=None):
         sys.exit(f"{method} {path}: {e.code} {e.read().decode(errors='replace')}")
 
 
-def messages(tab: dict, ack: str | None) -> list[dict]:
-    out = []
+def messages(tab: dict, ack: str | None, opening: list[dict] = ()) -> list[dict]:
+    out = list(opening)
     for m in tab["messages"]:
         out.append({"role": "user", "content": m})
         if ack is not None:
@@ -79,20 +90,21 @@ def score(rows: list[dict], tabs: list[str], n_actions: int) -> dict:
     return out
 
 
-def run(base: str) -> dict:
-    s = json.loads(SCENARIO.read_text())
+def run(base: str, prereg: Path | None = None) -> dict:
+    scenario, spec_paths, conditions = plan(prereg)
+    s = json.loads(scenario.read_text())
     tabs = [t["name"] for t in s["tabs"]]
     specs = []
-    for path in SPECS:
+    for path in spec_paths:
         raw = path.read_bytes()
         spec = json.loads(raw)
         field = spec["output_schema"]["required"][-1]
         specs.append((path.stem, call(base, "POST", "/v1/opinion/specs", raw=raw)["id"], field))
     rows, mass, rendered, ms = [], [], [], []
-    for cond, ack in ACKS.items():
+    for cond, (opening, ack) in conditions.items():
         ids = [call(base, "POST", "/v1/contexts", {
             "system": f"{s['reviewer']}\n\nTHIS SOURCE: {t['name']}\n{t['preamble']}",
-            "messages": messages(t, ack), "pin": True})["id"] for t in s["tabs"]]
+            "messages": messages(t, ack, opening), "pin": True})["id"] for t in s["tabs"]]
         for name, sid, field in specs:
             for a in s["actions"]:
                 t0 = time.perf_counter()
@@ -120,7 +132,8 @@ def run(base: str) -> dict:
     return {
         "date": time.strftime("%Y-%m-%d"),
         "daemon": {k: info.get(k) for k in ("model_id", "weight_hash", "backend", "device", "candle_rev", "dtype")},
-        "scenario_sha256": hashlib.sha256(SCENARIO.read_bytes()).hexdigest(),
+        "scenario_sha256": hashlib.sha256(scenario.read_bytes()).hexdigest(),
+        "prereg": str(prereg.relative_to(ROOT)) if prereg else None,
         "rendered_sha256": hashlib.sha256("".join(rendered).encode()).hexdigest(),
         "mass_min": min(mass), "mass_median": sorted(mass)[len(mass) // 2],
         "read_ms_median": sorted(ms)[len(ms) // 2],
@@ -133,8 +146,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--base", default="http://127.0.0.1:8095")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--prereg", type=Path, default=None, help="a later pre-registration (default: ack-v1's run)")
     args = ap.parse_args()
-    result = run(args.base)
+    result = run(args.base, args.prereg.resolve() if args.prereg else None)
     Path(args.out).write_text(json.dumps(result, indent=1) + "\n")
     print(json.dumps({k: result[k] for k in ("mass_min", "mass_median", "read_ms_median")}))
     for spec, conds in result["score"].items():
