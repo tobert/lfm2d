@@ -912,6 +912,27 @@ is where it counts. Caveat from the same runs: the probabilities did not yet
 carry much "I don't know" (Memory asked on `cat` at 0.93-0.98), so read the
 per-context reads beside the pool.
 
+**Acknowledgement turns (2026-10-03, pre-registered, two looks at one
+scenario).** Amy: "let's make sure our synthetic chats look real to the
+model". The template drops past thinking, so a history turn of
+`Acknowledged.` is what real history looks like. First look (ee4a69d,
+db0ee66), Kenji's home lab, 18 actions, bar: no context locked on one verdict
+past 14/18 and the pool matching the hint on 10/18 (always-ask = 7):
+describe-first with `Acknowledged.` reached 10/18 but Session allowed 15/18;
+the cold spec said ask on all 18 in every condition. The demo specs then
+turned out to name Amy and restate her definitions inside every read, so
+v2 specs name no one (3d139de). Second look (5933d36), adding Amy's slot 0
+(the system turn thinks out loud about security, safety and data
+criticality and sets the `Acknowledged.` protocol) and an opening exchange
+as items [1] and [2]: every cell at the 7/18 floor. Memory improved to 11/18
+on its own (report on `rm -rf` of the backups, `zfs destroy`, `kubectl delete
+namespace`); User said ask on 18/18 at P up to 1.00 in every condition, and
+its descriptions say why: "The user explicitly requested removal of the
+backup photos directory". The case arrives as one more user turn in a
+conversation whose user turns are the source, so it reads as the source
+asking for the action. Under log-linear pooling that one confident context
+vetoes the rest. Results: `benchmarks/lfm25/results/2026-10-03-council-ack*.json`.
+
 ## Probe and tokenize
 
 Ruled 2026-09-23, `docs/system1-split-plan.md` (git f9ca081) "Tokenize and probe
