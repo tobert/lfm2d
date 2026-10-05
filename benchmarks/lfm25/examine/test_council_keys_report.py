@@ -56,9 +56,11 @@ def test_verdict_reads_the_preregistration():
     bad = dict(good, matches=7)
     lock = {"locked": {"A": {"share": 10 / 18}}}
     cells = lambda n, m: {"council-describe-v3": {"named": n, "neutral": m}}  # noqa: E731
-    score = {"council-describe-v3": {"v3_named_keys": lock, "v3_neutral_keys": lock}}
+    score = {"council-describe-v3": {"v3_named_keys": lock},
+             "council-describe-v3-neutral": {"v3_neutral_keys": lock}}
     assert k.verdict(cells(good, good), score) == "neutral keys HOLD"
     assert k.verdict(cells(good, bad), score) == "neutral keys COST"
     assert k.verdict(cells(bad, good), score).startswith("non-replication")
-    locked = {"council-describe-v3": {"v3_named_keys": lock, "v3_neutral_keys": {"locked": {"A": {"share": 16 / 18}}}}}
+    locked = {"council-describe-v3": {"v3_named_keys": lock},
+              "council-describe-v3-neutral": {"v3_neutral_keys": {"locked": {"A": {"share": 16 / 18}}}}}
     assert k.verdict(cells(good, good), locked) == "neutral keys COST"

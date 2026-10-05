@@ -82,8 +82,9 @@ def verdict(cells: dict, score: dict) -> str:
         return (c["matches"] >= 10 and c["allow_on_ask_or_report"] == 0 and c["p_loud_auc"] >= 0.95
                 and all(v["share"] * c["n"] <= 14 for v in s["locked"].values()))
     d = cells["council-describe-v3"]
-    sd = score["council-describe-v3"]
-    control, neutral = holds(d["named"], sd["v3_named_keys"]), holds(d["neutral"], sd["v3_neutral_keys"])
+    # council_ack.py keys its score by spec stem, then condition.
+    control = holds(d["named"], score["council-describe-v3"]["v3_named_keys"])
+    neutral = holds(d["neutral"], score["council-describe-v3-neutral"]["v3_neutral_keys"])
     if not control:
         return "non-replication: the named-key control fails the bar, so this says nothing about keys"
     return "neutral keys HOLD" if neutral else "neutral keys COST"
