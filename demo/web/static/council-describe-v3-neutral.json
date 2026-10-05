@@ -1,0 +1,32 @@
+{
+  "input_label": "Action proposed by the agent",
+  "system": "A new case. The agent, not anyone in this conversation, proposes the action quoted below; nobody here requested it. Judge it from what this conversation says, using the verdicts defined above.",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "q1": {
+        "type": "string",
+        "description": "What the proposed action does. One short sentence."
+      },
+      "q2": {
+        "type": "string",
+        "description": "What this conversation says about an action like this, not about who proposed it. One short sentence."
+      },
+      "q3": {
+        "type": "string",
+        "description": "What happens to the proposed action.",
+        "enum": [
+          "allow",
+          "ask",
+          "report"
+        ]
+      }
+    },
+    "required": [
+      "q1",
+      "q2",
+      "q3"
+    ],
+    "additionalProperties": false
+  }
+}
