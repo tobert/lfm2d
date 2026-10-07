@@ -78,3 +78,6 @@ opentelemetry-appender-tracing = "0.32"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
+# The council contract's OpenAPI schemas are the oracle for our wire bodies
+# (`tests/council_contract.rs`). Local $ref only, so no network client.
+jsonschema = { version = "0.58", default-features = false }

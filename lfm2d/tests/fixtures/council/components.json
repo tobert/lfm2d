@@ -1,0 +1,1562 @@
+{
+ "components": {
+  "headers": {
+   "RetryAfter": {
+    "description": "Seconds to wait before retrying, when known.",
+    "schema": {
+     "minimum": 0,
+     "type": "integer"
+    }
+   }
+  },
+  "parameters": {
+   "ContextIdPath": {
+    "description": "The context's id, a UUID the client chose.",
+    "in": "path",
+    "name": "id",
+    "required": true,
+    "schema": {
+     "$ref": "#/components/schemas/ContextId"
+    }
+   },
+   "SpecIdPath": {
+    "in": "path",
+    "name": "spec_id",
+    "required": true,
+    "schema": {
+     "$ref": "#/components/schemas/SpecId"
+    }
+   }
+  },
+  "responses": {
+   "BadRequest": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "The body is outside the schema or breaks a rule in docs/council-api.md, including a missing capability."
+   },
+   "Busy": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "The server is busy.",
+    "headers": {
+     "Retry-After": {
+      "$ref": "#/components/headers/RetryAfter"
+     }
+    }
+   },
+   "HeadMismatch": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "The If-Match snapshot is not the context's head; error.head is the current one."
+   },
+   "NotFound": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "An unknown context or spec id. PUT or POST it again."
+   },
+   "PinBudget": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "A pin would pass the server's pin budget."
+   },
+   "SnapshotGone": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "A context's `at` names a snapshot the server no longer holds; error.head is the current one."
+   },
+   "Timeout": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "timeout_ms passed, queue time included. No partial answer is returned."
+   },
+   "TooLarge": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "Past a limit in identity.limits; error.param names it."
+   },
+   "Unavailable": {
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    },
+    "description": "The server is stopped or failed.",
+    "headers": {
+     "Retry-After": {
+      "$ref": "#/components/headers/RetryAfter"
+     }
+    }
+   }
+  },
+  "schemas": {
+   "ChoiceOption": {
+    "additionalProperties": false,
+    "properties": {
+     "means": {
+      "description": "What choosing this option means.",
+      "type": "string"
+     },
+     "option": {
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "option",
+     "means"
+    ],
+    "type": "object"
+   },
+   "Confidence": {
+    "description": "exp(mass) times the top probability; pooled, the pooled top probability times the weighted mean of exp(mass).",
+    "maximum": 1,
+    "minimum": 0,
+    "type": "number"
+   },
+   "ContextId": {
+    "description": "Chosen by the client. A server never mints or rewrites one.",
+    "format": "uuid",
+    "type": "string"
+   },
+   "ContextPut": {
+    "additionalProperties": false,
+    "properties": {
+     "dry_run": {
+      "default": false,
+      "description": "Report head, kept and fed and build nothing. Requires the dry_run capability.",
+      "type": "boolean"
+     },
+     "persist": {
+      "description": "false says the client will PUT the context again after a restart or an eviction, so the server need not keep it beyond memory; true (the default on a first PUT) may keep it across a restart; absent on a later PUT leaves it as it was. Not part of identity. Requires the persist capability.",
+      "type": "boolean"
+     },
+     "pin": {
+      "description": "true exempts the head and its spec layers from eviction, false releases it, absent leaves it as it was.",
+      "type": "boolean"
+     },
+     "system": {
+      "description": "The context's system message.",
+      "type": "string"
+     },
+     "turns": {
+      "items": {
+       "$ref": "#/components/schemas/Turn"
+      },
+      "type": "array"
+     },
+     "warm": {
+      "description": "Specs whose spec layer the server rebuilds before answering. Requires the warm capability.",
+      "items": {
+       "$ref": "#/components/schemas/SpecId"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+     }
+    },
+    "required": [
+     "system",
+     "turns"
+    ],
+    "type": "object"
+   },
+   "ContextPutResult": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/ContextState"
+     },
+     {
+      "properties": {
+       "dry_run": {
+        "description": "When true, nothing was built and head is the id the build would have.",
+        "type": "boolean"
+       },
+       "fed": {
+        "description": "Tokens this request ran, or would run under dry_run.",
+        "minimum": 0,
+        "type": "integer"
+       },
+       "kept": {
+        "description": "Tokens reused from a held build.",
+        "minimum": 0,
+        "type": "integer"
+       }
+      },
+      "required": [
+       "kept",
+       "fed",
+       "dry_run"
+      ],
+      "type": "object"
+     }
+    ]
+   },
+   "ContextRef": {
+    "additionalProperties": false,
+    "properties": {
+     "at": {
+      "$ref": "#/components/schemas/SnapshotId",
+      "description": "Read the context as of this snapshot. Absent means its head when the decision is accepted."
+     },
+     "id": {
+      "$ref": "#/components/schemas/ContextId"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "ContextState": {
+    "properties": {
+     "head": {
+      "$ref": "#/components/schemas/SnapshotId"
+     },
+     "id": {
+      "$ref": "#/components/schemas/ContextId"
+     },
+     "persist": {
+      "description": "The context's persist setting.",
+      "type": "boolean"
+     },
+     "pinned": {
+      "type": "boolean"
+     },
+     "snapshots": {
+      "items": {
+       "$ref": "#/components/schemas/SnapshotInfo"
+      },
+      "type": "array"
+     },
+     "tokens": {
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "head",
+     "tokens",
+     "snapshots"
+    ],
+    "type": "object"
+   },
+   "ControlTextHit": {
+    "properties": {
+     "token": {
+      "description": "The control token the text spells.",
+      "type": "string"
+     },
+     "where": {
+      "description": "state, spec, a context system message as \"context:<id>:system\", a context turn as \"context:<id>:turn:<n>\", or that turn's reasoning as \"context:<id>:turn:<n>:reasoning\".",
+      "type": "string"
+     }
+    },
+    "required": [
+     "where",
+     "token"
+    ],
+    "type": "object"
+   },
+   "DecisionIdentity": {
+    "description": "The fields a fitted threshold depends on.",
+    "properties": {
+     "engine": {
+      "type": "string"
+     },
+     "model": {
+      "type": "string"
+     },
+     "spec_id": {
+      "$ref": "#/components/schemas/SpecId"
+     },
+     "template": {
+      "type": "string"
+     },
+     "tokenizer_hash": {
+      "type": "string"
+     },
+     "weight_hash": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "model",
+     "weight_hash",
+     "tokenizer_hash",
+     "template",
+     "engine"
+    ],
+    "type": "object"
+   },
+   "DecisionRequest": {
+    "additionalProperties": false,
+    "oneOf": [
+     {
+      "not": {
+       "required": [
+        "questions"
+       ]
+      },
+      "required": [
+       "spec_id"
+      ]
+     },
+     {
+      "not": {
+       "anyOf": [
+        {
+         "required": [
+          "spec_id"
+         ]
+        },
+        {
+         "required": [
+          "ask"
+         ]
+        },
+        {
+         "required": [
+          "options"
+         ]
+        }
+       ]
+      },
+      "required": [
+       "questions"
+      ]
+     }
+    ],
+    "properties": {
+     "ask": {
+      "description": "A subset of the spec's non-text questions to read. Default all.",
+      "items": {
+       "$ref": "#/components/schemas/QuestionId"
+      },
+      "type": "array",
+      "uniqueItems": true
+     },
+     "contexts": {
+      "description": "References to distinct context ids, at most identity.limits.contexts_per_decision.",
+      "items": {
+       "$ref": "#/components/schemas/ContextRef"
+      },
+      "maxItems": 8,
+      "type": "array"
+     },
+     "model": {
+      "description": "Must be identity.model or one of identity.aliases.",
+      "type": "string"
+     },
+     "options": {
+      "additionalProperties": {
+       "items": {
+        "type": "string"
+       },
+       "minItems": 2,
+       "type": "array",
+       "uniqueItems": true
+      },
+      "description": "Narrow a spec choice question to a subset of its options, by question id.",
+      "propertyNames": {
+       "$ref": "#/components/schemas/QuestionId"
+      },
+      "type": "object"
+     },
+     "pool": {
+      "$ref": "#/components/schemas/Pool"
+     },
+     "provider": {
+      "description": "Accepted for Decisions API clients and ignored; session_id, user and trace are logged.",
+      "type": "object"
+     },
+     "questions": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/InlineQuestion"
+      },
+      "description": "Inline Decisions API questions, read independently with no description.",
+      "minProperties": 1,
+      "propertyNames": {
+       "$ref": "#/components/schemas/QuestionId"
+      },
+      "type": "object"
+     },
+     "session_id": {
+      "maxLength": 256,
+      "type": "string"
+     },
+     "spec_id": {
+      "$ref": "#/components/schemas/SpecId"
+     },
+     "state": {
+      "description": "The case, in its own user turn after the input label. A string verbatim; an object or array as JSON with members in request order.",
+      "oneOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object"
+       },
+       {
+        "type": "array"
+       }
+      ]
+     },
+     "timeout_ms": {
+      "description": "Default identity.limits.default_timeout_ms.",
+      "minimum": 1,
+      "type": "integer"
+     },
+     "trace": {
+      "description": "Observability metadata, as in the Decisions API. Logged, never rendered.",
+      "type": "object"
+     },
+     "user": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "state"
+    ],
+    "type": "object"
+   },
+   "DecisionResponse": {
+    "properties": {
+     "answers": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/PooledAnswer"
+      },
+      "description": "By question id, pooled over the reads.",
+      "type": "object"
+     },
+     "identity": {
+      "$ref": "#/components/schemas/DecisionIdentity"
+     },
+     "model": {
+      "type": "string"
+     },
+     "ms": {
+      "minimum": 0,
+      "type": "number"
+     },
+     "pool": {
+      "properties": {
+       "method": {
+        "enum": [
+         "linear",
+         "loglinear"
+        ],
+        "type": "string"
+       },
+       "normalized": {
+        "additionalProperties": {
+         "items": {
+          "minimum": 0,
+          "type": "number"
+         },
+         "type": "array"
+        },
+        "description": "By question id, the weight each read pooled with, in read order.",
+        "type": "object"
+       },
+       "weights": {
+        "enum": [
+         "uniform",
+         "mass",
+         "given"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "method",
+       "weights",
+       "normalized"
+      ],
+      "type": "object"
+     },
+     "queue_ms": {
+      "minimum": 0,
+      "type": "number"
+     },
+     "reads": {
+      "description": "One per context in request order, or one with context null.",
+      "items": {
+       "$ref": "#/components/schemas/Read"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "signals": {
+      "properties": {
+       "control_text": {
+        "items": {
+         "$ref": "#/components/schemas/ControlTextHit"
+        },
+        "type": "array"
+       }
+      },
+      "type": "object"
+     },
+     "usage": {
+      "properties": {
+       "fed_tokens": {
+        "description": "Tokens this decision ran past held snapshots, spec-layer rebuilds included.",
+        "minimum": 0,
+        "type": "integer"
+       },
+       "input_tokens": {
+        "description": "The case as rendered.",
+        "minimum": 0,
+        "type": "integer"
+       },
+       "output_tokens": {
+        "description": "The text answers written.",
+        "minimum": 0,
+        "type": "integer"
+       }
+      },
+      "type": "object"
+     }
+    },
+    "required": [
+     "model",
+     "answers",
+     "reads",
+     "pool",
+     "identity"
+    ],
+    "type": "object"
+   },
+   "Error": {
+    "properties": {
+     "error": {
+      "properties": {
+       "head": {
+        "$ref": "#/components/schemas/SnapshotId",
+        "description": "For snapshot_gone and head_mismatch, the context's current head."
+       },
+       "message": {
+        "type": "string"
+       },
+       "param": {
+        "description": "The request field or limit at fault.",
+        "type": "string"
+       },
+       "type": {
+        "enum": [
+         "invalid_request",
+         "not_found",
+         "snapshot_gone",
+         "head_mismatch",
+         "too_large",
+         "busy",
+         "unavailable",
+         "timeout",
+         "pin_budget",
+         "internal"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "type",
+       "message"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "error"
+    ],
+    "type": "object"
+   },
+   "HeldSpec": {
+    "properties": {
+     "spec": {
+      "$ref": "#/components/schemas/Spec"
+     },
+     "spec_id": {
+      "$ref": "#/components/schemas/SpecId"
+     },
+     "template": {
+      "description": "How this server compiles and renders the spec; part of identity.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "spec_id",
+     "spec",
+     "template"
+    ],
+    "type": "object"
+   },
+   "InlineChoiceQuestion": {
+    "additionalProperties": false,
+    "properties": {
+     "criteria": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "Option to its meaning, read in the order listed.",
+      "maxProperties": 255,
+      "minProperties": 2,
+      "type": "object"
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "type": {
+      "const": "choice"
+     }
+    },
+    "required": [
+     "type",
+     "instructions",
+     "criteria"
+    ],
+    "type": "object"
+   },
+   "InlineNoulQuestion": {
+    "additionalProperties": false,
+    "properties": {
+     "criteria": {
+      "oneOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object"
+       },
+       {
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "type": {
+      "const": "noul"
+     }
+    },
+    "required": [
+     "type",
+     "instructions"
+    ],
+    "type": "object"
+   },
+   "InlineQuestion": {
+    "discriminator": {
+     "mapping": {
+      "choice": "#/components/schemas/InlineChoiceQuestion",
+      "noul": "#/components/schemas/InlineNoulQuestion",
+      "score": "#/components/schemas/InlineScoreQuestion"
+     },
+     "propertyName": "type"
+    },
+    "oneOf": [
+     {
+      "$ref": "#/components/schemas/InlineChoiceQuestion"
+     },
+     {
+      "$ref": "#/components/schemas/InlineScoreQuestion"
+     },
+     {
+      "$ref": "#/components/schemas/InlineNoulQuestion"
+     }
+    ]
+   },
+   "InlineScoreQuestion": {
+    "additionalProperties": false,
+    "properties": {
+     "criteria": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 2,
+      "type": "array"
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "type": {
+      "const": "score"
+     }
+    },
+    "required": [
+     "type",
+     "instructions",
+     "criteria"
+    ],
+    "type": "object"
+   },
+   "Instructions": {
+    "description": "What the question asks. A string, or structured guidance as in the Decisions API.",
+    "oneOf": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "object"
+     },
+     {
+      "type": "array"
+     }
+    ]
+   },
+   "LogProbs": {
+    "additionalProperties": {
+     "maximum": 0,
+     "type": "number"
+    },
+    "description": "Option or level to the raw full-vocabulary log probability of its answer tokens as this server renders them.",
+    "type": "object"
+   },
+   "Mass": {
+    "description": "log of the sum of exp(logprobs). Low mass is no opinion, not a low score.",
+    "maximum": 0,
+    "type": "number"
+   },
+   "Pool": {
+    "additionalProperties": false,
+    "properties": {
+     "method": {
+      "default": "linear",
+      "description": "linear is the weighted mean of probabilities; loglinear the normalized weighted product, where any one read can veto an option.",
+      "enum": [
+       "linear",
+       "loglinear"
+      ],
+      "type": "string"
+     },
+     "values": {
+      "description": "With weights given, one finite number per read, at least 0, summing above 0.",
+      "items": {
+       "minimum": 0,
+       "type": "number"
+      },
+      "type": "array"
+     },
+     "weights": {
+      "default": "uniform",
+      "description": "mass weighs each read by its exp(mass) for that question; given takes values.",
+      "enum": [
+       "uniform",
+       "mass",
+       "given"
+      ],
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "PooledAgreement": {
+    "properties": {
+     "agree": {
+      "description": "Every read has the same top option. True with one read.",
+      "type": "boolean"
+     },
+     "spread": {
+      "description": "The largest gap between two reads' probabilities for one option. 0 with one read.",
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+     }
+    },
+    "required": [
+     "agree",
+     "spread"
+    ],
+    "type": "object"
+   },
+   "PooledAnswer": {
+    "discriminator": {
+     "mapping": {
+      "choice": "#/components/schemas/PooledChoiceAnswer",
+      "noul": "#/components/schemas/PooledNoulAnswer",
+      "score": "#/components/schemas/PooledScoreAnswer"
+     },
+     "propertyName": "type"
+    },
+    "oneOf": [
+     {
+      "$ref": "#/components/schemas/PooledChoiceAnswer"
+     },
+     {
+      "$ref": "#/components/schemas/PooledScoreAnswer"
+     },
+     {
+      "$ref": "#/components/schemas/PooledNoulAnswer"
+     }
+    ]
+   },
+   "PooledChoiceAnswer": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/PooledAgreement"
+     },
+     {
+      "properties": {
+       "choice": {
+        "description": "The pooled argmax; ties go to the earlier option. Not a decision.",
+        "type": "string"
+       },
+       "confidence": {
+        "$ref": "#/components/schemas/Confidence"
+       },
+       "leave_one_out": {
+        "additionalProperties": {
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/Probabilities"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "description": "Pooled probabilities without each read, keyed by context id. Two or more reads and the leave_one_out capability.",
+        "type": "object"
+       },
+       "probabilities": {
+        "$ref": "#/components/schemas/Probabilities"
+       },
+       "type": {
+        "const": "choice"
+       }
+      },
+      "required": [
+       "type",
+       "choice",
+       "probabilities",
+       "confidence"
+      ],
+      "type": "object"
+     }
+    ]
+   },
+   "PooledNoulAnswer": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/PooledAgreement"
+     },
+     {
+      "properties": {
+       "leave_one_out": {
+        "additionalProperties": {
+         "oneOf": [
+          {
+           "maximum": 1,
+           "minimum": 0,
+           "type": "number"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "description": "Pooled probability of yes without each read, keyed by context id. Two or more reads and the leave_one_out capability.",
+        "type": "object"
+       },
+       "noul": {
+        "maximum": 1,
+        "minimum": 0,
+        "type": "number"
+       },
+       "type": {
+        "const": "noul"
+       }
+      },
+      "required": [
+       "type",
+       "noul"
+      ],
+      "type": "object"
+     }
+    ]
+   },
+   "PooledScoreAnswer": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/PooledAgreement"
+     },
+     {
+      "properties": {
+       "confidence": {
+        "$ref": "#/components/schemas/Confidence"
+       },
+       "leave_one_out": {
+        "additionalProperties": {
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/Probabilities"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       "legend": {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       "probabilities": {
+        "$ref": "#/components/schemas/Probabilities"
+       },
+       "score": {
+        "type": "number"
+       },
+       "type": {
+        "const": "score"
+       }
+      },
+      "required": [
+       "type",
+       "score",
+       "legend",
+       "probabilities",
+       "confidence"
+      ],
+      "type": "object"
+     }
+    ]
+   },
+   "Probabilities": {
+    "additionalProperties": {
+     "maximum": 1,
+     "minimum": 0,
+     "type": "number"
+    },
+    "description": "Option or level to probability, summing to 1.",
+    "type": "object"
+   },
+   "QuestionId": {
+    "description": "The client's name for a question. Never shown to the model.",
+    "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+    "type": "string"
+   },
+   "Read": {
+    "properties": {
+     "answers": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/ReadAnswer"
+      },
+      "type": "object"
+     },
+     "context": {
+      "description": "The context read, or null for the spec alone.",
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/ContextId"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "described": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "The text answers this read's model wrote, by question id.",
+      "type": "object"
+     },
+     "ms": {
+      "minimum": 0,
+      "type": "number"
+     },
+     "rendered_sha256": {
+      "description": "sha256 of the rendered text this read was conditioned on, through its own described text.",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+     },
+     "snapshot": {
+      "description": "The snapshot this read started from, the spec layer when there is a spec; null for inline questions with no context.",
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/SnapshotId"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "tokens": {
+      "description": "The context's length in tokens.",
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "context",
+     "snapshot",
+     "answers",
+     "rendered_sha256"
+    ],
+    "type": "object"
+   },
+   "ReadAnswer": {
+    "discriminator": {
+     "mapping": {
+      "choice": "#/components/schemas/ReadChoiceAnswer",
+      "noul": "#/components/schemas/ReadNoulAnswer",
+      "score": "#/components/schemas/ReadScoreAnswer"
+     },
+     "propertyName": "type"
+    },
+    "oneOf": [
+     {
+      "$ref": "#/components/schemas/ReadChoiceAnswer"
+     },
+     {
+      "$ref": "#/components/schemas/ReadScoreAnswer"
+     },
+     {
+      "$ref": "#/components/schemas/ReadNoulAnswer"
+     }
+    ]
+   },
+   "ReadChoiceAnswer": {
+    "properties": {
+     "choice": {
+      "description": "The option with the highest probability; ties go to the earlier option. Not a decision.",
+      "type": "string"
+     },
+     "confidence": {
+      "$ref": "#/components/schemas/Confidence"
+     },
+     "logprobs": {
+      "$ref": "#/components/schemas/LogProbs"
+     },
+     "mass": {
+      "$ref": "#/components/schemas/Mass"
+     },
+     "probabilities": {
+      "$ref": "#/components/schemas/Probabilities"
+     },
+     "type": {
+      "const": "choice"
+     }
+    },
+    "required": [
+     "type",
+     "choice",
+     "probabilities",
+     "confidence",
+     "logprobs",
+     "mass"
+    ],
+    "type": "object"
+   },
+   "ReadNoulAnswer": {
+    "properties": {
+     "logprobs": {
+      "$ref": "#/components/schemas/LogProbs",
+      "description": "Keyed yes and no."
+     },
+     "mass": {
+      "$ref": "#/components/schemas/Mass"
+     },
+     "noul": {
+      "description": "The probability of yes.",
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+     },
+     "type": {
+      "const": "noul"
+     }
+    },
+    "required": [
+     "type",
+     "noul",
+     "logprobs",
+     "mass"
+    ],
+    "type": "object"
+   },
+   "ReadScoreAnswer": {
+    "properties": {
+     "confidence": {
+      "$ref": "#/components/schemas/Confidence"
+     },
+     "legend": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "logprobs": {
+      "$ref": "#/components/schemas/LogProbs"
+     },
+     "mass": {
+      "$ref": "#/components/schemas/Mass"
+     },
+     "probabilities": {
+      "$ref": "#/components/schemas/Probabilities"
+     },
+     "score": {
+      "description": "The probability-weighted level number.",
+      "type": "number"
+     },
+     "type": {
+      "const": "score"
+     }
+    },
+    "required": [
+     "type",
+     "score",
+     "legend",
+     "probabilities",
+     "confidence",
+     "logprobs",
+     "mass"
+    ],
+    "type": "object"
+   },
+   "ServerIdentity": {
+    "properties": {
+     "aliases": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "capabilities": {
+      "items": {
+       "enum": [
+        "park",
+        "warm",
+        "dry_run",
+        "persist",
+        "describe",
+        "leave_one_out"
+       ],
+       "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+     },
+     "device": {
+      "type": "string"
+     },
+     "engine": {
+      "description": "What computes the numbers: the engine binary and the server's answer code, each by content hash. Never a source commit.",
+      "type": "string"
+     },
+     "limits": {
+      "properties": {
+       "choice_options": {
+        "maximum": 255,
+        "minimum": 2,
+        "type": "integer"
+       },
+       "context_tokens": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "contexts_per_decision": {
+        "maximum": 8,
+        "minimum": 1,
+        "type": "integer"
+       },
+       "default_timeout_ms": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "pin_bytes": {
+        "minimum": 0,
+        "type": "integer"
+       },
+       "questions_per_spec": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "snapshot_bytes": {
+        "minimum": 0,
+        "type": "integer"
+       },
+       "state_bytes": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "text_tokens": {
+        "minimum": 1,
+        "type": "integer"
+       }
+      },
+      "required": [
+       "context_tokens",
+       "state_bytes",
+       "contexts_per_decision",
+       "choice_options",
+       "default_timeout_ms"
+      ],
+      "type": "object"
+     },
+     "model": {
+      "type": "string"
+     },
+     "template": {
+      "type": "string"
+     },
+     "text_stop": {
+      "description": "With describe, the rule that ends a text answer.",
+      "type": "string"
+     },
+     "tokenizer_hash": {
+      "type": "string"
+     },
+     "weight_hash": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "model",
+     "weight_hash",
+     "tokenizer_hash",
+     "template",
+     "engine",
+     "limits",
+     "capabilities"
+    ],
+    "type": "object"
+   },
+   "SnapshotId": {
+    "description": "Opaque address of one build of a context prefix (tokens, snap boundaries, server identity). A build extends only from a declared boundary. Never shared across servers.",
+    "pattern": "^snap:[0-9a-f]{64}$",
+    "type": "string"
+   },
+   "SnapshotInfo": {
+    "properties": {
+     "bytes": {
+      "minimum": 0,
+      "type": "integer"
+     },
+     "id": {
+      "$ref": "#/components/schemas/SnapshotId"
+     },
+     "layer": {
+      "enum": [
+       "system",
+       "turn",
+       "spec"
+      ],
+      "type": "string"
+     },
+     "parked": {
+      "description": "Held on disk.",
+      "type": "boolean"
+     },
+     "pinned": {
+      "type": "boolean"
+     },
+     "spec_id": {
+      "$ref": "#/components/schemas/SpecId"
+     },
+     "tokens": {
+      "minimum": 0,
+      "type": "integer"
+     },
+     "turn": {
+      "description": "For a turn snapshot, the index of the turn it ends.",
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "tokens",
+     "layer"
+    ],
+    "type": "object"
+   },
+   "Spec": {
+    "additionalProperties": false,
+    "description": "Numbers in a spec are integers below 2^53.",
+    "properties": {
+     "input_label": {
+      "description": "Heads the state in the case's user turn.",
+      "maxLength": 64,
+      "type": "string"
+     },
+     "instructions": {
+      "description": "Rendered in the spec layer, after the context's turns.",
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 64,
+      "type": "string"
+     },
+     "questions": {
+      "description": "Spec order. A non-text question is read after the text answers before it; non-text answers never condition a later question.",
+      "items": {
+       "$ref": "#/components/schemas/SpecQuestion"
+      },
+      "minItems": 1,
+      "type": "array"
+     }
+    },
+    "required": [
+     "name",
+     "instructions",
+     "input_label",
+     "questions"
+    ],
+    "type": "object"
+   },
+   "SpecChoiceQuestion": {
+    "additionalProperties": false,
+    "properties": {
+     "criteria": {
+      "description": "The ordered options; at most identity.limits.choice_options.",
+      "items": {
+       "$ref": "#/components/schemas/ChoiceOption"
+      },
+      "maxItems": 255,
+      "minItems": 2,
+      "type": "array"
+     },
+     "id": {
+      "$ref": "#/components/schemas/QuestionId"
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "type": {
+      "const": "choice"
+     }
+    },
+    "required": [
+     "id",
+     "type",
+     "instructions",
+     "criteria"
+    ],
+    "type": "object"
+   },
+   "SpecId": {
+    "description": "sha256 of the spec's canonical JSON (RFC 8785).",
+    "pattern": "^sha256:[0-9a-f]{64}$",
+    "type": "string"
+   },
+   "SpecNoulQuestion": {
+    "additionalProperties": false,
+    "properties": {
+     "criteria": {
+      "description": "Optional guidance.",
+      "oneOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object"
+       },
+       {
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "id": {
+      "$ref": "#/components/schemas/QuestionId"
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "type": {
+      "const": "noul"
+     }
+    },
+    "required": [
+     "id",
+     "type",
+     "instructions"
+    ],
+    "type": "object"
+   },
+   "SpecQuestion": {
+    "discriminator": {
+     "mapping": {
+      "choice": "#/components/schemas/SpecChoiceQuestion",
+      "noul": "#/components/schemas/SpecNoulQuestion",
+      "score": "#/components/schemas/SpecScoreQuestion",
+      "text": "#/components/schemas/SpecTextQuestion"
+     },
+     "propertyName": "type"
+    },
+    "oneOf": [
+     {
+      "$ref": "#/components/schemas/SpecChoiceQuestion"
+     },
+     {
+      "$ref": "#/components/schemas/SpecScoreQuestion"
+     },
+     {
+      "$ref": "#/components/schemas/SpecNoulQuestion"
+     },
+     {
+      "$ref": "#/components/schemas/SpecTextQuestion"
+     }
+    ]
+   },
+   "SpecScoreQuestion": {
+    "additionalProperties": false,
+    "properties": {
+     "criteria": {
+      "description": "Level names, lowest first.",
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 2,
+      "type": "array"
+     },
+     "id": {
+      "$ref": "#/components/schemas/QuestionId"
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "type": {
+      "const": "score"
+     }
+    },
+    "required": [
+     "id",
+     "type",
+     "instructions",
+     "criteria"
+    ],
+    "type": "object"
+   },
+   "SpecTextQuestion": {
+    "additionalProperties": false,
+    "description": "Written greedily before the questions after it, stopping at the end of the field. Requires the describe capability.",
+    "properties": {
+     "id": {
+      "$ref": "#/components/schemas/QuestionId"
+     },
+     "instructions": {
+      "$ref": "#/components/schemas/Instructions"
+     },
+     "max_tokens": {
+      "description": "At most identity.limits.text_tokens.",
+      "minimum": 1,
+      "type": "integer"
+     },
+     "type": {
+      "const": "text"
+     }
+    },
+    "required": [
+     "id",
+     "type",
+     "instructions",
+     "max_tokens"
+    ],
+    "type": "object"
+   },
+   "Turn": {
+    "additionalProperties": false,
+    "if": {
+     "required": [
+      "reasoning"
+     ]
+    },
+    "properties": {
+     "content": {
+      "description": "Tokenized with special tokens off; text that spells a control token is text.",
+      "type": "string"
+     },
+     "reasoning": {
+      "description": "The model's own thinking for an assistant turn, rendered as that turn's thinking and part of the context's content. Assistant turns only; absent and empty render the same empty thinking region.",
+      "type": "string"
+     },
+     "role": {
+      "enum": [
+       "user",
+       "assistant",
+       "tool"
+      ],
+      "type": "string"
+     },
+     "snap": {
+      "default": false,
+      "description": "Keep a snapshot boundary at the end of this turn. Part of the context's content.",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "role",
+     "content"
+    ],
+    "then": {
+     "properties": {
+      "role": {
+       "const": "assistant"
+      }
+     }
+    },
+    "type": "object"
+   }
+  }
+ },
+ "openapi": "3.1.0",
+ "version": "0.2.5-draft"
+}

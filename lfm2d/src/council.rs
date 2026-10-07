@@ -158,6 +158,12 @@ pub fn parse_context_id(id: &str) -> Result<&str> {
     }
 }
 
+/// A spec id: `sha256:` and 64 lowercase hex digits ([`spec_id`] writes one).
+pub fn is_spec_id(id: &str) -> bool {
+    id.strip_prefix("sha256:")
+        .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
 // ------------------------------------------------------------------ limits
 
 /// What this server holds to; `GET /council/v1/identity` reports it.
@@ -199,6 +205,7 @@ impl Limits {
 pub enum Role {
     User,
     Assistant,
+    Tool,
 }
 
 /// One turn of a context. `snap` marks a boundary: a turn the client expects
@@ -230,9 +237,9 @@ impl Turn {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextBody {
-    #[serde(default)]
-    pub system: Option<String>,
-    #[serde(default)]
+    /// Required by the contract; may be empty.
+    pub system: String,
+    /// Required by the contract; may be empty when `system` is not.
     pub turns: Vec<Turn>,
     #[serde(default)]
     pub pin: Option<bool>,
@@ -253,7 +260,7 @@ pub struct ContextBody {
 
 impl ContextBody {
     pub fn validate(&self, limits: &Limits) -> Result<()> {
-        if self.system.is_none() && self.turns.is_empty() {
+        if self.system.is_empty() && self.turns.is_empty() {
             return Err(CouncilError::bad_request("a context needs a system message or a turn"));
         }
         if self.turns.len() > limits.turns_per_context {
@@ -279,6 +286,12 @@ impl ContextBody {
         }
         let mut seen = std::collections::BTreeSet::new();
         for spec in &self.warm {
+            if !is_spec_id(spec) {
+                return Err(CouncilError::bad_request(format!(
+                    "warm names {spec:?}, which is not a spec id (sha256: and 64 lowercase hex digits)"
+                ))
+                .param("warm"));
+            }
             if !seen.insert(spec) {
                 return Err(CouncilError::bad_request(format!("warm repeats {spec:?}")).param("warm"));
             }
@@ -305,7 +318,7 @@ pub struct PutPlan {
 /// flags alone: the same content gives the same snapshots whether it
 /// arrived one turn at a time or in one `PUT` after a restart. A turn whose
 /// `snap` flag changed is an edit at that turn.
-pub fn plan_put(held: Option<(&Option<String>, &[Turn])>, new: &ContextBody) -> PutPlan {
+pub fn plan_put(held: Option<(&String, &[Turn])>, new: &ContextBody) -> PutPlan {
     let Some((system, turns)) = held else {
         return PutPlan { kept_system: false, kept_turns: 0 };
     };
@@ -345,7 +358,6 @@ pub enum SpecQuestion {
 #[serde(deny_unknown_fields)]
 pub struct ChoiceOption {
     pub option: String,
-    #[serde(default)]
     pub means: String,
 }
 
@@ -806,7 +818,7 @@ mod tests {
     }
     fn body(system: Option<&str>, turns: Vec<Turn>) -> ContextBody {
         ContextBody {
-            system: system.map(String::from),
+            system: system.unwrap_or("").to_string(),
             turns,
             pin: None,
             dry_run: false,
@@ -846,7 +858,7 @@ mod tests {
     #[test]
     fn an_update_extends_from_the_last_snap_inside_the_common_prefix() {
         let held = vec![turn("a", true), turn("b", false), turn("c", true), turn("d", false)];
-        let sys = Some("s".to_string());
+        let sys = "s".to_string();
         // An appended turn: the held build had boundaries after a and c.
         let mut turns = held.clone();
         turns.push(turn("e", false));
@@ -873,7 +885,7 @@ mod tests {
 
     #[test]
     fn toggling_a_snap_flag_is_an_edit_at_that_turn() {
-        let sys = Some("s".to_string());
+        let sys = "s".to_string();
         let held = vec![turn("a", true), turn("b", true)];
         let new = body(Some("s"), vec![turn("a", true), turn("b", false)]);
         assert_eq!(plan_put(Some((&sys, &held)), &new).kept_turns, 1, "b's boundary is gone");
@@ -884,7 +896,7 @@ mod tests {
     #[test]
     fn a_changed_system_message_keeps_nothing() {
         let held = vec![turn("a", true)];
-        let sys = Some("s".to_string());
+        let sys = "s".to_string();
         let new = body(Some("S"), vec![turn("a", true)]);
         assert_eq!(plan_put(Some((&sys, &held)), &new), PutPlan { kept_system: false, kept_turns: 0 });
         let new = body(None, vec![turn("a", true)]);
@@ -893,7 +905,7 @@ mod tests {
 
     #[test]
     fn absent_and_empty_reasoning_are_the_same_turn() {
-        let sys = Some("s".to_string());
+        let sys = "s".to_string();
         let mk = |reasoning: Option<&str>| Turn {
             role: Role::Assistant,
             content: "x".into(),
