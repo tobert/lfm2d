@@ -2723,6 +2723,30 @@ impl Adjudicator {
         self.chats.peek(id).map(|c| c.ids.clone())
     }
 
+    /// A held context's state, seen through a fixed probe: the logits after
+    /// forwarding a short fixed turn from a clone of the held state, without
+    /// touching what is held or its recency. Two states that are the same
+    /// computation give the same bits, so this is how a test tells a state
+    /// built one way from one built another. A read cannot: the described-state
+    /// cache is keyed by the prompt's ids, and `use_cache: false` re-prefills
+    /// from token 0 and ignores the held state altogether.
+    pub fn chat_checkpoint_probe(&self, id: &str) -> Option<Result<Vec<f32>, String>> {
+        let held = self.chats.peek(id)?;
+        let probe = || -> Result<Vec<f32>, String> {
+            let ids = encode_ids(&self.tokenizer, "<|im_start|>user\nprobe<|im_end|>\n")?;
+            let mut state = held.state.clone();
+            let logits = forward_segments(&self.model, &mut state, &[&ids], &mut || Ok(()))
+                .map_err(|_| "the probe was refused".to_string())?;
+            logits.device().synchronize().map_err(|e| e.to_string())?;
+            logits
+                .flatten_all()
+                .and_then(|t| t.to_dtype(candle_core::DType::F32))
+                .and_then(|t| t.to_vec1::<f32>())
+                .map_err(|e| e.to_string())
+        };
+        Some(probe())
+    }
+
     /// How many background tail prefills are waiting, for tests and tools.
     pub fn background_pending(&self) -> usize {
         self.background.len()
