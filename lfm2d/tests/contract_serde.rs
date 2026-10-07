@@ -5,6 +5,9 @@
 //! break for kaish/kaijutsu callers; these tests make it a compile-time-red
 //! `cargo test`, not a discovery made in production.
 //!
+use lfm2d::contexts_api::{ContextCreated, ContextDeleted, ContextInfo, ContextRequest};
+use lfm2d::opinion_api::PooledAnswer;
+use lfm2d::pool::{Method, Pooled, PoolSettings, Weights};
 use lfm2d::types::{
     ApiError, EmbedRequest, Inputs, ModelInfo, ModelKind, RouteRequest, RouteResponse, RouteScore,
     SpanResult, SpansRequest,
@@ -216,4 +219,95 @@ fn api_error_worker_failure_uses_the_internal_type() {
     let err = ApiError::internal("classifier forward pass failed: shape mismatch");
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["error"]["type"], "internal");
+}
+
+// ------------------------------------------------------------ /v1/contexts
+
+const CONTEXT_ID: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+#[test]
+fn context_created_pins_its_six_fields() {
+    let created = ContextCreated {
+        id: CONTEXT_ID.into(),
+        n_tokens: 12,
+        cached_tokens: 4,
+        prefill_ms: 1.5,
+        pinned: true,
+        bytes: 4096,
+    };
+    assert_json_eq(
+        &created,
+        &format!(
+            r#"{{"id": "{CONTEXT_ID}", "n_tokens": 12, "cached_tokens": 4, "prefill_ms": 1.5, "pinned": true, "bytes": 4096}}"#
+        ),
+    );
+}
+
+#[test]
+fn context_info_has_no_cache_or_timing_fields() {
+    let info = ContextInfo { id: CONTEXT_ID.into(), n_tokens: 12, pinned: false, bytes: 4096 };
+    assert_json_eq(
+        &info,
+        &format!(r#"{{"id": "{CONTEXT_ID}", "n_tokens": 12, "pinned": false, "bytes": 4096}}"#),
+    );
+}
+
+#[test]
+fn context_deleted_pins_id_and_deleted() {
+    let gone = ContextDeleted { id: CONTEXT_ID.into(), deleted: true };
+    assert_json_eq(&gone, &format!(r#"{{"id": "{CONTEXT_ID}", "deleted": true}}"#));
+}
+
+#[test]
+fn context_request_defaults_and_refuses_unknown_fields() {
+    let req: ContextRequest = serde_json::from_str(r#"{"system": "s"}"#).expect("parse");
+    assert!(req.messages.is_empty());
+    assert_eq!(req.pin, None);
+    assert_eq!(req.timeout_ms, 120_000);
+    // `from` is a chat field; a context is never built after another checkpoint.
+    let err = serde_json::from_str::<ContextRequest>(&format!(r#"{{"system": "s", "from": "{CONTEXT_ID}"}}"#))
+        .expect_err("deny_unknown_fields");
+    assert!(err.to_string().contains("from"), "{err}");
+}
+
+// ------------------------------------------------------------------- pool
+
+#[test]
+fn pool_settings_wire_names_and_defaults() {
+    let default: PoolSettings = serde_json::from_str("{}").expect("parse");
+    assert_json_eq(&default, r#"{"method": "linear", "weights": "uniform"}"#);
+    let named: PoolSettings =
+        serde_json::from_str(r#"{"method": "loglinear", "weights": "mass"}"#).expect("parse");
+    assert_eq!(named, PoolSettings { method: Method::Loglinear, weights: Weights::Mass });
+    let given: PoolSettings = serde_json::from_str(r#"{"weights": [1, 0.5]}"#).expect("parse");
+    assert_json_eq(&given, r#"{"method": "linear", "weights": [1.0, 0.5]}"#);
+}
+
+#[test]
+fn pool_settings_refuse_unknown_weights_and_fields() {
+    assert!(serde_json::from_str::<PoolSettings>(r#"{"weights": "sideways"}"#).is_err());
+    assert!(serde_json::from_str::<PoolSettings>(r#"{"method": "geometric"}"#).is_err());
+    assert!(serde_json::from_str::<PoolSettings>(r#"{"winner": true}"#).is_err());
+}
+
+#[test]
+fn pooled_answer_flattens_the_pool_beside_field_and_options() {
+    let answer = PooledAnswer {
+        field: "verdict".into(),
+        options: vec!["allow".into(), "ask".into()],
+        pooled: Pooled {
+            probs: vec![0.25, 0.75],
+            weights: vec![0.5, 0.5],
+            agree: true,
+            spread: 0.1,
+            leave_one_out: vec![Some(vec![0.2, 0.8]), None],
+        },
+    };
+    // Flat, with a null where the remaining weights sum to 0, and no `winner`.
+    assert_json_eq(
+        &answer,
+        r#"{"field": "verdict", "options": ["allow", "ask"], "probs": [0.25, 0.75],
+            "weights": [0.5, 0.5], "agree": true, "spread": 0.1,
+            "leave_one_out": [[0.2, 0.8], null]}"#,
+    );
 }

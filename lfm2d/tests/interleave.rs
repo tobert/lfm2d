@@ -60,6 +60,8 @@ enum Event {
     Read(String),
     Probe,
     Register,
+    ContextInfo,
+    ContextDelete,
     /// Generation `name` stopped at a pause: cancelled or out of time.
     Stopped(String),
 }
@@ -224,7 +226,17 @@ impl Generator for Stub {
         // A marker, not a response: this file is about when a probe runs.
         Err(Failure::Forbidden("probe served".into()))
     }
+    fn context_info(&mut self, id: &str) -> Result<lfm2d::contexts_api::ContextInfo, Failure> {
+        self.0.push(Event::ContextInfo);
+        Ok(lfm2d::contexts_api::ContextInfo { id: id.to_owned(), n_tokens: 1, pinned: false, bytes: 1 })
+    }
+    fn context_delete(&mut self, id: &str) -> Result<lfm2d::contexts_api::ContextDeleted, Failure> {
+        self.0.push(Event::ContextDelete);
+        Ok(lfm2d::contexts_api::ContextDeleted { id: id.to_owned(), deleted: true })
+    }
 }
+
+const CONTEXT_ID: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn response(r: &AdjudicateRequest) -> AdjudicateResponse {
     AdjudicateResponse {
@@ -513,4 +525,77 @@ async fn stop_ends_a_background_task_at_its_next_pause() {
     h.stop_signal().store(true, std::sync::atomic::Ordering::SeqCst);
     log.wait_for(Event::Stopped("bg".into())).await;
     assert!(log.position(&Event::Done("bg".into())).is_none());
+}
+
+/// A context lookup is `Interactive`: it only reads the store, so it is
+/// served at a generation's pause like an opinion read. A context delete is
+/// `Generative`: it removes a checkpoint (and its queued tail prefills), so
+/// it waits for the running generation and takes its place in line, never
+/// running at a pause. A read submitted after both still goes first.
+#[tokio::test]
+async fn a_context_lookup_overtakes_a_generation_and_a_delete_waits_its_turn() {
+    let (h, log) = spawn();
+    let first = tokio::spawn({
+        let h = h.clone();
+        async move { h.evaluate(generation("first:400:2", 60_000)).await }
+    });
+    log.wait_for(Event::Step("first".into(), 3)).await;
+
+    let info = h.context_info(CONTEXT_ID.into()).await.expect("the lookup is served");
+    assert_eq!(info.id, CONTEXT_ID);
+    assert!(
+        log.position(&Event::Done("first".into())).is_none(),
+        "the lookup was served mid-generation: {:?}",
+        log.events().last()
+    );
+
+    let second = tokio::spawn({
+        let h = h.clone();
+        async move { h.evaluate(generation("second:3:1", 60_000)).await }
+    });
+    let delete = tokio::spawn({
+        let h = h.clone();
+        async move { h.context_delete(CONTEXT_ID.into()).await }
+    });
+    // Both are queued before the late lookup is submitted.
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    h.context_info(CONTEXT_ID.into()).await.expect("a later lookup is served");
+    first.await.unwrap().expect("first");
+    second.await.unwrap().expect("second");
+    assert!(delete.await.unwrap().expect("the delete runs").deleted);
+
+    let events = log.events();
+    let at = |e: Event| log.position(&e).unwrap_or_else(|| panic!("{e:?}: {events:?}"));
+    let first_done = at(Event::Done("first".into()));
+    assert!(
+        events.iter().filter(|e| **e == Event::ContextInfo).count() == 2,
+        "both lookups ran: {events:?}"
+    );
+    let late_info = events.iter().rposition(|e| *e == Event::ContextInfo).unwrap();
+    assert!(late_info < first_done, "the late lookup overtook the running generation");
+    assert!(first_done < at(Event::Step("second".into(), 0)), "generations never nest");
+    assert!(at(Event::Done("second".into())) < at(Event::ContextDelete), "the delete keeps its place in line");
+    assert!(
+        first_done < at(Event::ContextDelete),
+        "a delete never runs at a pause inside a generation"
+    );
+}
+
+/// An id that could name nothing is a 404 the generator never sees, even
+/// with a generation running. (Whether the check sits in the handler or the
+/// worker is not observable here; this pins the behaviour, not the place.)
+#[tokio::test]
+async fn a_malformed_context_id_is_a_404_the_generator_never_sees() {
+    let (h, log) = spawn();
+    let running = tokio::spawn({
+        let h = h.clone();
+        async move { h.evaluate(generation("running:2000:1", 60_000)).await }
+    });
+    log.wait_for(Event::Step("running".into(), 1)).await;
+    for bad in ["nope", &CONTEXT_ID.to_uppercase(), &CONTEXT_ID[..63]] {
+        assert_eq!(h.context_info(bad.into()).await.unwrap_err().status(), 404, "{bad}");
+        assert_eq!(h.context_delete(bad.into()).await.unwrap_err().status(), 404, "{bad}");
+    }
+    assert!(!log.events().iter().any(|e| matches!(e, Event::ContextInfo | Event::ContextDelete)));
+    running.abort();
 }
