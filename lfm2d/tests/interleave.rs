@@ -581,10 +581,11 @@ async fn a_context_lookup_overtakes_a_generation_and_a_delete_waits_its_turn() {
     );
 }
 
-/// An id that could name nothing is a 404 before it reaches the worker, so
-/// it never queues behind a generation.
+/// An id that could name nothing is a 404 the generator never sees, even
+/// with a generation running. (Whether the check sits in the handler or the
+/// worker is not observable here; this pins the behaviour, not the place.)
 #[tokio::test]
-async fn a_malformed_context_id_is_a_404_that_never_queues() {
+async fn a_malformed_context_id_is_a_404_the_generator_never_sees() {
     let (h, log) = spawn();
     let running = tokio::spawn({
         let h = h.clone();

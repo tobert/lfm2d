@@ -4009,8 +4009,8 @@ const MAX_SPEC_BYTES: usize = 1_048_576;
 /// those, to completion before the paused job goes on. Within a class, jobs
 /// keep their arrival order and never overtake one another.
 ///
-/// Only `Interactive` is ever served at a pause, whatever class is paused,
-/// because it is the one class that never removes anything a paused job
+/// Only `Interactive` is ever served at a pause, whatever class is paused
+/// (an `Interactive` job never pauses), because it is the one class that never removes anything a paused job
 /// relies on: registration and deletion (which remove specs, and with them
 /// the cache entries a paused job publishes beside) wait in `Generative`,
 /// behind a paused generation or background task, never inside it.
@@ -4019,8 +4019,8 @@ const MAX_SPEC_BYTES: usize = 1_048_576;
 /// postpones a waiting generation until the stream stops or the
 /// generation's own deadline passes. Reads are short, and that is the
 /// point of the order; aging is the lever if it ever starves generation.
-/// A multi-context read is the longest `Interactive` job (see that
-/// variant), so a stream of them postpones a generation up to eight times
+/// A multi-context read is the `Interactive` job with the most serial
+/// work (see that variant), so a stream of them postpones a generation up to eight times
 /// as long as a stream of single reads does.
 ///
 /// Adding a queued class is adding a variant here, a place in
