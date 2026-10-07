@@ -638,6 +638,29 @@ pub trait Generator: Send + 'static {
         let _ = id;
         Err(Failure::Internal("this generator does not hold contexts".into()))
     }
+    /// `PUT /council/v1/contexts/{id}`'s engine half: hold a snapshot after
+    /// each boundary of a context's segments, resuming from the largest one
+    /// already held. Prefills, pausing like [`Generator::context_create`].
+    fn council_put(
+        &mut self,
+        request: &crate::council_context::BuildRequest,
+        at: &dyn YieldPoint<Self>,
+    ) -> Result<crate::council_context::BuildOutcome, Failure> {
+        let _ = (request, at);
+        Err(Failure::Internal("this generator does not hold contexts".into()))
+    }
+    /// What is held under each of `ids` as a context: `None` for an id that
+    /// is not held (never built, or evicted). Reads nothing into the model.
+    fn council_inspect(&mut self, ids: &[String]) -> Result<Vec<Option<crate::council_context::HeldInfo>>, Failure> {
+        let _ = ids;
+        Err(Failure::Internal("this generator does not hold contexts".into()))
+    }
+    /// Release the pin on a held context, leaving it to the eviction policy.
+    /// `false` when nothing is held under `id`.
+    fn council_unpin(&mut self, id: &str) -> Result<bool, Failure> {
+        let _ = id;
+        Err(Failure::Internal("this generator does not hold contexts".into()))
+    }
     /// One task of the generator's own background work, run by the worker
     /// only when every queue is empty; `false` when there is none. It
     /// pauses like a generation (the same [`YieldPoint`] rule), and nothing
@@ -2482,6 +2505,147 @@ impl Generator for Adjudicator {
         Ok(crate::contexts_api::ContextDeleted { id: id.to_owned(), deleted: true })
     }
 
+    fn council_put(
+        &mut self,
+        request: &crate::council_context::BuildRequest,
+        at: &dyn YieldPoint<Self>,
+    ) -> Result<crate::council_context::BuildOutcome, Failure> {
+        use crate::chat_session::{ChatCheckpoint, CheckpointKind, context_id};
+        use crate::council_context::{BuildOutcome, BuiltSnapshot};
+        request.validate().map_err(Failure::BadRequest)?;
+        at.check()?;
+        let begin = Instant::now();
+        let segments: Vec<Vec<u32>> = request
+            .segments
+            .iter()
+            .map(|t| encode_ids(&self.tokenizer, t).map_err(Failure::Internal))
+            .collect::<Result<_, _>>()?;
+        if segments.iter().any(Vec::is_empty) {
+            return Err(Failure::BadRequest("a segment encodes to no tokens".into()));
+        }
+        let ids: Vec<u32> = segments.concat();
+        if ids.len() >= self.context_limit {
+            return Err(Failure::BadRequest(format!(
+                "the context is {} tokens; the adjudicator holds at most {} and a read needs room after it",
+                ids.len(),
+                self.context_limit
+            )));
+        }
+        let mut ends = Vec::with_capacity(segments.len());
+        let mut total = 0;
+        for segment in &segments {
+            total += segment.len();
+            ends.push(total);
+        }
+        let boundary_id = |b: usize| context_id(&ids[..ends[b]]);
+        // The largest boundary this request declares that is already held as
+        // a context: only declared boundaries, never an unmarked turn that
+        // happens to be held.
+        let base = request.hold_after.iter().rev().find_map(|&b| {
+            self.chats
+                .peek(&boundary_id(b))
+                .filter(|held| held.kind == CheckpointKind::Context)
+                .map(|held| (b, held.clone()))
+        });
+        let kept = base.as_ref().map_or(0, |(b, _)| ends[*b]);
+        let report = |this: &Self| -> Vec<BuiltSnapshot> {
+            request
+                .hold_after
+                .iter()
+                .map(|&b| {
+                    let id = boundary_id(b);
+                    let held = this.chats.peek(&id).is_some_and(|h| h.kind == CheckpointKind::Context);
+                    BuiltSnapshot {
+                        after_segment: b,
+                        tokens: ends[b],
+                        held,
+                        bytes: if held { this.chats.bytes_of(&id).unwrap_or(0) } else { 0 },
+                        pinned: held && this.chats.is_pinned(&id).unwrap_or(false),
+                        engine_id: id,
+                    }
+                })
+                .collect()
+        };
+        let outcome = |this: &Self| BuildOutcome {
+            snapshots: report(this),
+            tokens: ids.len(),
+            kept,
+            fed: ids.len() - kept,
+            prefill_ms: begin.elapsed().as_secs_f64() * 1000.,
+        };
+        if request.dry_run {
+            return Ok(outcome(self));
+        }
+        let head = request.segments.len() - 1;
+        let head_id = boundary_id(head);
+        let mut published = Vec::new();
+        if !matches!(&base, Some((b, _)) if *b == head) {
+            let (mut state, inherited, from) = match &base {
+                Some((b, held)) => (held.state.clone(), held.read_specs.lock().expect("read_specs lock").clone(), b + 1),
+                None => (self.model.new_state(), Default::default(), 0),
+            };
+            let model = self.model.clone();
+            let mut pending = Vec::new();
+            let mut start = from;
+            for &b in request.hold_after.iter().filter(|&&b| b >= from) {
+                let refs: Vec<&[u32]> = segments[start..=b].iter().map(Vec::as_slice).collect();
+                let logits = forward_segments(&model, &mut state, &refs, &mut || at.pause(self))?;
+                logits.device().synchronize()?;
+                at.check()?;
+                pending.push((b, state.clone()));
+                start = b + 1;
+            }
+            // Publish only after the last pause, each from its complete state.
+            for (b, state) in pending {
+                let id = boundary_id(b);
+                let held = Arc::new(ChatCheckpoint {
+                    kind: CheckpointKind::Context,
+                    ids: ids[..ends[b]].to_vec(),
+                    text: request.segments[..=b].concat(),
+                    state,
+                    read_specs: std::sync::Mutex::new(inherited.clone()),
+                });
+                self.hold_checkpoint(id.clone(), held)?;
+                published.push(id);
+            }
+        }
+        if let Some(pin) = request.pin
+            && let Err(e) = self.chats.set_pinned(&head_id, pin)
+        {
+            // A refusal changes nothing: what this request built goes.
+            for id in &published {
+                self.chats.remove(id);
+                self.states.forget_checkpoint(id);
+                self.background.retain(|(checkpoint, _)| checkpoint != id);
+            }
+            return Err(Failure::InsufficientStorage(e));
+        }
+        Ok(outcome(self))
+    }
+
+    fn council_inspect(&mut self, ids: &[String]) -> Result<Vec<Option<crate::council_context::HeldInfo>>, Failure> {
+        Ok(ids
+            .iter()
+            .map(|id| {
+                self.chats.peek(id).filter(|h| h.kind == crate::chat_session::CheckpointKind::Context).map(|held| {
+                    crate::council_context::HeldInfo {
+                        tokens: held.ids.len(),
+                        bytes: self.chats.bytes_of(id).unwrap_or(0),
+                        pinned: self.chats.is_pinned(id).unwrap_or(false),
+                    }
+                })
+            })
+            .collect())
+    }
+
+    fn council_unpin(&mut self, id: &str) -> Result<bool, Failure> {
+        if self.chats.peek(id).is_none_or(|h| h.kind != crate::chat_session::CheckpointKind::Context) {
+            return Ok(false);
+        }
+        self.chats.set_pinned(id, false).map_err(Failure::InsufficientStorage)?;
+        Ok(true)
+    }
+
     /// Background tail prefill: for each checkpoint a turn published, the
     /// head of every spec its chat was tail-read with, forwarded once so a
     /// later read of that spec starts after it. A read forwards the same
@@ -4083,6 +4247,9 @@ enum Job {
     ContextCreate(crate::contexts_api::ContextRequest),
     ContextInfo(String),
     ContextDelete(String),
+    CouncilPut(crate::council_context::BuildRequest),
+    CouncilInspect(Vec<String>),
+    CouncilUnpin(String),
 }
 impl Job {
     fn timeout_ms(&self) -> u64 {
@@ -4094,6 +4261,8 @@ impl Job {
             Job::Chat(r, _) => r.timeout_ms,
             Job::ContextCreate(r) => r.timeout_ms,
             Job::ContextInfo(_) | Job::ContextDelete(_) => SPEC_ADMIN_TIMEOUT_MS,
+            Job::CouncilPut(r) => r.timeout_ms,
+            Job::CouncilInspect(_) | Job::CouncilUnpin(_) => SPEC_ADMIN_TIMEOUT_MS,
         }
     }
     /// Which queue this job waits in: see [`Priority`].
@@ -4103,13 +4272,15 @@ impl Job {
             // Looking a context up removes nothing, so it may be served at a
             // pause; building one prefills (it pauses) and deleting one removes
             // what a paused job might publish beside, so both wait their turn.
-            Job::Opinion(..) | Job::Probe(_) | Job::ContextInfo(_) => Priority::Interactive,
+            Job::Opinion(..) | Job::Probe(_) | Job::ContextInfo(_) | Job::CouncilInspect(_) => Priority::Interactive,
             Job::Adjudicate(_)
             | Job::Chat(..)
             | Job::Register(..)
             | Job::Unregister(_)
             | Job::ContextCreate(_)
-            | Job::ContextDelete(_) => Priority::Generative,
+            | Job::ContextDelete(_)
+            | Job::CouncilPut(_)
+            | Job::CouncilUnpin(_) => Priority::Generative,
         }
     }
     fn operation(&self) -> &'static str {
@@ -4123,6 +4294,9 @@ impl Job {
             Job::ContextCreate(_) => "context_create",
             Job::ContextInfo(_) => "context_info",
             Job::ContextDelete(_) => "context_delete",
+            Job::CouncilPut(_) => "council_put",
+            Job::CouncilInspect(_) => "council_inspect",
+            Job::CouncilUnpin(_) => "council_unpin",
         }
     }
 }
@@ -4137,6 +4311,9 @@ enum Reply {
     ContextCreated(crate::contexts_api::ContextCreated),
     ContextInfo(crate::contexts_api::ContextInfo),
     ContextDeleted(crate::contexts_api::ContextDeleted),
+    CouncilBuilt(crate::council_context::BuildOutcome),
+    CouncilInspected(Vec<Option<crate::council_context::HeldInfo>>),
+    CouncilUnpinned(bool),
 }
 struct Work {
     job: Job,
@@ -4425,6 +4602,23 @@ impl Worker {
                 Job::ContextDelete(id) => check()
                     .and_then(|()| generator.context_delete(id))
                     .map(Reply::ContextDeleted),
+                Job::CouncilPut(request) => check()
+                    .and_then(|()| generator.council_put(request, &pause))
+                    .map(|r| {
+                        tracing::info!(
+                            tokens = r.tokens,
+                            kept = r.kept,
+                            fed = r.fed,
+                            boundaries = r.snapshots.len(),
+                            prefill_ms = r.prefill_ms,
+                            "council context built"
+                        );
+                        Reply::CouncilBuilt(r)
+                    }),
+                Job::CouncilInspect(ids) => check()
+                    .and_then(|()| generator.council_inspect(ids))
+                    .map(Reply::CouncilInspected),
+                Job::CouncilUnpin(id) => check().and_then(|()| generator.council_unpin(id)).map(Reply::CouncilUnpinned),
             };
             if let Err(e) = &result {
                 let kind = match e {
@@ -4733,6 +4927,35 @@ impl Handle {
         match self.submit(Job::ContextDelete(id), "context_delete").await? {
             Reply::ContextDeleted(r) => Ok(r),
             _ => Err(Failure::Internal("worker answered a context delete with something else".into()).into_response()),
+        }
+    }
+    /// `PUT /council/v1/contexts/{id}`'s build: see
+    /// [`Generator::council_put`].
+    pub async fn council_put(
+        &self,
+        request: crate::council_context::BuildRequest,
+    ) -> Result<crate::council_context::BuildOutcome, Response> {
+        request.validate().map_err(|e| Failure::BadRequest(e).into_response())?;
+        match self.submit(Job::CouncilPut(request), "council_put").await? {
+            Reply::CouncilBuilt(r) => Ok(r),
+            _ => Err(Failure::Internal("worker answered a council build with something else".into()).into_response()),
+        }
+    }
+    /// What is held under each id as a context ([`Generator::council_inspect`]).
+    pub async fn council_inspect(
+        &self,
+        ids: Vec<String>,
+    ) -> Result<Vec<Option<crate::council_context::HeldInfo>>, Response> {
+        match self.submit(Job::CouncilInspect(ids), "council_inspect").await? {
+            Reply::CouncilInspected(r) => Ok(r),
+            _ => Err(Failure::Internal("worker answered a council lookup with something else".into()).into_response()),
+        }
+    }
+    /// Release a held context's pin ([`Generator::council_unpin`]).
+    pub async fn council_unpin(&self, id: String) -> Result<bool, Response> {
+        match self.submit(Job::CouncilUnpin(id), "council_unpin").await? {
+            Reply::CouncilUnpinned(r) => Ok(r),
+            _ => Err(Failure::Internal("worker answered a council unpin with something else".into()).into_response()),
         }
     }
     /// `/v1/opinion` with `contexts`.

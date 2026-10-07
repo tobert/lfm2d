@@ -409,9 +409,9 @@ async fn identity_is_the_contracts_and_says_what_this_server_is() {
 async fn identity_lists_only_the_capabilities_this_server_has() {
     let h = harness(4, vec![]);
     let (_, id, _) = get(&h.router, "/council/v1/identity").await;
-    assert_eq!(id["capabilities"], json!(["describe", "leave_one_out"]));
-    // Not claimed: nothing here parks, warms, dry-runs or persists yet.
-    for not in ["park", "warm", "dry_run", "persist"] {
+    assert_eq!(id["capabilities"], json!(["dry_run", "describe", "leave_one_out"]));
+    // Not claimed: nothing here parks or warms, and persist is tolerated, not kept.
+    for not in ["park", "warm", "persist"] {
         assert!(!id["capabilities"].as_array().unwrap().iter().any(|c| c == not), "{not}");
     }
 }

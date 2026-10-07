@@ -62,6 +62,8 @@ enum Event {
     Register,
     ContextInfo,
     ContextDelete,
+    CouncilInspect,
+    CouncilUnpin,
     /// Generation `name` stopped at a pause: cancelled or out of time.
     Stopped(String),
 }
@@ -233,6 +235,14 @@ impl Generator for Stub {
     fn context_delete(&mut self, id: &str) -> Result<lfm2d::contexts_api::ContextDeleted, Failure> {
         self.0.push(Event::ContextDelete);
         Ok(lfm2d::contexts_api::ContextDeleted { id: id.to_owned(), deleted: true })
+    }
+    fn council_inspect(&mut self, ids: &[String]) -> Result<Vec<Option<lfm2d::council_context::HeldInfo>>, Failure> {
+        self.0.push(Event::CouncilInspect);
+        Ok(ids.iter().map(|_| None).collect())
+    }
+    fn council_unpin(&mut self, _: &str) -> Result<bool, Failure> {
+        self.0.push(Event::CouncilUnpin);
+        Ok(true)
     }
 }
 
@@ -598,4 +608,39 @@ async fn a_malformed_context_id_is_a_404_the_generator_never_sees() {
     }
     assert!(!log.events().iter().any(|e| matches!(e, Event::ContextInfo | Event::ContextDelete)));
     running.abort();
+}
+
+/// The council's engine jobs sit in the same classes as their `/v1/contexts`
+/// cousins: a lookup only reads the store, so it is served at a pause; an
+/// unpin changes what the eviction policy may remove, so it waits its turn
+/// behind the running generation and never runs at a pause.
+#[tokio::test]
+async fn a_council_lookup_overtakes_a_generation_and_an_unpin_waits_its_turn() {
+    let (h, log) = spawn();
+    let first = tokio::spawn({
+        let h = h.clone();
+        async move { h.evaluate(generation("first:400:2", 60_000)).await }
+    });
+    log.wait_for(Event::Step("first".into(), 3)).await;
+
+    let unpin = tokio::spawn({
+        let h = h.clone();
+        async move { h.council_unpin(CONTEXT_ID.into()).await }
+    });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let held = h.council_inspect(vec![CONTEXT_ID.into()]).await.expect("the lookup is served");
+    assert_eq!(held, vec![None]);
+    assert!(
+        log.position(&Event::Done("first".into())).is_none(),
+        "the lookup was served mid-generation: {:?}",
+        log.events().last()
+    );
+    first.await.unwrap().expect("first");
+    assert!(unpin.await.unwrap().expect("the unpin runs"));
+
+    let events = log.events();
+    let at = |e: Event| log.position(&e).unwrap_or_else(|| panic!("{e:?}: {events:?}"));
+    let first_done = at(Event::Done("first".into()));
+    assert!(at(Event::CouncilInspect) < first_done, "the lookup overtook the running generation");
+    assert!(first_done < at(Event::CouncilUnpin), "an unpin never runs at a pause inside a generation");
 }

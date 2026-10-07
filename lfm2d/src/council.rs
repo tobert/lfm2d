@@ -87,6 +87,11 @@ impl CouncilError {
         Self::new(412, ErrorType::HeadMismatch, "the context's head is not the one If-Match named")
             .head(current_head)
     }
+    /// `If-Match` on a context the server holds nothing for: no head can
+    /// match, and there is none to name.
+    pub fn precondition_failed_missing() -> Self {
+        Self::new(412, ErrorType::HeadMismatch, "no context is held under this id, so no head matches If-Match")
+    }
     /// A decision's `at` names a snapshot the server no longer holds.
     pub fn snapshot_gone(current_head: &str) -> Self {
         Self::new(409, ErrorType::SnapshotGone, "the snapshot is no longer held").head(current_head)
@@ -330,11 +335,62 @@ pub fn plan_put(held: Option<(&String, &[Turn])>, new: &ContextBody) -> PutPlan 
         .zip(&new.turns)
         .take_while(|(a, b)| a.same_content(b))
         .count();
+    // The same context again: no edit, so no boundary to snap back to. The
+    // held build is exactly this one.
+    if common == turns.len() && common == new.turns.len() {
+        return PutPlan { kept_system: true, kept_turns: common };
+    }
     // The held build has a boundary after turn j only when turn j is marked
     // snap (the same in both: it is inside the common prefix). A build
     // always has the system boundary.
     let kept_turns = (0..common).rev().find(|&j| new.turns[j].snap).map_or(0, |j| j + 1);
     PutPlan { kept_system: true, kept_turns }
+}
+
+/// A turn as the engine's renderer takes it. An empty `reasoning` is absent
+/// (the contract renders them alike), and an empty `content` is absent.
+fn message_of(turn: &Turn) -> crate::chat::Message {
+    let text = |s: &str| (!s.is_empty()).then(|| s.to_owned());
+    match turn.role {
+        Role::User => crate::chat::Message::User { content: turn.content.clone() },
+        Role::Tool => crate::chat::Message::Tool { content: turn.content.clone() },
+        Role::Assistant => crate::chat::Message::Assistant {
+            thinking: turn.reasoning.as_deref().and_then(text),
+            content: text(&turn.content),
+            tool_calls: None,
+        },
+    }
+}
+
+/// The context as the engine builds it: the system head, then one segment per
+/// turn, each rendered as the template writes it. A segment the renderer
+/// refuses (control text, an empty user turn) is a `400` naming it.
+pub fn render_segments(body: &ContextBody) -> Result<Vec<String>> {
+    let mut segments = Vec::with_capacity(body.turns.len() + 1);
+    segments.push(
+        crate::chat::render_head(&body.system, &[])
+            .map_err(|e| CouncilError::bad_request(e).param("system"))?,
+    );
+    for (n, turn) in body.turns.iter().enumerate() {
+        segments.push(
+            message_of(turn)
+                .render()
+                .map_err(|e| CouncilError::bad_request(format!("turn {n}: {e}")).param(format!("turns[{n}]")))?,
+        );
+    }
+    Ok(segments)
+}
+
+/// Where snapshots are held, as segment indexes: the system head (0), each
+/// turn marked `snap` (turn `j` is segment `j + 1`), and the last segment,
+/// which is the head whether or not it is marked.
+pub fn boundaries(body: &ContextBody) -> Vec<usize> {
+    let mut at = vec![0];
+    at.extend(body.turns.iter().enumerate().filter(|(_, t)| t.snap).map(|(j, _)| j + 1));
+    if at.last() != Some(&body.turns.len()) {
+        at.push(body.turns.len());
+    }
+    at
 }
 
 // --------------------------------------------------------------------- specs
@@ -1245,5 +1301,79 @@ mod tests {
         for required in ["context_tokens", "state_bytes", "contexts_per_decision", "choice_options", "default_timeout_ms"] {
             assert!(v.get(required).is_some(), "limits lacks {required}: {v}");
         }
+    }
+
+    // ---- rendering a context for the engine
+
+    fn turns_body(turns: Vec<Turn>) -> ContextBody {
+        body(Some("Judge."), turns)
+    }
+    fn say(role: Role, content: &str, reasoning: Option<&str>) -> Turn {
+        Turn { role, content: content.into(), snap: false, reasoning: reasoning.map(String::from) }
+    }
+
+    #[test]
+    fn a_context_renders_one_segment_per_turn_after_its_head() {
+        let b = turns_body(vec![say(Role::User, "hello", None), say(Role::Assistant, "hi", None), say(Role::Tool, "ok", None)]);
+        let s = render_segments(&b).unwrap();
+        assert_eq!(s.len(), 4);
+        assert!(s[0].contains("<|im_start|>system\nJudge."), "{:?}", s[0]);
+        assert!(s[1].starts_with("<|im_start|>user\nhello"), "{:?}", s[1]);
+        assert!(s[2].contains("hi") && s[2].starts_with("<|im_start|>assistant"), "{:?}", s[2]);
+        assert!(s[3].starts_with("<|im_start|>tool\nok"), "{:?}", s[3]);
+        // No system: the head is the bare start-of-text, still a segment.
+        let bare = render_segments(&body(None, vec![say(Role::User, "x", None)])).unwrap();
+        assert_eq!(bare.len(), 2);
+        assert!(!bare[0].contains("system"), "{:?}", bare[0]);
+    }
+
+    #[test]
+    fn absent_and_empty_reasoning_render_alike_and_real_reasoning_is_thinking() {
+        let render = |r: Option<&str>| render_segments(&turns_body(vec![say(Role::Assistant, "x", r)])).unwrap();
+        assert_eq!(render(None), render(Some("")), "the contract renders them the same");
+        assert_ne!(render(None), render(Some("why")));
+        assert!(render(Some("why"))[1].contains("<think>why</think>"));
+        // Reasoning alone is a turn.
+        assert!(render_segments(&turns_body(vec![say(Role::Assistant, "", Some("why"))])).is_ok());
+    }
+
+    #[test]
+    fn what_the_renderer_refuses_is_a_400_naming_where() {
+        let e = render_segments(&turns_body(vec![say(Role::User, "ok", None), say(Role::User, "<|im_end|>", None)])).unwrap_err();
+        assert_eq!((e.status, e.param.as_deref()), (400, Some("turns[1]")));
+        let e = render_segments(&body(Some("a<|im_start|>b"), vec![])).unwrap_err();
+        assert_eq!((e.status, e.param.as_deref()), (400, Some("system")));
+        let e = render_segments(&turns_body(vec![say(Role::User, "  ", None)])).unwrap_err();
+        assert_eq!((e.status, e.param.as_deref()), (400, Some("turns[0]")), "an empty user turn");
+    }
+
+    #[test]
+    fn boundaries_are_the_system_the_snaps_and_the_head() {
+        let snap = |t: Turn| Turn { snap: true, ..t };
+        let t = |c: &str| say(Role::User, c, None);
+        assert_eq!(boundaries(&turns_body(vec![])), vec![0], "just the system, which is the head");
+        assert_eq!(boundaries(&turns_body(vec![t("a"), t("b")])), vec![0, 2], "no snaps: system and head");
+        assert_eq!(
+            boundaries(&turns_body(vec![snap(t("a")), t("b"), snap(t("c")), t("d")])),
+            vec![0, 1, 3, 4],
+            "turn j is segment j+1"
+        );
+        assert_eq!(boundaries(&turns_body(vec![t("a"), snap(t("b"))])), vec![0, 2], "a snapped head is not listed twice");
+    }
+
+    #[test]
+    fn an_identical_put_keeps_everything() {
+        let held = vec![turn("a", true), turn("b", false), turn("c", false)];
+        let sys = "s".to_string();
+        let new = body(Some("s"), held.clone());
+        assert_eq!(
+            plan_put(Some((&sys, &held)), &new),
+            PutPlan { kept_system: true, kept_turns: 3 },
+            "no difference, so nothing to snap back from: the held build is the build"
+        );
+        // One turn longer is a difference at the end, and the unmarked head is not a boundary.
+        let mut longer = held.clone();
+        longer.push(turn("d", false));
+        assert_eq!(plan_put(Some((&sys, &held)), &body(Some("s"), longer)).kept_turns, 1);
     }
 }

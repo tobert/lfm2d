@@ -78,6 +78,7 @@ pub mod config;
 pub mod council;
 pub mod council_api;
 pub mod council_compile;
+pub mod council_context;
 pub mod council_wire;
 pub mod contexts_api;
 pub mod constrain;
