@@ -4019,6 +4019,9 @@ const MAX_SPEC_BYTES: usize = 1_048_576;
 /// postpones a waiting generation until the stream stops or the
 /// generation's own deadline passes. Reads are short, and that is the
 /// point of the order; aging is the lever if it ever starves generation.
+/// A multi-context read is the longest `Interactive` job (see that
+/// variant), so a stream of them postpones a generation up to eight times
+/// as long as a stream of single reads does.
 ///
 /// Adding a queued class is adding a variant here, a place in
 /// [`Priority::ALL`], and a `Job::priority` arm; the queues and the pick
@@ -4036,8 +4039,16 @@ enum Priority {
     /// its prefill completes.
     Generative,
     /// Opinion reads (`/v1/opinion`, and `/v1/adjudicate` with `opinion:
-    /// true`) and probes: short, and they never pause, so one never waits
-    /// behind another's pause.
+    /// true`), probes and context lookups: short, and they never pause, so
+    /// one never waits behind another's pause.
+    ///
+    /// "Short" is per job, not per request: a multi-context read
+    /// (`/v1/opinion` with `contexts`) is ONE job of up to
+    /// [`crate::opinion_api::MAX_CONTEXTS`] (8) serial reads. It holds the
+    /// worker for all of them, with one deadline and `check` between and
+    /// within the reads; the reads are never split across pauses or
+    /// batched. A paused generation, and every read queued behind it, waits
+    /// for the whole job, so the worst case is eight reads' time, not one.
     Interactive,
 }
 impl Priority {
