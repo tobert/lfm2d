@@ -28,6 +28,24 @@ use crate::pool::{Method, PoolSettings, Weights};
 
 // ---------------------------------------------------------------- errors
 
+/// The contract's `error.type` enum, exactly. The typed client in kaijutsu
+/// decodes these and no others, so a new kind is a contract change, not a
+/// local addition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorType {
+    InvalidRequest,
+    NotFound,
+    SnapshotGone,
+    HeadMismatch,
+    TooLarge,
+    Busy,
+    Unavailable,
+    Timeout,
+    PinBudget,
+    Internal,
+}
+
 /// The contract's error body, `{"error": {"type", "message", "param"?, "head"?}}`,
 /// and the status it travels under.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -35,7 +53,7 @@ pub struct CouncilError {
     #[serde(skip)]
     pub status: u16,
     #[serde(rename = "type")]
-    pub kind: &'static str,
+    pub kind: ErrorType,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub param: Option<String>,
@@ -44,11 +62,11 @@ pub struct CouncilError {
 }
 
 impl CouncilError {
-    fn new(status: u16, kind: &'static str, message: impl Into<String>) -> Self {
+    fn new(status: u16, kind: ErrorType, message: impl Into<String>) -> Self {
         Self { status, kind, message: message.into(), param: None, head: None }
     }
     pub fn bad_request(message: impl Into<String>) -> Self {
-        Self::new(400, "invalid_request_error", message)
+        Self::new(400, ErrorType::InvalidRequest, message)
     }
     pub fn param(mut self, param: impl Into<String>) -> Self {
         self.param = Some(param.into());
@@ -59,19 +77,39 @@ impl CouncilError {
         self
     }
     pub fn not_found(message: impl Into<String>) -> Self {
-        Self::new(404, "not_found_error", message)
+        Self::new(404, ErrorType::NotFound, message)
     }
     pub fn too_large(message: impl Into<String>, param: &str) -> Self {
-        Self::new(413, "request_too_large", message).param(param)
+        Self::new(413, ErrorType::TooLarge, message).param(param)
     }
     /// `If-Match` named a head the context does not have.
     pub fn precondition_failed(current_head: &str) -> Self {
-        Self::new(412, "precondition_failed", "the context's head is not the one If-Match named")
+        Self::new(412, ErrorType::HeadMismatch, "the context's head is not the one If-Match named")
             .head(current_head)
     }
     /// A decision's `at` names a snapshot the server no longer holds.
     pub fn snapshot_gone(current_head: &str) -> Self {
-        Self::new(409, "conflict_error", "the snapshot is no longer held").head(current_head)
+        Self::new(409, ErrorType::SnapshotGone, "the snapshot is no longer held").head(current_head)
+    }
+    /// `429`: the server is busy; a client may retry.
+    pub fn busy(message: impl Into<String>) -> Self {
+        Self::new(429, ErrorType::Busy, message)
+    }
+    /// `503`: the server is stopped or shutting down.
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self::new(503, ErrorType::Unavailable, message)
+    }
+    /// `504`: `timeout_ms` passed; no partial answer is returned.
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self::new(504, ErrorType::Timeout, message)
+    }
+    /// `507`: a pin would pass the pin budget.
+    pub fn pin_budget(message: impl Into<String>) -> Self {
+        Self::new(507, ErrorType::PinBudget, message)
+    }
+    /// `500`: ours, not the client's.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(500, ErrorType::Internal, message)
     }
     pub fn to_body(&self) -> Value {
         serde_json::json!({ "error": self })
@@ -125,6 +163,9 @@ pub fn parse_context_id(id: &str) -> Result<&str> {
 /// What this server holds to; `GET /council/v1/identity` reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Limits {
+    /// The longest context with its spec layer and case: the engine's own
+    /// context limit, so there is no default for it.
+    pub context_tokens: usize,
     pub contexts_per_decision: usize,
     pub questions_per_spec: usize,
     pub choice_options: usize,
@@ -134,9 +175,12 @@ pub struct Limits {
     pub default_timeout_ms: u64,
 }
 
-impl Default for Limits {
-    fn default() -> Self {
+impl Limits {
+    /// This server's limits for an engine whose context holds
+    /// `context_tokens`.
+    pub fn new(context_tokens: usize) -> Self {
         Self {
+            context_tokens,
             contexts_per_decision: crate::opinion_api::MAX_CONTEXTS,
             questions_per_spec: 16,
             choice_options: 255,
@@ -194,6 +238,14 @@ pub struct ContextBody {
     pub pin: Option<bool>,
     #[serde(default)]
     pub dry_run: bool,
+    /// Tolerated and ignored: contract 0.2.5's `persist`. This server holds
+    /// no records across a restart and does not list the `persist`
+    /// capability, so every context is as `persist: false` says; accepting
+    /// the field keeps a client that sends it from a 400. A deliberate
+    /// softening of the contract's "a capability the request needs must be
+    /// declared" rule, by Amy's decision on 2026-10-07.
+    #[serde(default)]
+    pub persist: Option<bool>,
     /// Held specs whose layers are rebuilt before the answer: up to 16, distinct.
     #[serde(default)]
     pub warm: Vec<String>,
@@ -758,6 +810,7 @@ mod tests {
             turns,
             pin: None,
             dry_run: false,
+            persist: None,
             warm: vec![],
         }
     }
@@ -858,7 +911,7 @@ mod tests {
 
     #[test]
     fn a_context_body_refuses_what_the_contract_refuses() {
-        let limits = Limits::default();
+        let limits = limits();
         assert!(body(Some("s"), vec![]).validate(&limits).is_ok());
         assert!(body(None, vec![]).validate(&limits).is_err());
         let mut b = body(Some("s"), vec![Turn {
@@ -898,7 +951,7 @@ mod tests {
 
     #[test]
     fn a_good_spec_parses_and_keeps_question_order() {
-        let spec = CouncilSpec::parse(&spec_json(), &Limits::default()).unwrap();
+        let spec = CouncilSpec::parse(&spec_json(), &limits()).unwrap();
         let ids: Vec<&str> = spec.questions.iter().map(SpecQuestion::id).collect();
         assert_eq!(ids, ["effect", "undo", "verdict", "novel"]);
         assert_eq!(spec.questions[1].labels(), ["0", "1", "2"]);
@@ -908,7 +961,7 @@ mod tests {
 
     #[test]
     fn a_bad_spec_is_a_400_that_says_which_rule() {
-        let limits = Limits::default();
+        let limits = limits();
         let mutate = |f: &dyn Fn(&mut Value)| {
             let mut v = spec_json();
             f(&mut v);
@@ -1022,7 +1075,7 @@ mod tests {
 
     #[test]
     fn answers_serialize_in_option_order_not_key_order() {
-        let spec = CouncilSpec::parse(&spec_json(), &Limits::default()).unwrap();
+        let spec = CouncilSpec::parse(&spec_json(), &limits()).unwrap();
         let verdict = read_answer(&spec.questions[2], &[-3.0, -0.105, -3.0]).unwrap();
         let json = serde_json::to_string(&verdict).unwrap();
         assert!(json.starts_with(r#"{"type":"choice","choice":"ask","#), "{json}");
@@ -1037,7 +1090,7 @@ mod tests {
 
     #[test]
     fn a_score_is_the_probability_weighted_level_number() {
-        let spec = CouncilSpec::parse(&spec_json(), &Limits::default()).unwrap();
+        let spec = CouncilSpec::parse(&spec_json(), &limits()).unwrap();
         let p = [0.5f64, 0.25, 0.25];
         let lp: Vec<f64> = p.iter().map(|x| x.ln()).collect();
         match read_answer(&spec.questions[1], &lp).unwrap() {
@@ -1052,7 +1105,7 @@ mod tests {
 
     #[test]
     fn a_noul_is_the_probability_of_yes_and_carries_no_confidence() {
-        let spec = CouncilSpec::parse(&spec_json(), &Limits::default()).unwrap();
+        let spec = CouncilSpec::parse(&spec_json(), &limits()).unwrap();
         let answer = read_answer(&spec.questions[3], &[(0.8f64).ln(), (0.2f64).ln()]).unwrap();
         let json = serde_json::to_value(&answer).unwrap();
         assert!((json["noul"].as_f64().unwrap() - 0.8).abs() < 1e-12);
@@ -1110,17 +1163,75 @@ mod tests {
 
     // ---- errors
 
+    fn limits() -> Limits {
+        Limits::new(4096)
+    }
+
     #[test]
     fn an_error_body_is_the_contracts() {
         let e = CouncilError::precondition_failed("snap:abc");
         assert_eq!(e.status, 412);
         assert_eq!(
             e.to_body(),
-            json!({"error": {"type": "precondition_failed",
+            json!({"error": {"type": "head_mismatch",
                              "message": "the context's head is not the one If-Match named",
                              "head": "snap:abc"}})
         );
         let e = CouncilError::bad_request("x").param("turns[0]");
         assert_eq!(e.to_body()["error"]["param"], "turns[0]");
+    }
+
+    /// The contract's `error.type` enum (kaijutsu `council-api.openapi.yaml`;
+    /// its typed client decodes exactly these and fails on any other).
+    const CONTRACT_ERROR_TYPES: [&str; 10] = [
+        "invalid_request", "not_found", "snapshot_gone", "head_mismatch", "too_large",
+        "busy", "unavailable", "timeout", "pin_budget", "internal",
+    ];
+
+    #[test]
+    fn every_error_type_is_one_the_contract_names() {
+        let errors = [
+            CouncilError::bad_request("x"),
+            CouncilError::not_found("x"),
+            CouncilError::too_large("x", "turns"),
+            CouncilError::precondition_failed("snap:abc"),
+            CouncilError::snapshot_gone("snap:abc"),
+        ];
+        for e in errors {
+            let kind = e.to_body()["error"]["type"].as_str().unwrap().to_owned();
+            assert!(CONTRACT_ERROR_TYPES.contains(&kind.as_str()), "{} is not a contract error type: {kind}", e.status);
+        }
+        let by_status = |e: CouncilError| (e.status, e.to_body()["error"]["type"].as_str().unwrap().to_owned());
+        assert_eq!(by_status(CouncilError::precondition_failed("h")), (412, "head_mismatch".into()));
+        assert_eq!(by_status(CouncilError::snapshot_gone("h")), (409, "snapshot_gone".into()));
+        assert_eq!(by_status(CouncilError::too_large("x", "p")), (413, "too_large".into()));
+    }
+
+    /// `persist` is tolerated and not implemented: a `PUT` carrying it is
+    /// accepted (not a 400 for an unknown field), and it changes nothing the
+    /// diff or the validation sees. We do not list the `persist` capability.
+    #[test]
+    fn a_put_with_persist_is_tolerated_and_changes_nothing() {
+        let with: ContextBody = serde_json::from_value(json!({
+            "system": "s", "turns": [{"role": "user", "content": "a", "snap": true}], "persist": false
+        }))
+        .expect("persist is tolerated");
+        let without: ContextBody = serde_json::from_value(json!({
+            "system": "s", "turns": [{"role": "user", "content": "a", "snap": true}]
+        }))
+        .unwrap();
+        with.validate(&limits()).unwrap();
+        let held = (&without.system, without.turns.as_slice());
+        assert_eq!(plan_put(Some(held), &with), plan_put(Some(held), &without));
+        // Still strict about everything else.
+        assert!(serde_json::from_value::<ContextBody>(json!({"system": "s", "persits": true})).is_err());
+    }
+
+    #[test]
+    fn limits_carry_the_context_tokens_the_contract_requires() {
+        let v = serde_json::to_value(limits()).unwrap();
+        for required in ["context_tokens", "state_bytes", "contexts_per_decision", "choice_options", "default_timeout_ms"] {
+            assert!(v.get(required).is_some(), "limits lacks {required}: {v}");
+        }
     }
 }
