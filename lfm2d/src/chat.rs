@@ -151,6 +151,14 @@ pub enum TemplateValue {
 }
 
 impl TemplateValue {
+    /// This value as JSON text the way the template's `tojson` writes it:
+    /// members in the order given, `", "` and `": "` as separators.
+    pub fn to_json(&self) -> String {
+        let mut out = String::new();
+        tojson(self, &mut out);
+        out
+    }
+
     /// A map's value under `key`; `None` for a missing key or a non-map.
     pub fn get(&self, key: &str) -> Option<&TemplateValue> {
         match self {
