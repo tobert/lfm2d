@@ -24,10 +24,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::{Value, json};
 
-use crate::adjudicator::Handle;
+use crate::adjudicator::{AdjudicatorInfo, Handle};
 use crate::council::{CouncilError, CouncilSpec, Limits, is_spec_id, spec_id};
-use crate::council_compile::compile;
-use crate::council_wire::HeldSpec;
+use crate::council_compile::{compile, template};
+use crate::council_wire::{Capability, HeldSpec, ServerIdentity};
 
 /// A spec body larger than this is a `413`. The engine's own spec upload
 /// holds the same bound.
@@ -54,13 +54,38 @@ struct Held {
 struct Api {
     handle: Handle,
     limits: Limits,
+    identity: ServerIdentity,
     held: Mutex<BTreeMap<String, Held>>,
 }
 
-/// The `/council/v1` routes, over the engine behind `handle`.
-pub fn router(handle: Handle, limits: Limits) -> Router {
-    let api = Arc::new(Api { handle, limits, held: Mutex::new(BTreeMap::new()) });
+/// What this server is, as `GET /council/v1/identity` reports it. The
+/// capabilities are the ones it has: `describe` (a text question is the
+/// engine's describe step) and `leave_one_out` (the pool computes it).
+/// `engine` is information only (Amy, 2026-10-07: nothing gates on it) and
+/// names the daemon's version, never a commit.
+fn identity(info: &AdjudicatorInfo, limits: Limits) -> ServerIdentity {
+    ServerIdentity {
+        model: info.model_id.clone(),
+        aliases: Vec::new(),
+        weight_hash: info.weight_hash.clone(),
+        tokenizer_hash: info.tokenizer_hash.clone(),
+        template: template(),
+        engine: format!("lfm2d/{}", env!("CARGO_PKG_VERSION")),
+        device: Some(info.device.clone()),
+        text_stop: Some("the closing quote of the field's JSON string".into()),
+        limits,
+        capabilities: vec![Capability::Describe, Capability::LeaveOneOut],
+    }
+}
+
+/// The `/council/v1` routes, over the engine behind `handle`. `info` is that
+/// engine's own, so the context limit the identity reports is the one it
+/// enforces.
+pub fn router(handle: Handle, info: AdjudicatorInfo) -> Router {
+    let limits = Limits::new(info.context_limit);
+    let api = Arc::new(Api { handle, limits, identity: identity(&info, limits), held: Mutex::new(BTreeMap::new()) });
     Router::new()
+        .route("/council/v1/identity", get(get_identity))
         .route(
             "/council/v1/specs",
             get(list_specs)
@@ -134,6 +159,10 @@ async fn post_spec(State(api): State<Arc<Api>>, body: Body) -> Result<Response, 
     let body = api.held_spec(&id, &held);
     api.held.lock().expect("held lock poisoned").insert(id, held);
     Ok(axum::Json(body).into_response())
+}
+
+async fn get_identity(State(api): State<Arc<Api>>) -> Response {
+    axum::Json(api.identity.clone()).into_response()
 }
 
 async fn list_specs(State(api): State<Arc<Api>>) -> Response {

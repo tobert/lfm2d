@@ -133,7 +133,7 @@ struct Harness {
 fn harness(capacity: usize, boot: Vec<SpecMenuEntry>) -> Harness {
     let fake = Fake(Arc::new(Mutex::new(Inner { boot: boot.clone(), uploaded: VecDeque::new(), capacity, loads: 0, unregisters: 0 })));
     let handle = Handle::spawn(fake.clone(), (&info()).into()).with_menu(boot);
-    Harness { router: lfm2d::council_api::router(handle, Limits::new(4096)), fake }
+    Harness { router: lfm2d::council_api::router(handle, (&info()).into()), fake }
 }
 
 async fn send(router: &axum::Router, request: Request<Body>) -> (u16, Value, String) {
@@ -385,4 +385,42 @@ async fn an_engine_refusal_is_a_400_carrying_the_engines_words() {
     assert!(body["error"]["message"].as_str().unwrap().contains(REFUSE), "{body}");
     let (_, list, _) = get(&h.router, "/council/v1/specs").await;
     assert_eq!(list, json!({"specs": []}), "a refused spec is not held");
+}
+
+// ---- identity
+
+#[tokio::test]
+async fn identity_is_the_contracts_and_says_what_this_server_is() {
+    let h = harness(4, vec![]);
+    let (status, id, _) = get(&h.router, "/council/v1/identity").await;
+    assert_eq!(status, 200, "{id}");
+    assert_valid("ServerIdentity", &id);
+    assert_eq!(id["model"], "fixture");
+    assert_eq!((id["weight_hash"].as_str(), id["tokenizer_hash"].as_str()), (Some("hash"), Some("tok")));
+    assert_eq!(id["device"], "cpu");
+    assert_eq!(id["template"], template(), "the identity and a held spec name the same rendering");
+    assert_eq!(id["limits"]["context_tokens"], 4096, "the engine's own context limit");
+    assert_eq!(id["limits"]["contexts_per_decision"], 8);
+    assert!(id["engine"].as_str().unwrap().starts_with("lfm2d/"), "{id}");
+    assert!(id["text_stop"].as_str().is_some_and(|s| !s.is_empty()), "describe is listed, so text_stop is");
+}
+
+#[tokio::test]
+async fn identity_lists_only_the_capabilities_this_server_has() {
+    let h = harness(4, vec![]);
+    let (_, id, _) = get(&h.router, "/council/v1/identity").await;
+    assert_eq!(id["capabilities"], json!(["describe", "leave_one_out"]));
+    // Not claimed: nothing here parks, warms, dry-runs or persists yet.
+    for not in ["park", "warm", "dry_run", "persist"] {
+        assert!(!id["capabilities"].as_array().unwrap().iter().any(|c| c == not), "{not}");
+    }
+}
+
+#[tokio::test]
+async fn identity_does_not_change_between_reads() {
+    let h = harness(4, vec![]);
+    let (_, a, _) = get(&h.router, "/council/v1/identity").await;
+    post(&h.router, &gate("gate")).await;
+    let (_, b, _) = get(&h.router, "/council/v1/identity").await;
+    assert_eq!(a, b);
 }

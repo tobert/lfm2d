@@ -163,7 +163,7 @@ async fn main() {
     let worker = WorkerHandle::spawn_crash_on_panic(engine).with_log_input_hash(cli.log_input_hash);
     let mut worker_exits = vec![worker.exit_signal()];
     let mut adjudicator_stop = None;
-    let mut council_limits = None;
+    let mut council_info = None;
     let adjudicator = adjudicator.map(|model| {
         let info = model.info();
         let menu = model.menu();
@@ -174,7 +174,7 @@ async fn main() {
         for entry in &menu {
             tracing::info!(spec=%entry.spec, id=%entry.id, snapshot_id=%entry.snapshot_id, "lfm2d: boot opinion spec prefix ready");
         }
-        council_limits = Some(lfm2d::council::Limits::new(info.context_limit));
+        council_info = Some(info.clone());
         let handle = lfm2d::adjudicator::Handle::spawn(model, info).with_menu(menu);
         worker_exits.push(handle.exit_signal());
         adjudicator_stop = Some(handle.stop_signal());
@@ -194,8 +194,8 @@ async fn main() {
     router = router.merge(lfm2d::tokenize_api::router(Arc::new(tokenizers)));
     if let Some(handle) = adjudicator {
         // `/council/v1`: the council contract, over the same engine.
-        if let Some(limits) = council_limits {
-            router = router.merge(lfm2d::council_api::router(handle.clone(), limits));
+        if let Some(info) = council_info {
+            router = router.merge(lfm2d::council_api::router(handle.clone(), info));
         }
         router = router.merge(lfm2d::adjudicator::router(handle, cli.probe_route_enabled()));
     }
