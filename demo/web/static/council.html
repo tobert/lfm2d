@@ -362,7 +362,7 @@ function renderTab() {
   v.style.setProperty("--c", t.color); $("tabhead").style.setProperty("--c", t.color);
   $("tabname").textContent = t.name;
   $("preamble").textContent = t.preamble || "(no role text: click to add one)";
-  $("ctxline").textContent = `context ${t.context ? t.context.slice(0, 12) : "—"} · ${t.n_tokens.toLocaleString()} tokens pinned · prefilled in ${Math.round(t.pin_ms)} ms`
+  $("ctxline").textContent = `context ${t.context ? t.context.slice(0, 12) : "—"} · ${t.n_tokens.toLocaleString()} tokens pinned (${t.cached_tokens.toLocaleString()} kept, ${t.fed_tokens.toLocaleString()} fed) · held in ${Math.round(t.pin_ms)} ms`
     + (t.chat ? " · its replies' chat is held: an ask continues it" : "");
   $("incl").className = "switch" + (t.include ? " on" : "");
   $("swatch").style.setProperty("--c", t.color);
@@ -658,7 +658,7 @@ function renderDetail() {
   const pr = el("div", "barrow pool"); pr.append(el("span", "who", "pooled"), barEl(r.pooled.probs, names), el("span", "mass", r.pool.method));
   bars.append(pr); sec.append(bars); D.append(sec);
   const foot = el("div", "foot");
-  const ctxms = r.per.map((p) => `${p.name} ${Math.round((p.ms.prefill_ms || 0) + (p.ms.describe_ms || 0) + (p.ms.read_ms || 0))}`).join(" · ");
+  const ctxms = r.per.map((p) => `${p.name} ${Math.round(p.ms.total || 0)}`).join(" · ");
   foot.append(el("span", "", `${plural(r.per.length, "context")} · ${Math.round(r.ms)} ms · one read (${ctxms} ms)`));
   const rb = el("button", "", "replay");
   rb.onclick = async () => { rb.disabled = true; try { await api(`/decisions/${d.id}/replay`); } finally { rb.disabled = false; } };
