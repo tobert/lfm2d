@@ -48,6 +48,12 @@ struct Store {
     items: Vec<Item>,
     capacity: usize,
     puts: usize,
+    /// The next this-many `council_unpin` calls fail, as a full queue would.
+    unpin_failures: usize,
+    /// At most this many pinned items: a pin past it is refused.
+    pin_limit: Option<usize>,
+    /// How long a build takes, so concurrent requests overlap.
+    put_delay_ms: u64,
 }
 #[derive(Clone)]
 struct Fake(Arc<Mutex<Store>>);
@@ -107,6 +113,10 @@ impl Generator for Fake {
     fn council_put(&mut self, request: &BuildRequest, at: &dyn YieldPoint<Self>) -> Result<BuildOutcome, Failure> {
         request.validate().map_err(Failure::BadRequest)?;
         at.check()?;
+        let delay = self.0.lock().unwrap().put_delay_ms;
+        if delay > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
         let mut store = self.0.lock().unwrap();
         let mut ends = Vec::new();
         let mut total = 0;
@@ -118,10 +128,12 @@ impl Generator for Fake {
         let base = request.hold_after.iter().rev().copied().find(|&b| store.find(&id_at(b)).is_some());
         let kept = base.map_or(0, |b| ends[b]);
         let head = request.segments.len() - 1;
+        let mut published = Vec::new();
         if !request.dry_run {
             store.puts += 1;
             for &b in request.hold_after.iter().filter(|&&b| base.is_none_or(|k| b > k)) {
                 store.insert(id_at(b), ends[b])?;
+                published.push(id_at(b));
             }
             // A held boundary is used again: move it to the young end.
             if let Some(at) = store.items.iter().position(|i| i.id == id_at(head)) {
@@ -130,6 +142,12 @@ impl Generator for Fake {
             }
             if request.pin == Some(true) {
                 let id = id_at(head);
+                let others = store.items.iter().filter(|i| i.pinned && i.id != id).count();
+                if store.pin_limit.is_some_and(|limit| others >= limit) {
+                    // A refusal changes nothing: what this request built goes.
+                    store.items.retain(|i| !published.contains(&i.id));
+                    return Err(Failure::InsufficientStorage("the pin budget is spent".into()));
+                }
                 store.items.iter_mut().find(|i| i.id == id).unwrap().pinned = true;
             }
         }
@@ -160,6 +178,10 @@ impl Generator for Fake {
     }
     fn council_unpin(&mut self, id: &str) -> Result<bool, Failure> {
         let mut store = self.0.lock().unwrap();
+        if store.unpin_failures > 0 {
+            store.unpin_failures -= 1;
+            return Err(Failure::Internal("the queue is full".into()));
+        }
         Ok(store.items.iter_mut().find(|i| i.id == id).map(|i| i.pinned = false).is_some())
     }
 }
@@ -172,9 +194,20 @@ struct Harness {
 }
 
 fn harness(capacity: usize) -> Harness {
-    let fake = Fake(Arc::new(Mutex::new(Store { items: vec![], capacity, puts: 0 })));
+    harness_with(capacity, lfm2d::council::Limits::new(100_000))
+}
+
+fn harness_with(capacity: usize, limits: lfm2d::council::Limits) -> Harness {
+    let fake = Fake(Arc::new(Mutex::new(Store {
+        items: vec![],
+        capacity,
+        puts: 0,
+        unpin_failures: 0,
+        pin_limit: None,
+        put_delay_ms: 0,
+    })));
     let handle = Handle::spawn(fake.clone(), (&info()).into()).with_menu(vec![]);
-    Harness { router: lfm2d::council_api::router(handle, (&info()).into()), fake }
+    Harness { router: lfm2d::council_api::router_with_limits(handle, (&info()).into(), limits), fake }
 }
 
 type Reply = (u16, Value, String);
@@ -577,4 +610,124 @@ async fn an_oversized_body_is_a_413() {
     let reply = put(&h.router, A, &big).await;
     assert_error(&reply, 413, "too_large");
     assert_eq!(reply.1["error"]["param"], "body");
+}
+
+// ------------------------------------------------------- concurrency, bounds
+
+fn engine_pinned_ids(h: &Harness) -> Vec<String> {
+    h.fake.0.lock().unwrap().items.iter().filter(|i| i.pinned).map(|i| i.id.clone()).collect()
+}
+
+/// `If-Match` makes a PUT conditional. Two PUTs that both name the head they
+/// saw cannot both be accepted: the second sees the first's head and is a 412.
+#[tokio::test]
+async fn two_puts_naming_the_same_head_cannot_both_win() {
+    let h = harness(64);
+    let (_, first, _) = put(&h.router, A, &ctx("Judge.", &[turn("a", true)])).await;
+    let head = first["head"].as_str().unwrap().to_owned();
+    h.fake.0.lock().unwrap().put_delay_ms = 80;
+    let (bx, by) = (ctx("Judge.", &[turn("a", true), turn("x", true)]), ctx("Judge.", &[turn("a", true), turn("y", true)]));
+    let guard = [("if-match", head.as_str())];
+    let (x, y) = tokio::join!(put_with(&h.router, A, &bx, &guard), put_with(&h.router, A, &by, &guard));
+    let mut statuses = [x.0, y.0];
+    statuses.sort();
+    assert_eq!(statuses, [200, 412], "one wins, the other sees the winner's head: {} / {}", x.1, y.1);
+    let winner = if x.0 == 200 { &x } else { &y };
+    assert_eq!(get(&h.router, A).await.1["head"], winner.1["head"]);
+}
+
+/// The route's pin counts and the engine's pins stay in step when a release and
+/// a pin on the same head overlap.
+#[tokio::test]
+async fn a_release_and_a_pin_on_one_head_leave_the_engine_pinned_as_the_records_say() {
+    for _ in 0..8 {
+        let h = harness(64);
+        let mut pinned = ctx("Judge.", &[turn("a", true)]);
+        pinned["pin"] = json!(true);
+        put(&h.router, A, &pinned).await;
+        h.fake.0.lock().unwrap().put_delay_ms = 20;
+        let mut release = ctx("Judge.", &[turn("a", true)]);
+        release["pin"] = json!(false);
+        // A lets go of H while B takes it: whichever order, B holds the pin.
+        let (a, b) = tokio::join!(put(&h.router, A, &release), put(&h.router, B, &pinned));
+        assert_eq!((a.0, b.0), (200, 200), "{} / {}", a.1, b.1);
+        assert_eq!(engine_pinned_ids(&h).len(), 1, "B pins the head, so the engine does");
+        assert_eq!(get(&h.router, B).await.1["pinned"], true);
+        delete(&h.router, B).await;
+        assert!(engine_pinned_ids(&h).is_empty(), "and releases it when B lets go");
+    }
+}
+
+#[tokio::test]
+async fn an_unpin_that_fails_is_retried_not_forgotten() {
+    let h = harness(64);
+    let mut pinned = ctx("Judge.", &[turn("a", true)]);
+    pinned["pin"] = json!(true);
+    put(&h.router, A, &pinned).await;
+    assert_eq!(engine_pinned_ids(&h).len(), 1);
+    // The release fails: the client is told it is released, and the engine still holds it.
+    h.fake.0.lock().unwrap().unpin_failures = 1;
+    let mut release = pinned.clone();
+    release["pin"] = json!(false);
+    let (status, v, _) = put(&h.router, A, &release).await;
+    assert_eq!((status, v["pinned"].as_bool()), (200, Some(false)));
+    assert_eq!(engine_pinned_ids(&h).len(), 1, "the engine was never told");
+    // The next mutation of any context tells it.
+    put(&h.router, B, &ctx("Other.", &[turn("b", true)])).await;
+    assert!(engine_pinned_ids(&h).is_empty(), "the pending release was retried");
+}
+
+#[tokio::test]
+async fn a_refused_pin_changes_nothing() {
+    let h = harness(64);
+    h.fake.0.lock().unwrap().pin_limit = Some(1);
+    let mut first = ctx("Judge.", &[turn("a", true)]);
+    first["pin"] = json!(true);
+    assert_eq!(put(&h.router, A, &first).await.0, 200);
+    let items = h.fake.0.lock().unwrap().items.len();
+    let mut second = ctx("Other.", &[turn("b", true)]);
+    second["pin"] = json!(true);
+    let reply = put(&h.router, B, &second).await;
+    assert_error(&reply, 507, "pin_budget");
+    assert_error(&get(&h.router, B).await, 404, "not_found");
+    assert_eq!(h.fake.0.lock().unwrap().items.len(), items, "what the refused build made is gone");
+    assert_eq!(engine_pinned_ids(&h).len(), 1);
+    assert_eq!(get(&h.router, A).await.1["pinned"], true, "the first pin is untouched");
+}
+
+#[tokio::test]
+async fn held_contexts_are_bounded_and_the_evicted_are_reaped_to_make_room() {
+    let mut limits = lfm2d::council::Limits::new(100_000);
+    limits.contexts_held = 2;
+    let h = harness_with(64, limits);
+    assert_eq!(put(&h.router, A, &ctx("A.", &[turn("a", true)])).await.0, 200);
+    assert_eq!(put(&h.router, B, &ctx("B.", &[turn("b", true)])).await.0, 200);
+    // A third, new context is over the bound: a 429 that says what to do.
+    let reply = put(&h.router, C, &ctx("C.", &[turn("c", true)])).await;
+    assert_error(&reply, 429, "busy");
+    assert!(reply.1["error"]["message"].as_str().unwrap().contains("DELETE"));
+    // An update to a held one is not a new context.
+    assert_eq!(put(&h.router, A, &ctx("A.", &[turn("a", true), turn("more", true)])).await.0, 200);
+    // A dry run never creates a record.
+    let mut dry = ctx("C.", &[turn("c", true)]);
+    dry["dry_run"] = json!(true);
+    assert_eq!(put(&h.router, C, &dry).await.0, 200);
+    // A delete makes room.
+    delete(&h.router, B).await;
+    assert_eq!(put(&h.router, C, &ctx("C.", &[turn("c", true)])).await.0, 200);
+}
+
+#[tokio::test]
+async fn at_the_bound_a_context_the_engine_evicted_makes_room() {
+    let mut limits = lfm2d::council::Limits::new(100_000);
+    limits.contexts_held = 2;
+    // A store of four: B's updates push A's snapshots out while A's record lingers.
+    let h = harness_with(4, limits);
+    put(&h.router, A, &ctx("A.", &[turn("a", true)])).await;
+    put(&h.router, B, &ctx("B.", &[turn("b1", true)])).await;
+    put(&h.router, B, &ctx("B.", &[turn("b2", true)])).await;
+    put(&h.router, B, &ctx("B.", &[turn("b3", true)])).await;
+    // A is dead in the engine but still has a record; a new context reaps it.
+    assert_eq!(put(&h.router, C, &ctx("C.", &[turn("c", true)])).await.0, 200);
+    assert_error(&get(&h.router, A).await, 404, "not_found");
 }

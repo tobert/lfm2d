@@ -2612,7 +2612,10 @@ impl Generator for Adjudicator {
         if let Some(pin) = request.pin
             && let Err(e) = self.chats.set_pinned(&head_id, pin)
         {
-            // A refusal changes nothing: what this request built goes.
+            // A refusal changes nothing: what this request built goes. Every id
+            // in `published` was absent when this build began and nothing but a
+            // `Generative` job publishes into `chats`, which is never served at
+            // this job's pauses, so none of them can be another job's.
             for id in &published {
                 self.chats.remove(id);
                 self.states.forget_checkpoint(id);

@@ -13,7 +13,36 @@
 //! lifetime and may evict it; this module checks the engine's menu on every
 //! read and says a spec is gone when the engine no longer holds it, rather
 //! than serving a spec it could not read.
-use std::collections::{BTreeMap, HashMap, HashSet};
+//!
+//! Mutations of the context records, and of the spec records, each run one
+//! at a time (`context_ops`, `spec_ops`): a mutation decides under a lock,
+//! calls the engine, and then writes, and two interleaving would let a stale
+//! pin release clear a pin another request had just taken, or let two
+//! `If-Match` writers both pass. Reads (`GET`, decisions) do not take them.
+//!
+//! **Where this server departs from the contract** (the wire shapes are
+//! exact and checked against the vendored schemas; these are behaviours):
+//!
+//! - *Control text is refused, not read as text.* The contract tokenizes a
+//!   context's, a spec's or a state's text with special tokens off, never
+//!   refuses it, and reports each hit in `signals.control_text`. Here the
+//!   engine's renderers refuse it with a `400`, and `signals.control_text`
+//!   is always empty. [`crate::council::control_pieces`] is the start of the
+//!   other design and is not wired in.
+//! - `identity.engine` is the daemon's version, not a content hash of the
+//!   engine and its answer code. Nothing here gates on it.
+//! - `persist` is tolerated and ignored; `warm` and `park` are not built
+//!   (`warm` is a `400` naming it).
+//! - A decision's `at` is resolved against the context's *current* snapshot
+//!   list. A snapshot the engine still holds from an earlier version of the
+//!   context is a `409`, though the contract's wording is "no longer held".
+//! - `pool` without `contexts` is accepted and echoed; it has nothing to pool.
+//! - Held specs and held contexts are bounded (`Limits::specs_held`,
+//!   `contexts_held`): past the bound a new one is a `429 busy` that says to
+//!   `DELETE` one. The contract has no such limit.
+//! - Compile and decision deviations: `council_compile.rs`,
+//!   `council_decision.rs`.
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -87,9 +116,44 @@ struct RecordSnapshot {
 struct Contexts {
     records: HashMap<String, Record>,
     pins: HashMap<String, usize>,
+    /// Engine ids whose pin the route has let go of and the engine has not yet
+    /// been told: an unpin that failed (a full queue, a deadline) is retried
+    /// by the next mutation, never dropped, so a failure cannot leave a pin
+    /// the client believes released.
+    pending_unpin: BTreeSet<String>,
+}
+
+/// What [`Contexts::forget_if_head`] found.
+#[derive(Debug, PartialEq, Eq)]
+enum Forgot {
+    /// The record named a head the engine lacks and is gone, its pin counted off.
+    Removed,
+    /// A newer `PUT` replaced the record since the caller looked: left alone.
+    Replaced,
+    /// No such record any more.
+    Absent,
 }
 
 impl Contexts {
+    /// Forget `id`'s record, but only if it still has the head the caller
+    /// found missing in the engine. A `PUT` that landed in between has made a
+    /// different, healthy record, and removing that would discard a context
+    /// the client was just told was held.
+    fn forget_if_head(&mut self, id: &str, head: &str) -> Forgot {
+        match self.records.get(id) {
+            None => Forgot::Absent,
+            Some(record) if record.head != head => Forgot::Replaced,
+            Some(_) => {
+                if let Some(record) = self.records.remove(id)
+                    && record.pinned
+                {
+                    self.unpin(&record.head);
+                }
+                Forgot::Removed
+            }
+        }
+    }
+
     /// Count a pin on `id`.
     fn pin(&mut self, id: &str) {
         *self.pins.entry(id.to_owned()).or_default() += 1;
@@ -126,6 +190,16 @@ struct Api {
     identity: ServerIdentity,
     held: Mutex<BTreeMap<String, Held>>,
     contexts: Mutex<Contexts>,
+    /// One mutation of the context records at a time. Each mutation decides
+    /// under `contexts`, calls the engine, and then writes; two of them
+    /// interleaving would let a stale release clear a pin another had just
+    /// taken, or let two `If-Match` writers both pass. The engine is serial
+    /// anyway, so this costs nothing it was not already costing.
+    context_ops: tokio::sync::Mutex<()>,
+    /// The same for specs: a `POST` registers with the engine and then
+    /// records, and a `DELETE` of a spec sharing its compiled prompt must not
+    /// land between the two.
+    spec_ops: tokio::sync::Mutex<()>,
 }
 
 /// What this server is, as `GET /council/v1/identity` reports it. The
@@ -155,8 +229,20 @@ fn identity(info: &AdjudicatorInfo, limits: Limits) -> ServerIdentity {
 /// enforces.
 pub fn router(handle: Handle, info: AdjudicatorInfo) -> Router {
     let limits = Limits::new(info.context_limit);
-    let api = Arc::new(Api { handle, limits, identity: identity(&info, limits), held: Mutex::new(BTreeMap::new()),
+    router_with_limits(handle, info, limits)
+}
+
+/// [`router`] with this server's limits chosen, not derived: for a test that
+/// needs a small bound, or a deployment that sizes them.
+pub fn router_with_limits(handle: Handle, info: AdjudicatorInfo, limits: Limits) -> Router {
+    let api = Arc::new(Api {
+        handle,
+        limits,
+        identity: identity(&info, limits),
+        held: Mutex::new(BTreeMap::new()),
         contexts: Mutex::new(Contexts::default()),
+        context_ops: tokio::sync::Mutex::new(()),
+        spec_ops: tokio::sync::Mutex::new(()),
     });
     Router::new()
         .route("/council/v1/identity", get(get_identity))
@@ -228,6 +314,18 @@ async fn post_spec(State(api): State<Arc<Api>>, body: Body) -> Result<Response, 
     let spec = CouncilSpec::parse(&submitted, &api.limits)?;
     let id = spec_id(&submitted);
     let compiled = compile(&spec)?;
+    let _op = api.spec_ops.lock().await;
+    {
+        // Held specs are bounded: what the engine evicted is forgotten first.
+        let mut held = api.held.lock().expect("held lock poisoned");
+        api.prune(&mut held);
+        if !held.contains_key(&id) && held.len() >= api.limits.specs_held {
+            return Err(CouncilError::busy(format!(
+                "this server holds {} specs, its limit: DELETE one first",
+                held.len()
+            )));
+        }
+    }
     let prompt = serde_json::to_vec(&compiled.prompt)
         .map_err(|e| CouncilError::internal(format!("the compiled spec does not serialize: {e}")))?;
     let (_, entry) = match api.handle.register(prompt).await {
@@ -262,6 +360,7 @@ async fn get_spec(State(api): State<Arc<Api>>, Path(id): Path<String>) -> Result
 
 #[allow(clippy::result_large_err)]
 async fn delete_spec(State(api): State<Arc<Api>>, Path(id): Path<String>) -> Result<Response, CouncilError> {
+    let _op = api.spec_ops.lock().await;
     let (engine_id, shared) = {
         let mut held = api.held.lock().expect("held lock poisoned");
         api.prune(&mut held);
@@ -324,6 +423,9 @@ async fn put_context(
         return Err(CouncilError::bad_request("warm needs the warm capability, which this server does not list")
             .param("warm"));
     }
+    // From here the records and the engine change together: one at a time.
+    let _op = api.context_ops.lock().await;
+    retry_pending(&api).await;
     // `If-Match`: the head the client believes the context has.
     let (current, was_pinned) = {
         let contexts = api.contexts.lock().expect("contexts lock poisoned");
@@ -340,6 +442,9 @@ async fn put_context(
             Some(head) => return Err(CouncilError::precondition_failed(head.as_str())),
             None => return Err(CouncilError::precondition_failed_missing()),
         }
+    }
+    if current.is_none() && !put.dry_run {
+        ensure_room(&api).await?;
     }
     let segments = render_segments(&put)?;
     let hold_after = boundaries(&put);
@@ -390,7 +495,7 @@ async fn put_context(
     releases.sort();
     releases.dedup();
     for engine_id in releases {
-        let _ = api.handle.council_unpin(engine_id).await;
+        release(&api, engine_id).await;
     }
     let snapshots = outcome
         .snapshots
@@ -420,6 +525,68 @@ async fn put_context(
     Ok(axum::Json(result).into_response())
 }
 
+/// Tell the engine to let go of a pin the records no longer hold. A failure
+/// is remembered and retried by the next mutation ([`retry_pending`]).
+async fn release(api: &Api, engine_id: String) {
+    match api.handle.council_unpin(engine_id.clone()).await {
+        Ok(_) => {
+            api.contexts.lock().expect("contexts lock poisoned").pending_unpin.remove(&engine_id);
+        }
+        Err(refusal) => {
+            tracing::warn!(status = %refusal.status(), "council: could not release a pin; it will be retried");
+            api.contexts.lock().expect("contexts lock poisoned").pending_unpin.insert(engine_id);
+        }
+    }
+}
+
+/// Retry the releases that failed. A pin someone has taken again since is not
+/// released. Call with `context_ops` held.
+async fn retry_pending(api: &Api) {
+    let pending: Vec<String> = {
+        let mut contexts = api.contexts.lock().expect("contexts lock poisoned");
+        let Contexts { pins, pending_unpin, .. } = &mut *contexts;
+        pending_unpin.retain(|id| !pins.contains_key(id));
+        pending_unpin.iter().cloned().collect()
+    };
+    for engine_id in pending {
+        release(api, engine_id).await;
+    }
+}
+
+/// Drop the records whose head the engine no longer holds (evicted), and
+/// say whether there is now room for one more. Call with `context_ops` held.
+#[allow(clippy::result_large_err)]
+async fn ensure_room(api: &Api) -> Result<(), CouncilError> {
+    let heads: Vec<(String, String)> = {
+        let contexts = api.contexts.lock().expect("contexts lock poisoned");
+        if contexts.records.len() < api.limits.contexts_held {
+            return Ok(());
+        }
+        contexts.records.iter().map(|(id, r)| (id.clone(), r.head.clone())).collect()
+    };
+    let held = match api.handle.council_inspect(heads.iter().map(|(_, head)| head.clone()).collect()).await {
+        Ok(held) => held,
+        Err(refusal) => return Err(from_engine(refusal).await),
+    };
+    let mut contexts = api.contexts.lock().expect("contexts lock poisoned");
+    for ((id, head), held) in heads.iter().zip(held) {
+        if held.is_none() && contexts.records.get(id).is_some_and(|r| r.head == *head) {
+            if let Some(record) = contexts.records.remove(id)
+                && record.pinned
+            {
+                contexts.unpin(&record.head);
+            }
+        }
+    }
+    if contexts.records.len() < api.limits.contexts_held {
+        return Ok(());
+    }
+    Err(CouncilError::busy(format!(
+        "this server holds {} contexts, its limit: DELETE one first",
+        contexts.records.len()
+    )))
+}
+
 fn context_gone(id: &str) -> CouncilError {
     CouncilError::not_found(format!("no context {id:?} is held: PUT it again")).param("id")
 }
@@ -430,41 +597,46 @@ async fn get_context(State(api): State<Arc<Api>>, Path(id): Path<String>) -> Res
     if parse_context_id(&id).is_err() {
         return Err(context_gone(&id));
     }
-    let (head, listed) = {
-        let contexts = api.contexts.lock().expect("contexts lock poisoned");
-        let record = contexts.records.get(&id).ok_or_else(|| context_gone(&id))?;
-        let listed: Vec<(String, Layer, Option<usize>)> =
-            record.snapshots.iter().map(|s| (s.engine_id.clone(), s.layer, s.turn)).collect();
-        (record.head.clone(), listed)
-    };
-    let held = match api.handle.council_inspect(listed.iter().map(|(id, ..)| id.clone()).collect()).await {
-        Ok(held) => held,
-        Err(refusal) => return Err(from_engine(refusal).await),
-    };
-    let head_held = listed.iter().zip(&held).any(|((engine_id, ..), h)| *engine_id == head && h.is_some());
-    if !head_held {
-        // The engine evicted the head: nothing here can be read any more.
-        let mut contexts = api.contexts.lock().expect("contexts lock poisoned");
-        if let Some(record) = contexts.records.remove(&id)
-            && record.pinned
-        {
-            contexts.unpin(&record.head);
+    // A PUT can replace the record while the engine is being asked about the
+    // old one: if so, ask again about the new one.
+    for _ in 0..4 {
+        let (head, listed) = {
+            let contexts = api.contexts.lock().expect("contexts lock poisoned");
+            let record = contexts.records.get(&id).ok_or_else(|| context_gone(&id))?;
+            let listed: Vec<(String, Layer, Option<usize>)> =
+                record.snapshots.iter().map(|s| (s.engine_id.clone(), s.layer, s.turn)).collect();
+            (record.head.clone(), listed)
+        };
+        let held = match api.handle.council_inspect(listed.iter().map(|(id, ..)| id.clone()).collect()).await {
+            Ok(held) => held,
+            Err(refusal) => return Err(from_engine(refusal).await),
+        };
+        let head_held = listed.iter().zip(&held).any(|((engine_id, ..), h)| *engine_id == head && h.is_some());
+        if !head_held {
+            // The engine evicted the head: nothing here can be read any more.
+            // Forget the record, but only the one that was asked about.
+            let _op = api.context_ops.lock().await;
+            let forgot = api.contexts.lock().expect("contexts lock poisoned").forget_if_head(&id, &head);
+            match forgot {
+                Forgot::Removed | Forgot::Absent => return Err(context_gone(&id)),
+                Forgot::Replaced => continue,
+            }
         }
-        return Err(context_gone(&id));
-    }
-    let mut snapshots = Vec::new();
-    let mut tokens = 0;
-    let mut pinned = false;
-    for ((engine_id, layer, turn), info) in listed.into_iter().zip(held) {
-        let Some(info) = info else { continue };
-        if engine_id == head {
-            tokens = info.tokens;
-            pinned = info.pinned;
+        let mut snapshots = Vec::new();
+        let mut tokens = 0;
+        let mut pinned = false;
+        for ((engine_id, layer, turn), info) in listed.into_iter().zip(held) {
+            let Some(info) = info else { continue };
+            if engine_id == head {
+                tokens = info.tokens;
+                pinned = info.pinned;
+            }
+            snapshots.push(snapshot_info(&RecordSnapshot { engine_id, layer, turn }, &info));
         }
-        snapshots.push(snapshot_info(&RecordSnapshot { engine_id, layer, turn }, &info));
+        let state = ContextState { id, head: wire_id(&head), tokens, pinned: Some(pinned), persist: None, snapshots };
+        return Ok(axum::Json(state).into_response());
     }
-    let state = ContextState { id, head: wire_id(&head), tokens, pinned: Some(pinned), persist: None, snapshots };
-    Ok(axum::Json(state).into_response())
+    Err(CouncilError::busy("this context is being replaced as fast as it is read: retry"))
 }
 
 #[allow(clippy::result_large_err)]
@@ -472,15 +644,17 @@ async fn delete_context(State(api): State<Arc<Api>>, Path(id): Path<String>) -> 
     if parse_context_id(&id).is_err() {
         return Err(context_gone(&id));
     }
-    let release = {
+    let _op = api.context_ops.lock().await;
+    retry_pending(&api).await;
+    let to_release = {
         let mut contexts = api.contexts.lock().expect("contexts lock poisoned");
         let record = contexts.records.remove(&id).ok_or_else(|| context_gone(&id))?;
         (record.pinned && contexts.unpin(&record.head)).then_some(record.head)
     };
     // The record and its pins go; the snapshots stay for the eviction policy,
     // so one another context shares is not lost.
-    if let Some(head) = release {
-        let _ = api.handle.council_unpin(head).await;
+    if let Some(head) = to_release {
+        release(&api, head).await;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -528,6 +702,15 @@ async fn post_decision(State(api): State<Arc<Api>>, body: Body) -> Result<Respon
     let request: DecisionRequest = serde_json::from_slice(&bytes)
         .map_err(|e| CouncilError::bad_request(format!("the body is not a decision: {e}")))?;
     let valid = request.validate(&api.identity, &api.limits)?;
+    // Accepted as the Decisions API accepts them, and logged, never rendered.
+    tracing::info!(
+        session_id = request.session_id.as_deref().unwrap_or(""),
+        user = request.user.as_deref().unwrap_or(""),
+        trace = request.trace.as_ref().map(ToString::to_string).unwrap_or_default(),
+        spec_id = %valid.spec_id,
+        contexts = valid.contexts.len(),
+        "council decision"
+    );
 
     let (spec, engine_spec) = {
         let mut held = api.held.lock().expect("held lock poisoned");
@@ -615,4 +798,41 @@ async fn post_decision(State(api): State<Arc<Api>>, body: Body) -> Result<Respon
         &reads,
     )?;
     Ok(axum::Json(response).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(head: &str, pinned: bool) -> Record {
+        Record { head: head.into(), snapshots: vec![], pinned }
+    }
+
+    #[test]
+    fn a_record_is_forgotten_only_if_it_still_has_the_head_that_was_found_missing() {
+        let mut c = Contexts::default();
+        c.records.insert("a".into(), record("old", true));
+        c.pin("old");
+        // A PUT replaced it with a healthy one while the engine was asked about "old".
+        c.records.insert("a".into(), record("new", false));
+        assert_eq!(c.forget_if_head("a", "old"), Forgot::Replaced);
+        assert_eq!(c.records["a"].head, "new", "the fresh record survives");
+        assert_eq!(c.pins.get("old"), Some(&1), "and no pin was counted off for a record not removed");
+        // The record that really lost its head is removed, and its pin counted off.
+        c.records.insert("b".into(), record("gone", true));
+        c.pin("gone");
+        assert_eq!(c.forget_if_head("b", "gone"), Forgot::Removed);
+        assert!(c.records.get("b").is_none() && !c.pins.contains_key("gone"));
+        assert_eq!(c.forget_if_head("b", "gone"), Forgot::Absent);
+    }
+
+    #[test]
+    fn a_pin_is_released_only_by_its_last_holder() {
+        let mut c = Contexts::default();
+        c.pin("h");
+        c.pin("h");
+        assert!(!c.unpin("h"), "one holder is left");
+        assert!(c.unpin("h"), "the last lets go");
+        assert!(!c.unpin("h"), "nothing to release");
+    }
 }

@@ -25,7 +25,9 @@
 //!   text written across reads, `fed_tokens` what the engine ran past what
 //!   it already held;
 //! - an object or array `state` is JSON in request order with the
-//!   template's `", "` and `": "` separators.
+//!   template's `", "` and `": "` separators;
+//! - a `state` that spells a control token is refused with a `400`, where the
+//!   contract reads it as text and reports it (see `council_api.rs`).
 use std::collections::{BTreeMap, HashSet};
 
 use serde::Deserialize;
@@ -44,6 +46,10 @@ use crate::opinion_api::{OpinionRequest, OpinionResponse};
 use crate::pool::PoolSettings;
 
 type Result<T> = std::result::Result<T, CouncilError>;
+
+/// The longest deadline a decision may ask for: the engine's own bound on an
+/// opinion read, so a number accepted here is never refused underneath.
+pub const MAX_DECISION_TIMEOUT_MS: u64 = 120_000;
 
 /// A context a decision reads after, optionally as of one of its snapshots.
 #[derive(Clone, Debug, Deserialize)]
@@ -171,8 +177,9 @@ impl DecisionRequest {
         let pool = self.pool.clone().unwrap_or_default();
         let settings = pool.settings(contexts.len().max(1))?;
         let timeout_ms = self.timeout_ms.unwrap_or(limits.default_timeout_ms);
-        if timeout_ms == 0 || timeout_ms > 600_000 {
-            return Err(CouncilError::bad_request("timeout_ms must be 1..=600000").param("timeout_ms"));
+        if timeout_ms == 0 || timeout_ms > MAX_DECISION_TIMEOUT_MS {
+            return Err(CouncilError::bad_request(format!("timeout_ms must be 1..={MAX_DECISION_TIMEOUT_MS}"))
+                .param("timeout_ms"));
         }
         Ok(Validated { spec_id, state, contexts, pool, settings, timeout_ms })
     }

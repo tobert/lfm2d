@@ -7,7 +7,11 @@
 //!   relations (a log mass of at most 0, probabilities that sum to 1, a
 //!   confidence that is `exp(mass)` times the top probability);
 //! - the text questions are written, per context, by the model;
-//! - the answer is the same whether the spec is read after a context or alone.
+//! - a decision with no contexts is a plain read of the spec;
+//! - a repeat of the same decision gives the same numbers. That is the
+//!   described-state cache answering, so it certifies the cache and the
+//!   route's determinism, not a rebuilt state: `council_contexts_real.rs`
+//!   certifies those.
 //!
 //! It prints each context's odds beside the pool: the disagreement is the
 //! feature. It certifies no accuracy: two contexts and one action are a
@@ -89,7 +93,10 @@ fn check_relations(read_answer: &Value, label: &str) {
     let mass = read_answer["mass"].as_f64().unwrap();
     assert!(mass <= 0.0, "{label}: mass {mass} is a log probability");
     let lse = logprobs.values().map(|v| v.as_f64().unwrap().exp()).sum::<f64>().ln();
-    assert!((lse - mass).abs() < 1e-9, "{label}: mass is log sum exp(logprobs)");
+    // The server reads a log mass above 0 by at most 1e-6 as f32 rounding and
+    // reports 0 (`council::MASS_NOISE`), so this holds to that, and the
+    // probabilities below hold to 1e-9 against the mass as reported.
+    assert!((lse - mass).abs() < 1e-6, "{label}: mass is log sum exp(logprobs)");
     let mut top = 0.0f64;
     let mut sum = 0.0;
     for (option, lp) in logprobs {
@@ -173,7 +180,7 @@ async fn a_council_decision_on_the_real_model() {
     assert!(plain["reads"][0]["context"].is_null());
     check_relations(&plain["reads"][0]["answers"]["verdict"], "the plain read");
 
-    // A repeat is the same numbers: replay.
+    // A repeat is the same numbers. (Served by the described-state cache: see the header.)
     let (_, again) = send(
         &router,
         "POST",

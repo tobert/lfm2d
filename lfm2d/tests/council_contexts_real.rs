@@ -3,8 +3,9 @@
 //! certifies, on one backend, that the fake-engine route tests cannot:
 //!
 //! - a build with held boundaries reaches the state a one-shot `context_create`
-//!   reaches, bit for bit (checked by probing each state), and under the
-//!   same id: the engine's content id is a function of the tokens;
+//!   reaches, bit for bit (every held boundary is probed, not only the head),
+//!   and under the same id: the engine's content id is a function of the
+//!   tokens;
 //! - an update resumes from the largest *declared* boundary already held, and
 //!   the state it reaches is the one-shot state (so the contract's "same
 //!   content, same snapshots, however it arrived" holds);
@@ -62,6 +63,30 @@ fn forget(a: &mut Adjudicator, outcome: &BuildOutcome) {
     }
 }
 
+/// Every held boundary of a build, as the probe sees it, by segment.
+fn probes(a: &Adjudicator, outcome: &BuildOutcome) -> std::collections::BTreeMap<usize, Vec<f32>> {
+    outcome
+        .snapshots
+        .iter()
+        .filter(|s| s.held)
+        .map(|s| (s.after_segment, probe(a, &s.engine_id)))
+        .collect()
+}
+
+/// A build's states are the one-shot build's, boundary by boundary: a state
+/// built by resuming must not differ at an intermediate boundary even where
+/// the head comes out right.
+fn assert_same_states(
+    expected: &std::collections::BTreeMap<usize, Vec<f32>>,
+    got: &std::collections::BTreeMap<usize, Vec<f32>>,
+    what: &str,
+) {
+    assert!(!got.is_empty(), "{what}: no held boundary to compare");
+    for (segment, probe) in got {
+        assert_eq!(expected.get(segment), Some(probe), "{what}: the state after segment {segment}");
+    }
+}
+
 fn held(a: &mut Adjudicator, outcome: &BuildOutcome) -> Vec<bool> {
     let ids: Vec<String> = outcome.snapshots.iter().map(|s| s.engine_id.clone()).collect();
     a.council_inspect(&ids).unwrap().iter().map(Option::is_some).collect()
@@ -104,6 +129,8 @@ fn a_council_build_reaches_the_one_shot_state_however_it_arrived() {
     assert_eq!(built.head().engine_id, one_shot.id, "the engine's id is a function of the tokens");
     assert_eq!(built.snapshots.len(), 4, "the system, two snap turns and the head");
     assert_eq!(held(&mut a, &built), [true; 4]);
+    let one_shot_states = probes(&a, &built);
+    assert_eq!(one_shot_states.len(), 4, "every boundary has a state to compare against");
     assert_eq!(probe(&a, &built.head().engine_id), reference, "bit for bit the one-shot state");
     let text = render_segments(&all).unwrap().concat();
     let ids = tokenizer.encode(text.as_str(), false).unwrap().get_ids().to_vec();
@@ -117,6 +144,7 @@ fn a_council_build_reaches_the_one_shot_state_however_it_arrived() {
     assert_eq!(third.fed, third.tokens - two.tokens, "only the new turn");
     assert_eq!(third.head().engine_id, one_shot.id);
     assert_eq!(probe(&a, &third.head().engine_id), reference, "resumed, bit for bit");
+    assert_same_states(&one_shot_states, &probes(&a, &third), "resumed");
 
     // 3. A dry run says what it would do and does nothing.
     a.context_delete(&third.head().engine_id).unwrap();
@@ -126,6 +154,7 @@ fn a_council_build_reaches_the_one_shot_state_however_it_arrived() {
     let real = put(&mut a, &all, None, false);
     assert_eq!((real.kept, real.fed), (dry.kept, dry.fed), "the dry run told the truth");
     assert_eq!(probe(&a, &real.head().engine_id), reference);
+    assert_same_states(&one_shot_states, &probes(&a, &real), "after a dry run");
 
     // 4. An unmarked turn that is held is still not a boundary: a body that
     // declares only the system and the head resumes from the system.
@@ -133,6 +162,7 @@ fn a_council_build_reaches_the_one_shot_state_however_it_arrived() {
     let unmarked = put(&mut a, &body(3, [false, false, false]), None, false);
     assert_eq!(unmarked.kept, built.snapshots[0].tokens, "only the system head, though the second turn is held");
     assert_eq!(probe(&a, &unmarked.head().engine_id), reference, "and it is the same state");
+    assert_same_states(&one_shot_states, &probes(&a, &unmarked), "with no snaps");
 
     // 5. A pin shows on lookup and is released.
     let pinned = put(&mut a, &all, Some(true), false);

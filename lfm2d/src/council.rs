@@ -9,8 +9,10 @@
 //! - context ids (client UUIDs) and the `PUT` diff that decides what a
 //!   context update keeps and what it feeds ([`plan_put`]);
 //! - the spec's validation, canonical JSON (RFC 8785) and id ([`spec_id`]);
-//! - control text: found, reported, and split so an encoder can tokenize it
-//!   as ordinary text ([`control_hits`], [`control_pieces`]);
+//! - control text: finding it, and splitting it so an encoder could tokenize
+//!   it as ordinary text ([`control_hits`], [`control_pieces`]). These are
+//!   written and tested, and NOT wired in: the server refuses control text
+//!   with a `400` instead (see `council_api.rs`'s deviations);
 //! - the numbers in an answer, with the contract's exact relations
 //!   ([`read_numbers`], [`pooled_numbers`]).
 //!
@@ -184,6 +186,11 @@ pub struct Limits {
     pub state_bytes: usize,
     pub turns_per_context: usize,
     pub default_timeout_ms: u64,
+    /// How many contexts and specs this server holds at once. Held things
+    /// cost the engine memory and the routes' records cost this process's:
+    /// without a bound a caller could grow either without limit.
+    pub contexts_held: usize,
+    pub specs_held: usize,
 }
 
 impl Limits {
@@ -199,6 +206,8 @@ impl Limits {
             state_bytes: crate::opinion_api::MAX_STATE_BYTES,
             turns_per_context: 512,
             default_timeout_ms: 30_000,
+            contexts_held: 1024,
+            specs_held: 256,
         }
     }
 }
@@ -395,6 +404,17 @@ pub fn boundaries(body: &ContextBody) -> Vec<usize> {
 
 // --------------------------------------------------------------------- specs
 
+/// A present member is `Some`, a `null` included: `Option`'s own deserializer
+/// would read `null` as absent.
+fn keep_null<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
+}
+
+/// What the contract allows where it says `string | object | array`.
+fn guidance_ok(value: &Value) -> bool {
+    matches!(value, Value::String(_) | Value::Object(_) | Value::Array(_))
+}
+
 /// A spec question. The tag is the contract's `type`.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
@@ -404,7 +424,9 @@ pub enum SpecQuestion {
     Noul {
         id: String,
         instructions: Value,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// Absent and `null` are different content: the spec's id hashes what
+        /// was submitted, so the echo keeps a `null`.
+        #[serde(default, deserialize_with = "keep_null", skip_serializing_if = "Option::is_none")]
         criteria: Option<Value>,
     },
     Text { id: String, instructions: Value, max_tokens: u64 },
@@ -506,6 +528,15 @@ impl CouncilSpec {
             if !seen.insert(q.id()) {
                 return bad(format!("question id {:?} repeats", q.id()));
             }
+            let instructions = match q {
+                SpecQuestion::Choice { instructions, .. }
+                | SpecQuestion::Score { instructions, .. }
+                | SpecQuestion::Noul { instructions, .. }
+                | SpecQuestion::Text { instructions, .. } => instructions,
+            };
+            if !guidance_ok(instructions) {
+                return bad(format!("{}: instructions is a string, an object or an array", q.id()));
+            }
             match q {
                 SpecQuestion::Choice { criteria, .. } => {
                     if criteria.len() < 2 || criteria.len() > limits.choice_options {
@@ -528,7 +559,11 @@ impl CouncilSpec {
                         return bad(format!("{}: max_tokens is 1 to {}", q.id(), limits.text_tokens));
                     }
                 }
-                SpecQuestion::Noul { .. } => {}
+                SpecQuestion::Noul { criteria, .. } => {
+                    if criteria.as_ref().is_some_and(|c| !c.is_null() && !guidance_ok(c)) {
+                        return bad(format!("{}: criteria is a string, an object, an array or null", q.id()));
+                    }
+                }
             }
         }
         Ok(())

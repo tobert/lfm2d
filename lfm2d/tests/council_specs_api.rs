@@ -131,9 +131,13 @@ struct Harness {
 }
 
 fn harness(capacity: usize, boot: Vec<SpecMenuEntry>) -> Harness {
+    harness_with(capacity, boot, Limits::new(4096))
+}
+
+fn harness_with(capacity: usize, boot: Vec<SpecMenuEntry>, limits: Limits) -> Harness {
     let fake = Fake(Arc::new(Mutex::new(Inner { boot: boot.clone(), uploaded: VecDeque::new(), capacity, loads: 0, unregisters: 0 })));
     let handle = Handle::spawn(fake.clone(), (&info()).into()).with_menu(boot);
-    Harness { router: lfm2d::council_api::router(handle, (&info()).into()), fake }
+    Harness { router: lfm2d::council_api::router_with_limits(handle, (&info()).into(), limits), fake }
 }
 
 async fn send(router: &axum::Router, request: Request<Body>) -> (u16, Value, String) {
@@ -423,4 +427,46 @@ async fn identity_does_not_change_between_reads() {
     post(&h.router, &gate("gate")).await;
     let (_, b, _) = get(&h.router, "/council/v1/identity").await;
     assert_eq!(a, b);
+}
+
+/// The id is the canonical hash of the spec as submitted, and the echo is that
+/// spec: so the id the client holds is the hash of the spec it was handed back,
+/// and re-posting the echo is the same spec. A `null` is content.
+#[tokio::test]
+async fn the_echo_is_the_spec_its_id_hashes() {
+    let h = harness(4, vec![]);
+    let body = json!({
+        "name": "gate", "instructions": "Judge.", "input_label": "Statement",
+        "questions": [
+            {"id": "a", "type": "noul", "instructions": "x", "criteria": null},
+            {"id": "b", "type": "noul", "instructions": ["x", {"y": 1}], "criteria": {"true": "t"}},
+            {"id": "c", "type": "noul", "instructions": "x"},
+        ]
+    });
+    let (status, held, _) = post(&h.router, &body).await;
+    assert_eq!(status, 200, "{held}");
+    assert_eq!(held["spec"], body, "the echo is what was submitted, a null included");
+    assert_eq!(held["spec_id"], spec_id(&held["spec"]), "the id is the hash of the echoed spec");
+    let (_, again, _) = post(&h.router, &held["spec"]).await;
+    assert_eq!(again["spec_id"], held["spec_id"], "posting the echo is the same spec");
+}
+
+#[tokio::test]
+async fn held_specs_are_bounded_and_a_delete_makes_room() {
+    let mut limits = Limits::new(4096);
+    limits.specs_held = 2;
+    let h = harness_with(8, vec![], limits);
+    let distinct = |n: &str| {
+        let mut v = gate("g");
+        v["instructions"] = json!(format!("Judge {n}."));
+        v
+    };
+    let (_, a, _) = post(&h.router, &distinct("a")).await;
+    assert_eq!(post(&h.router, &distinct("b")).await.0, 200);
+    let reply = post(&h.router, &distinct("c")).await;
+    assert_error(reply.0, &reply.1, 429, "busy");
+    // Posting what is held again is not a new spec.
+    assert_eq!(post(&h.router, &distinct("a")).await.0, 200);
+    delete(&h.router, &format!("/council/v1/specs/{}", a["spec_id"].as_str().unwrap())).await;
+    assert_eq!(post(&h.router, &distinct("c")).await.0, 200);
 }

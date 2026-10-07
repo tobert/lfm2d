@@ -23,7 +23,7 @@ candle-kernels = { git = "https://github.com/tobert/candle", rev = "6c962c637f2e
 tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "matched-path"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "io-util", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "io-util", "time", "sync"] }
 
 serde = { version = "1", features = ["derive"] }
 # `float_roundtrip`: a correctly rounded float parse, as Python's is. The

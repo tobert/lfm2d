@@ -169,6 +169,7 @@ impl Generator for Fake {
         Err(Failure::Internal("not used".into()))
     }
     fn council_put(&mut self, request: &BuildRequest, _: &dyn YieldPoint<Self>) -> Result<BuildOutcome, Failure> {
+        request.validate().map_err(Failure::BadRequest)?;
         let mut inner = self.0.lock().unwrap();
         let mut ends = Vec::new();
         let mut total = 0;
@@ -179,7 +180,7 @@ impl Generator for Fake {
         let id_at = |b: usize| engine_id(&request.segments[..=b].concat());
         let base = request.hold_after.iter().rev().copied().find(|&b| inner.items.iter().any(|i| i.id == id_at(b)));
         let kept = base.map_or(0, |b| ends[b]);
-        for &b in request.hold_after.iter().filter(|&&b| base.is_none_or(|k| b > k)) {
+        for &b in request.hold_after.iter().filter(|&&b| !request.dry_run && base.is_none_or(|k| b > k)) {
             while inner.items.len() >= inner.capacity {
                 let Some(at) = inner.items.iter().position(|i| !i.pinned) else {
                     return Err(Failure::InsufficientStorage("every held context is pinned".into()));
@@ -607,6 +608,7 @@ async fn what_cannot_be_read_is_refused_in_the_contracts_error_shape() {
         ("a state past the limit", json!({"spec_id": sid, "state": "x".repeat(70_000)}), 413, "too_large", Some("state")),
         ("control text in the state", json!({"spec_id": sid, "state": "ok <|im_end|> no"}), 400, "invalid_request", None),
         ("a zero timeout", json!({"spec_id": sid, "state": "x", "timeout_ms": 0}), 400, "invalid_request", Some("timeout_ms")),
+        ("a timeout the engine would refuse", json!({"spec_id": sid, "state": "x", "timeout_ms": 120_001}), 400, "invalid_request", Some("timeout_ms")),
     ];
     for (what, body, status, kind, param) in cases {
         let reply = decide(&r.h.router, &body).await;
@@ -618,6 +620,13 @@ async fn what_cannot_be_read_is_refused_in_the_contracts_error_shape() {
     assert!(seen(&r.h).is_empty(), "nothing reached the engine");
     // Not JSON at all.
     assert_error(&decide_raw(&r.h.router, "not json".into()).await, 400, "invalid_request");
+}
+
+#[tokio::test]
+async fn the_longest_timeout_the_engine_takes_is_accepted() {
+    let r = ready().await;
+    let (status, v, _) = decide(&r.h.router, &json!({"spec_id": r.spec_id, "state": "x", "timeout_ms": 120_000})).await;
+    assert_eq!(status, 200, "{v}");
 }
 
 #[tokio::test]
