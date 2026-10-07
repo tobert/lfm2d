@@ -76,6 +76,7 @@ pub(crate) mod state_store;
 pub mod chunk_sweep;
 pub mod config;
 pub mod council;
+pub mod council_compile;
 pub mod council_wire;
 pub mod contexts_api;
 pub mod constrain;
