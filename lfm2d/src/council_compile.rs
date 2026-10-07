@@ -101,7 +101,7 @@ fn description(question: &SpecQuestion) -> String {
 }
 
 /// The enum a question is read over, in order; `None` for a text question.
-fn choices(question: &SpecQuestion) -> Option<Vec<String>> {
+pub(crate) fn choices(question: &SpecQuestion) -> Option<Vec<String>> {
     match question {
         SpecQuestion::Text { .. } => None,
         SpecQuestion::Choice { criteria, .. } => Some(criteria.iter().map(|c| c.option.clone()).collect()),

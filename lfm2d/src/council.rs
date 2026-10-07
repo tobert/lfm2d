@@ -674,6 +674,10 @@ pub struct ReadNumbers {
     pub top: usize,
 }
 
+/// The most a read's log mass may exceed 0 and still be rounding noise of
+/// the engine's f32 log probabilities.
+const MASS_NOISE: f64 = 1e-6;
+
 pub fn read_numbers(labels: &[String], logprobs: &[f64]) -> Result<ReadNumbers> {
     if labels.len() < 2 || labels.len() != logprobs.len() {
         return Err(CouncilError::bad_request("a read needs one logprob per label, at least two labels"));
@@ -681,9 +685,23 @@ pub fn read_numbers(labels: &[String], logprobs: &[f64]) -> Result<ReadNumbers> 
     if logprobs.iter().any(|v| v.is_nan() || *v > 0.0) {
         return Err(CouncilError::bad_request("a logprob is at most 0"));
     }
-    let mass = logsumexp(logprobs);
+    let mut mass = logsumexp(logprobs);
     if !mass.is_finite() {
         return Err(CouncilError::bad_request("every label has probability 0: nothing to read"));
+    }
+    // Mutually exclusive continuations cannot sum past 1, so `mass` is at most
+    // 0 (the contract's schema says so). The engine's logprobs are f32, and
+    // an answer that holds all the mass can come out at +1e-8: that is
+    // rounding, and is read as 0. Anything larger is impossible numbers from
+    // the engine, which is refused, never clamped into a plausible answer.
+    if mass > 0.0 {
+        if mass > MASS_NOISE {
+            return Err(CouncilError::internal(format!(
+                "the answer set's probabilities sum to {} (log {mass}): more than 1",
+                mass.exp()
+            )));
+        }
+        mass = 0.0;
     }
     let probabilities: Vec<f64> = logprobs.iter().map(|l| (l - mass).exp()).collect();
     let top = argmax(&probabilities);
@@ -1375,5 +1393,18 @@ mod tests {
         let mut longer = held.clone();
         longer.push(turn("d", false));
         assert_eq!(plan_put(Some((&sys, &held)), &body(Some("s"), longer)).kept_turns, 1);
+    }
+
+    #[test]
+    fn rounding_noise_in_the_mass_is_read_as_zero_and_impossible_numbers_are_refused() {
+        let labels: Vec<String> = ["a", "b"].map(String::from).to_vec();
+        // Two options that together hold everything, off by f32 noise.
+        let noisy = read_numbers(&labels, &[(0.5f64).ln() + 1e-8, (0.5f64).ln() + 1e-8]).unwrap();
+        assert_eq!(noisy.mass, 0.0);
+        assert!((noisy.probabilities[0] - 0.5).abs() < 1e-7 && noisy.confidence <= 1.0);
+        // A log mass of +0.0044: probabilities that sum to 1.0044.
+        let three: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+        let e = read_numbers(&three, &[-0.1, -3.0, -3.0]).unwrap_err();
+        assert_eq!(e.status, 500, "the engine, not the client, gave impossible numbers: {}", e.message);
     }
 }

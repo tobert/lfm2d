@@ -21,7 +21,7 @@ use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use serde_json::{Value, json};
 
 use crate::adjudicator::{AdjudicatorInfo, Handle};
@@ -30,8 +30,10 @@ use crate::council::{
 };
 use crate::council_compile::{compile, template};
 use crate::council_context::BuildRequest;
+use crate::council_decision::{Assembly, DecisionRequest, assemble, engine_request, plan};
 use crate::council_wire::{
-    Capability, ContextPutResult, ContextState, HeldSpec, Layer, ServerIdentity, SnapshotId, SnapshotInfo,
+    Capability, ContextPutResult, ContextState, DecisionIdentity, HeldSpec, Layer, ServerIdentity, SnapshotId,
+    SnapshotInfo,
 };
 
 /// A context body larger than this is a `413`.
@@ -171,6 +173,7 @@ pub fn router(handle: Handle, info: AdjudicatorInfo) -> Router {
             "/council/v1/contexts/{id}",
             get(get_context).put(put_context).delete(delete_context).layer(DefaultBodyLimit::disable()),
         )
+        .route("/council/v1/decisions", post(post_decision).layer(DefaultBodyLimit::disable()))
         .with_state(api)
         .layer(axum::middleware::from_fn(crate::server::telemetry_middleware))
 }
@@ -480,4 +483,136 @@ async fn delete_context(State(api): State<Arc<Api>>, Path(id): Path<String>) -> 
         let _ = api.handle.council_unpin(head).await;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+// --------------------------------------------------------------- decisions
+
+/// One context a decision reads after, fixed when the decision is accepted.
+struct Target {
+    id: String,
+    engine_id: String,
+    snapshot: SnapshotId,
+    /// The context's head when the decision was accepted: what a `409` names.
+    head: SnapshotId,
+    /// Named with `at`: a snapshot gone is a `409`, where a head gone is a
+    /// context that is gone.
+    explicit: bool,
+}
+
+/// Which of `targets` the engine no longer holds, as the error a decision
+/// answers with: the first one, its snapshot `409` or its context `404`.
+async fn first_gone(api: &Api, targets: &[Target]) -> Result<Option<CouncilError>, CouncilError> {
+    if targets.is_empty() {
+        return Ok(None);
+    }
+    let held = match api.handle.council_inspect(targets.iter().map(|t| t.engine_id.clone()).collect()).await {
+        Ok(held) => held,
+        Err(refusal) => return Err(from_engine(refusal).await),
+    };
+    Ok(targets.iter().zip(held).find(|(_, h)| h.is_none()).map(|(t, _)| {
+        if t.explicit {
+            CouncilError::snapshot_gone(t.head.as_str())
+        } else {
+            context_gone(&t.id)
+        }
+    }))
+}
+
+#[allow(clippy::result_large_err)]
+async fn post_decision(State(api): State<Arc<Api>>, body: Body) -> Result<Response, CouncilError> {
+    let begin = std::time::Instant::now();
+    let limit = api.limits.state_bytes + 65_536;
+    let bytes = axum::body::to_bytes(body, limit)
+        .await
+        .map_err(|_| CouncilError::too_large(format!("a decision is at most {limit} bytes"), "body"))?;
+    let request: DecisionRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| CouncilError::bad_request(format!("the body is not a decision: {e}")))?;
+    let valid = request.validate(&api.identity, &api.limits)?;
+
+    let (spec, engine_spec) = {
+        let mut held = api.held.lock().expect("held lock poisoned");
+        api.prune(&mut held);
+        let found = held.get(&valid.spec_id).ok_or_else(|| Api::gone(&valid.spec_id))?;
+        (found.spec.clone(), found.engine_id.clone())
+    };
+    let asked = plan(&spec, &request.ask, &request.options)?;
+
+    // Every context resolves to a snapshot now, at once: a PUT accepted later
+    // does not change what this decision reads.
+    let mut targets = Vec::with_capacity(valid.contexts.len());
+    {
+        let contexts = api.contexts.lock().expect("contexts lock poisoned");
+        for (id, at) in &valid.contexts {
+            let record = contexts.records.get(id).ok_or_else(|| context_gone(id))?;
+            let head = wire_id(&record.head);
+            let engine_id = match at {
+                None => record.head.clone(),
+                Some(want) => record
+                    .snapshots
+                    .iter()
+                    .find(|s| wire_id(&s.engine_id) == *want)
+                    .map(|s| s.engine_id.clone())
+                    .ok_or_else(|| CouncilError::snapshot_gone(head.as_str()))?,
+            };
+            targets.push(Target {
+                id: id.clone(),
+                snapshot: wire_id(&engine_id),
+                engine_id,
+                head,
+                explicit: at.is_some(),
+            });
+        }
+    }
+    if let Some(gone) = first_gone(&api, &targets).await? {
+        return Err(gone);
+    }
+
+    let engine_ids: Vec<String> = targets.iter().map(|t| t.engine_id.clone()).collect();
+    let opinion = engine_request(&engine_spec, &valid.state, &asked, &engine_ids, &valid.settings, valid.timeout_ms)?;
+    let outcome = if targets.is_empty() {
+        api.handle.opine(opinion).await.map(|r| {
+            let queue_ms = r.queue_ms;
+            (vec![r], queue_ms)
+        })
+    } else {
+        api.handle.opine_contexts(opinion).await.map(|m| (m.reads, m.queue_ms))
+    };
+    let (reads, queue_ms) = match outcome {
+        Ok(done) => done,
+        Err(refusal) => {
+            let error = from_engine(refusal).await;
+            // A snapshot evicted after it was checked is a 409, not a missing spec.
+            if error.status == 404
+                && let Some(gone) = first_gone(&api, &targets).await?
+            {
+                return Err(gone);
+            }
+            return Err(error);
+        }
+    };
+
+    let contexts: Vec<(String, SnapshotId)> = targets.iter().map(|t| (t.id.clone(), t.snapshot.clone())).collect();
+    let identity = &api.identity;
+    let response = assemble(
+        &Assembly {
+            model: identity.model.clone(),
+            identity: DecisionIdentity {
+                model: identity.model.clone(),
+                weight_hash: identity.weight_hash.clone(),
+                tokenizer_hash: identity.tokenizer_hash.clone(),
+                template: identity.template.clone(),
+                engine: identity.engine.clone(),
+                spec_id: Some(valid.spec_id.clone()),
+            },
+            spec: &spec,
+            asked: &asked,
+            contexts: &contexts,
+            pool: &valid.pool,
+            settings: &valid.settings,
+            queue_ms,
+            ms: begin.elapsed().as_secs_f64() * 1000.,
+        },
+        &reads,
+    )?;
+    Ok(axum::Json(response).into_response())
 }
