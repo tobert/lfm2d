@@ -223,9 +223,11 @@ Several held contexts judge each proposed agent action. Ported from the
 megakernel council (`megakernel-qwen38-flashnext-strixhalo`, MIT; its
 scenario verbatim). On the left, tabs: Memory (the repo's written rules),
 User (Amy's standing guidance), Session (what she typed in the last hour),
-each pinned on the daemon as a held context (`POST /v1/contexts`). On the
-right, an action is one `/v1/opinion` with `contexts`, read after every
-included tab in tab order. The page shows each context's odds over the
+each a context the page names with a UUID of its own and holds, pinned, on
+the daemon (`PUT /council/v1/contexts/{uuid}`, the whole context every time;
+edits keep the UUID and the daemon feeds from the first difference). On the
+right, an action is one `POST /council/v1/decisions` with `contexts`, read
+after every included tab in tab order. The page shows each context's odds over the
 spec's options beside its raw mass (flagged under 50%), its length and the
 weight it pooled with; the pooled verdict under both pools (loglinear, the
 default, and linear: the ternary plot's two stars); agree / spread; leave-one-out
@@ -238,23 +240,30 @@ is the pool's top option, ties to the earlier one.
   whose verdict flipped light up in the color of what changed. A pool change
   re-pools the stored reads without reading.
 - **Replay** re-reads one decision under the same contexts and spec and
-  compares the bits: a repeated read is identical (invariant 17), so a
+  compares the bits (each read's log probabilities, mass, descriptions and
+  `rendered_sha256`): a repeated read is identical (invariant 17), so a
   mismatch is shown as a bug.
 - **The pool is checked.** `council.py` recomputes every read's pool with
-  `council_pool.py` (the operations of `lfm2d/src/pool.rs`, after rounding
-  the JSON numbers back to the f32 they were) and fails the read loudly on
-  any difference.
-- **Ask** runs System 2 in a tab: a streamed `/v1/chat` from the tab's
-  system turn and messages plus the question; the reply, with its
-  reasoning, joins the tab and the tab is pinned again. `/v1/chat` never
-  takes an assistant turn back as text, so a later ask continues the chat
+  `council_pool.py` (the operations of `lfm2d/src/pool.rs`) from the reads'
+  raw log probabilities and fails the read loudly when the daemon's pooled
+  probabilities, agree, spread, weights or leave-one-out differ by more than
+  `POOL_TOL` (1e-9): the contract has the daemon re-derive every number in
+  float64, so the check is a tolerance, not a bit comparison.
+- **Ask** runs System 2 in a tab: a streamed `/v1/chat` (the council API
+  reads and holds, it does not generate) from the tab's system turn and
+  messages plus the question; the reply joins the tab as an assistant turn
+  with its reasoning, and the context is PUT again. A context holds
+  assistant turns as text, but `/v1/chat` never
+  takes one back as text, so a later ask continues the chat
   that wrote the tab's replies (`from` its checkpoint) while the tab still
   holds exactly that chat (notes added after it go along as user turns). A
   tab whose reply no chat holds any more (edited, or the daemon restarted)
   refuses the ask with a 400 saying so: delete the reply, or add the
   question as a note.
-- **Two specs** (`static/`, uploaded at boot, field and options read from
-  the menu): `council-describe-v3`, the default, has each context write
+- **Two specs** (council specs in `static/council-specs/`, POSTed at
+  boot, question and options read from the held spec; the engine-form v3
+  files beside them are what the benchmarks and the daemon's compile test
+  name, and a test keeps the two saying the same thing): `council-describe-v3`, the default, has each context write
   what the action does and what this source says about it, then the
   verdict, so every description comes from inside its own context;
   `council-verdict-v3` asks the verdict cold, as its first and only field.
@@ -290,16 +299,17 @@ is the pool's top option, ties to the earlier one.
   picked report once in 24 report-action reads, yet P(report) ranked every
   report action above every other action in every cell
   ([`docs/lfm25-adjudicator.md`](../../docs/lfm25-adjudicator.md)).
-- **Restarts.** A read that meets a 404 for a lost context or spec pins the
-  tabs again or uploads the specs again (each at most once) and retries;
-  ids are the content, so they come back the same.
+- **Restarts.** A read that meets a 404 for a lost context or spec PUTs
+  the tabs again or POSTs the specs again (each at most once) and retries;
+  the UUIDs are the page's and the spec id is the hash of the spec, so they
+  come back the same.
 - **Trust.** An action is the read's input, fenced. The daemon refuses control-token
   text in it, and in any tab turn, rather than escaping it; the 400 is shown
   as it came. No action or tab text can forge a chat turn.
 
 The council keeps its state in `server.py` (`council.py`, mounted under
 `/council/api/*`, started on the first request there; it waits for a daemon
-that is not up yet). Any daemon with the opinion engine serves it:
+that is not up yet). Any daemon that serves `/council/v1` (and `/v1/chat`, for ask) serves it:
 
 ```sh
 python3 demo/web/server.py --upstream 'http://127.0.0.1:8095' --host 127.0.0.1

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Ported from the megakernel council, council/server.py (~/src/megakernel-qwen38-flashnext-strixhalo, MIT,
-# 2026-10-03), onto lfm2d's held contexts and multi-context opinion reads (docs/integration.md invariants 16-19).
+# 2026-10-03), onto lfm2d's /council/v1 (the council API contract, lfm2d/src/council_api.rs).
 """The council: several held contexts judge each proposed agent action, as a client of an lfm2d daemon.
 
 demo/web/server.py mounts this module under /council/api/* and serves its page (static/council.html) at /council. It
@@ -9,25 +9,28 @@ starts on the first request there: the other demos never pay for it. Standard li
 On the left, tabs: one per context (default three, from council_scenario.py: Memory, User, Session; at most 8, the
 most one read takes). Each tab is a small chat: a system turn (the scenario's REVIEWER framing, the tab's name and
 preamble), then messages the user adds, edits and deletes, and an ask box that runs System 2 in that tab (a streamed
-POST /v1/chat; the reply joins the tab). Each tab's head is held on the daemon as a pinned context built from
-messages (POST /v1/contexts {system, messages, pin: true}); the daemon refuses control-token text in any turn rather
-than escaping it, and that refusal is shown to the page. After any change the tab is pinned again and its old context
-deleted, unless another tab holds the same id: the id is the content, and a delete is not reference-counted.
+POST /v1/chat; the reply joins the tab). Each tab is a context the client names: a UUID minted when the tab is made and kept for the tab's life. Its
+head is held on the daemon as a pinned context, the whole of it sent by PUT /council/v1/contexts/{uuid} {system, turns,
+pin: true} (an ask's reply is an assistant turn with its reasoning); the daemon refuses control-token text in any turn
+rather than escaping it, and that refusal is shown to the page. After any change the tab is PUT again under the same
+UUID: the daemon feeds from the first difference (the page shows tokens kept and fed), and there is nothing to retire
+or to count. Removing a tab is a DELETE.
 
-On the right, decisions: an action (typed, or one of the scenario's) is ONE POST /v1/opinion with `contexts` = the
-included tabs' contexts in tab order, the current spec, and the spec's verdict question, pooled by the daemon (linear
-| loglinear, uniform | mass weights). This module recomputes the daemon's pool from the reads (council_pool.py, the
-same operations as lfm2d/src/pool.rs) and stops the job loudly on any difference, then computes what the page shows:
-both pools (the ternary plot's two stars), the pooled verdict (the top option, ties to the earlier one: the daemon
-never picks), and leave-one-out.
+On the right, decisions: an action (typed, or one of the scenario's) is ONE POST /council/v1/decisions with `contexts`
+= the included tabs' contexts in tab order, the current spec's id, `ask` = its verdict question, pooled by the daemon
+(linear | loglinear, uniform | mass weights). This module recomputes the daemon's pool from the reads' raw log
+probabilities (council_pool.py) and stops the job loudly when it differs by more than float rounding (the contract
+re-derives every number in float64), then computes what the page shows: both pools (the ternary plot's two stars), the
+pooled verdict (the top option, ties to the earlier one: the daemon never picks), and leave-one-out.
 
-Specs: two, consumer-owned, in static/ (uploaded at boot, content-addressed): council-describe-v3, the default, has
+Specs: two, consumer-owned, in static/council-specs/ as council specs (POSTed at boot; the daemon compiles them onto
+the engine, and the spec id is the hash of the spec's canonical JSON). council-describe-v3, the default, has
 each context describe the action first and then reads the verdict, so every description comes from inside its own
 context; council-verdict-v3 asks the verdict cold, at the first slot, like the megakernel's letters. Both name the
-agent as the proposer ("nobody here requested it") and label the input "Action proposed by the agent". Field and
-option names come from GET /v1/opinion/specs, never from this file; the two specs must ask the same options. The
-options run from routine to loudest, so the last one is the louder ask the page alarms on. The v1 and v2 specs stay in
-static/ (the benchmarks name them) and are not loaded.
+agent as the proposer ("nobody here requested it") and label the input "Action proposed by the agent". Question ids and
+option names come from the held spec the daemon answers, never from this file; the two specs must ask the same options. The
+options run from routine to loudest, so the last one is the louder ask the page alarms on. The engine-form v1, v2 and v3 specs
+stay in static/ (the benchmarks and the daemon's compile tests name them) and are not loaded.
 
 The fence: every read sends the action set off on its own lines (FENCE, the fence the 2026-10-03 speaker-and-quoting
 run pre-registered in benchmarks/lfm25/council/speaker-v1-prereg.json): on an unseen scenario describe-first passed the
@@ -47,17 +50,19 @@ the pooled probability of the loudest option ranked every such action above ever
 rule). It is a rank within this page's decisions, not a calibrated probability, and it is recomputed after every
 change to the decisions or the pool; a `loud` event carries every decision's three fields.
 
-Restarts: a daemon restart forgets every context and uploaded spec. A read that meets a 404 for either pins every tab
-again (or uploads the specs again) and retries once; the ids are the content, so they come back the same.
+Restarts: a daemon restart forgets every context and held spec. A read that meets a 404 (its `param` names the spec or
+the context) PUTs every tab again, or POSTs the specs again, and retries once; the client's UUIDs and the spec ids
+come back the same.
 
-Ask: /v1/chat never continues from a held context and never takes an assistant turn as text (invariant 16). So an ask
-starts a fresh chat from the tab's system turn and its messages (all user turns) plus the question, and when the tab
-already holds a reply from an earlier ask, the ask continues that chat `from` its checkpoint, but only while the tab
-still holds exactly what that chat held (later notes are appended as user turns). A tab whose reply the daemon can no
-longer continue (edited since, evicted, restarted) refuses the ask with a 400 that says so: delete the reply, or add
-the question as a note.
+Ask: a context holds assistant turns as text, but the generator does not: /v1/chat never continues from a held context
+and never takes an assistant turn as text (invariant 16), and the council API has no generation. So an ask starts a
+fresh chat from the tab's system turn and its messages (all user turns) plus the question, and when the tab already
+holds a reply from an earlier ask, the ask continues that chat `from` its checkpoint, but only while the tab still holds
+exactly what that chat held (later notes are appended as user turns). A tab whose reply the daemon can no longer
+continue (edited since, evicted, restarted) refuses the ask with a 400 that says so: delete the reply, or add the
+question as a note. The reply itself joins the context through the PUT, as an assistant turn with its reasoning.
 
-Trust: an action is the read's `state.input`, fenced. The daemon refuses control-token text in it (400) instead of escaping
+Trust: an action is the read's `state`, fenced. The daemon refuses control-token text in it (400) instead of escaping
 it, so this module needs no denylist; the refusal goes to the page as the daemon wrote it.
 
 One engine thread owns the daemon calls; every change runs there in order. The page gets server-sent events.
@@ -82,6 +87,7 @@ One engine thread owns the daemon calls; every change runs there in order. The p
 """
 from __future__ import annotations
 
+import copy
 import itertools
 import json
 import math
@@ -93,6 +99,7 @@ import time
 import traceback
 import urllib.error
 import urllib.request
+import uuid
 from http import HTTPStatus
 from pathlib import Path
 
@@ -102,11 +109,12 @@ import council_scenario as scenario
 STATIC = Path(__file__).resolve().parent / "static"
 # Describe-first first: the default, and what reset returns to.
 SPEC_FILES = ["council-describe-v3.json", "council-verdict-v3.json"]
+SPEC_DIR = "council-specs"  # under static/
 # How a read renders an action (as benchmarks/lfm25/council/speaker-v1-prereg.json's "fence"); every read is built
 # through fenced(), so decide, backfill and replay send the same bytes.
 FENCE = "```\n{action}\n```"
 _FENCE_LINE = re.compile(r"^[ \t]*```", re.MULTILINE)  # a line that would open or close a fence
-MAX_TABS = 8  # /v1/opinion reads after 1 to 8 contexts
+MAX_TABS = 8  # a decision reads after 1 to 8 contexts (identity.limits.contexts_per_decision may lower it)
 BACKFILL_K = 12
 MAX_BODY = 64 * 1024
 MAX_ACTION = 2000
@@ -137,10 +145,12 @@ TRUST = ("An action is the read's input, fenced on its own lines, rendered after
          "and in every tab's turns, rather than escaping it (a 400 shown here as it came), so no action or tab text "
          "can forge a chat turn.")
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
-# A read naming a context the daemon no longer holds (a 404 that says so; since f6a10a6 "no chat checkpoint or
-# held context", earlier "no held context").
-POOLED_KEYS = ("probs", "agree", "spread", "leave_one_out", "weights")
-GONE = ("no chat checkpoint or held context", "no held context", "no chat checkpoint")
+# The daemon pools in float64 from the same raw numbers; a Python exp() is not guaranteed to round as Rust's does, so
+# the check is a tolerance, far under any difference the page could show and far over rounding.
+POOL_TOL = 1e-9
+# lfm2d/src/council.rs read_numbers: the engine's logprobs are f32, so an answer set holding all the mass can sum a hair
+# past 1. The daemon reads a log-mass in (0, MASS_NOISE] as 0 and derives the read's probabilities from that.
+MASS_NOISE = 1e-6
 
 
 class Refused(ValueError):
@@ -154,13 +164,21 @@ class Missing(LookupError):
 class ApiError(Exception):
     """The daemon answered with an error status."""
 
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, kind: str = "", param: str = ""):
         super().__init__(f"{status} {message}")
-        self.status, self.message = status, message
+        self.status, self.message, self.kind, self.param = status, message, kind, param
 
 
 class Unreachable(Exception):
     """The daemon did not answer at all."""
+
+
+class Drifted(Exception):
+    """The daemon read some tabs at a head the page never heard of (a PUT it took whose answer was lost)."""
+
+    def __init__(self, tabs: list[dict]):
+        super().__init__(f"the daemon holds other content for {[t['name'] for t in tabs]}")
+        self.tabs = tabs
 
 
 class Daemon:
@@ -177,16 +195,18 @@ class Daemon:
         except urllib.error.HTTPError as e:
             with e:
                 raw = e.read()
+            kind = param = ""
             try:
-                msg = json.loads(raw)["error"]["message"]
+                err = json.loads(raw)["error"]
+                msg, kind, param = err["message"], err.get("type", ""), err.get("param", "")
             except (ValueError, KeyError, TypeError):
                 msg = raw.decode("utf-8", "replace")[:500]
-            raise ApiError(e.code, msg) from None
+            raise ApiError(e.code, msg, kind, param) from None
         except (urllib.error.URLError, OSError) as e:
             raise Unreachable(f"{method} {path}: {e}") from None
 
-    def call(self, method: str, path: str, body=None, raw: bytes | None = None):
-        data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
+    def call(self, method: str, path: str, body=None):
+        data = json.dumps(body).encode() if body is not None else None
         with self._open(method, path, data, self.timeout) as r:
             return r.status, json.loads(r.read() or b"null")
 
@@ -196,11 +216,11 @@ class Daemon:
     def post(self, path: str, body):
         return self.call("POST", path, body)[1]
 
+    def put(self, path: str, body):
+        return self.call("PUT", path, body)[1]
+
     def delete(self, path: str):
         return self.call("DELETE", path)[1]
-
-    def upload(self, path: str, raw: bytes):
-        return self.call("POST", path, raw=raw)
 
     def stream(self, path: str, body, stop: threading.Event):
         """POST and yield (event, data) off a server-sent-event answer; leaving the loop (or `stop`) hangs up, and
@@ -281,6 +301,21 @@ def _refused_by_daemon(e: ApiError, what: str) -> Refused:
     return Refused(f"the daemon refused {what}: {e.message}")
 
 
+def _close(a: float, b: float) -> bool:
+    return math.isfinite(a) and math.isfinite(b) and abs(a - b) <= POOL_TOL
+
+
+def _all_close(xs, ys) -> bool:
+    return len(xs) == len(ys) and all(_close(x, y) for x, y in zip(xs, ys))
+
+
+def _read_mass(logprobs: list[float]) -> float:
+    """A read's log-mass as the daemon derives it from its option logprobs (council.rs read_numbers)."""
+    mx = max(logprobs)
+    lse = mx + math.log(sum(math.exp(v - mx) for v in logprobs))
+    return 0.0 if 0.0 < lse <= MASS_NOISE else lse
+
+
 class Council:
     def __init__(self, daemon: Daemon, seeds: list[dict] | None = None, actions: list[dict] | None = None,
                  spec_files: list[str] | None = None, static: Path = STATIC):
@@ -297,7 +332,8 @@ class Council:
         self.booted = False
         self.started = False
         self.model: dict | None = None
-        self.specs: dict[str, dict] = {}  # file -> {file, id, raw, field, options, describe, input_label}
+        self.max_tabs = MAX_TABS
+        self.specs: dict[str, dict] = {}  # file -> {file, id, body, field, options, describe, input_label}
         self.spec = self.spec_files[0]
         self.options: list[str] = []
         self.tabs: list[dict] = []
@@ -409,10 +445,16 @@ class Council:
     # --- boot ---------------------------------------------------------------------
 
     def boot(self) -> None:
-        """The daemon answers; the specs are loaded and ask the same options; then pin the seed tabs."""
+        """The daemon answers and can do what the page shows; the specs are held and ask the same options; then the
+        seed tabs are built."""
         self.set_status("starting", "asking the daemon")
-        info = self.daemon.get("/v1/adjudicator")
-        self.model = {k: info.get(k) for k in ("model_id", "weight_hash", "backend", "device")}
+        ident = self.daemon.get("/council/v1/identity")
+        if "leave_one_out" not in ident.get("capabilities", []):
+            raise RuntimeError(f"the daemon's capabilities are {ident.get('capabilities')}: the page shows "
+                               f"leave-one-out, which this daemon does not serve")
+        self.model = {"model_id": ident["model"], "weight_hash": ident["weight_hash"], "backend": ident.get("device"),
+                      "device": ident.get("device")}
+        self.max_tabs = min(MAX_TABS, ident["limits"]["contexts_per_decision"])
         self.upload_specs()
         first = self.specs[self.spec_files[0]]
         for f in self.spec_files[1:]:
@@ -420,47 +462,48 @@ class Council:
                 raise RuntimeError(f"{f} asks {self.specs[f]['options']}, {self.spec_files[0]} asks "
                                    f"{first['options']}: switching specs would change what a verdict is")
         self.options = list(first["options"])
+        with self.lock:  # a boot retried after some seeds were put: those are no tab's, and are seeded again
+            left, self.tabs = self.tabs, []
+        for t in left:
+            self.free(t["context"])
         self.seed_tabs()
         self.booted = True
         self.set_status("idle")
 
     def upload_specs(self) -> None:
-        """Upload every spec (201 new, 200 already loaded) and read its question off the menu: the LAST choice field
-        in emission order, so the fields before it are the description."""
-        ids = {}
-        for f in self.spec_files:
-            raw = (self.static / f).read_bytes()
-            status, entry = self.daemon.upload("/v1/opinion/specs", raw)
-            if status not in (200, 201):
-                raise RuntimeError(f"uploading {f} answered {status}")
-            ids[f] = entry["id"]
-        menu = {e["id"]: e for e in self.daemon.get("/v1/opinion/specs")}
+        """Hold every spec (the same spec is the same id) and read its question off the held spec: the LAST choice
+        question; the text questions before it are the description (the daemon describes text questions only)."""
         specs = {}
-        for f, sid in ids.items():
-            entry = menu.get(sid)
-            if entry is None:
-                raise RuntimeError(f"{f} was uploaded as {sid} but the menu does not list it")
-            choices = [i for i, x in enumerate(entry["fields"]) if x["kind"] == "choice"]
+        for f in self.spec_files:
+            body = json.loads((self.static / SPEC_DIR / f).read_text())
+            held = self.daemon.post("/council/v1/specs", body)
+            qs = held["spec"]["questions"]
+            choices = [i for i, x in enumerate(qs) if x["type"] == "choice"]
             if not choices:
-                raise RuntimeError(f"{f} has no choice field to ask")
+                raise RuntimeError(f"{f} has no choice question to ask")
             q = choices[-1]
-            if len(entry["fields"][q]["options"]) < 2:
-                raise RuntimeError(f"{f}: field {entry['fields'][q]['field']!r} has fewer than two options")
-            specs[f] = {"file": f, "id": sid, "field": entry["fields"][q]["field"],
-                        "options": list(entry["fields"][q]["options"]), "input_label": entry["input_label"],
-                        "describe": [x["field"] for x in entry["fields"][:q]]}
+            options = [c["option"] for c in qs[q]["criteria"]]
+            if len(options) < 2:
+                raise RuntimeError(f"{f}: question {qs[q]['id']!r} has fewer than two options")
+            specs[f] = {"file": f, "id": held["spec_id"], "field": qs[q]["id"], "options": options,
+                        "input_label": held["spec"]["input_label"], "describe": [x["id"] for x in qs[:q] if x["type"] == "text"]}
         with self.lock:
             self.specs = specs
 
     # --- tabs ---------------------------------------------------------------------
 
+    def new_tab(self, name: str, color: str, preamble: str = "", include: bool = True,
+                messages: list[dict] | None = None) -> dict:
+        """A tab not yet held: its context is a UUID the client chooses, once, for the tab's life."""
+        return {"id": f"t{next(self.tab_seq)}", "name": name, "color": color, "include": include,
+                "preamble": preamble, "messages": messages or [], "context": str(uuid.uuid4()), "head": None,
+                "n_tokens": 0, "pin_ms": 0.0, "cached_tokens": 0, "fed_tokens": 0, "chat": None}
+
     def seed_tabs(self) -> None:
         for k, s in enumerate(self.seeds):
-            tab = {"id": f"t{next(self.tab_seq)}", "name": s["name"], "color": s.get("color", PALETTE[k % len(PALETTE)]),
-                   "include": s.get("include", True), "preamble": s.get("preamble", ""),
-                   "messages": [dict(m) for m in s.get("messages", [])],
-                   "context": None, "n_tokens": 0, "pin_ms": 0.0, "chat": None}
-            self.pin(tab)
+            tab = self.new_tab(s["name"], s.get("color", PALETTE[k % len(PALETTE)]), s.get("preamble", ""),
+                               s.get("include", True), [dict(m) for m in s.get("messages", [])])
+            self.pin_new(tab)
             with self.lock:
                 self.tabs.append(tab)
             self.emit({"type": "tab", "tab": self.tab_view(tab)})
@@ -479,57 +522,65 @@ class Council:
             msgs.append(x)
         return system, msgs
 
-    def pin(self, tab: dict) -> str | None:
-        """Hold the tab's head pinned and point the tab at it; the old context id, for the caller to `retire` once
-        its change is committed (a failed DELETE must not fail a change that already happened)."""
+    def pin(self, tab: dict) -> None:
+        """Hold the tab's head pinned: PUT the whole context under the tab's UUID. The daemon feeds from the first
+        difference with what it holds, and answers how much it kept and fed."""
         self.set_status("pinning", tab["name"])
         system, msgs = self.head(tab)
+        turns = [{"role": m["role"], "content": m["content"],
+                  **({"reasoning": m["thinking"]} if "thinking" in m else {})} for m in msgs]
+        t0 = time.perf_counter()
         try:
-            ctx = self.daemon.post("/v1/contexts", {"system": system, "messages": msgs, "pin": True})
+            ctx = self.daemon.put(f"/council/v1/contexts/{tab['context']}",
+                                  {"system": system, "turns": turns, "pin": True})
         except ApiError as e:
-            if e.status == 400:
+            if e.status in (400, 413, 507):
                 raise _refused_by_daemon(e, f"tab {tab['name']!r}") from None
             raise
-        if not ctx["pinned"]:
+        if ctx.get("pinned") is not True:
             raise RuntimeError(f"the daemon did not pin the context of tab {tab['name']!r}")
-        old = tab["context"]
         with self.lock:
-            tab["context"], tab["n_tokens"] = ctx["id"], ctx["n_tokens"]
-            tab["pin_ms"] = round(ctx.get("prefill_ms", 0.0), 1)
-            tab["cached_tokens"] = ctx.get("cached_tokens", 0)
-        return old if old != ctx["id"] else None
+            tab["head"], tab["n_tokens"] = ctx["head"], ctx["tokens"]
+            tab["pin_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+            tab["cached_tokens"], tab["fed_tokens"] = ctx["kept"], ctx["fed"]
+
+    def pin_new(self, tab: dict) -> None:
+        """Pin a tab the page holds nothing for yet. A PUT whose outcome is unknown may have left the daemon holding
+        the UUID, which no tab would ever free: free it. A refusal held nothing."""
+        try:
+            self.pin(tab)
+        except Refused:
+            raise
+        except BaseException:
+            self.free(tab["context"])
+            raise
 
     def repin_all(self) -> None:
-        """Pin every tab's head again after the daemon lost them (a restart forgets every context)."""
-        for tab in self.tabs:
-            old = self.pin(tab)
-            self.emit({"type": "tab", "tab": self.tab_view(tab)})
-            self.retire(old)
+        """Hold every tab again after the daemon lost them (a restart forgets every context). Says why first, so a
+        PUT that fails part way is not left unexplained."""
         self.emit({"type": "repinned", "tabs": len(self.tabs),
-                   "message": f"the daemon no longer held the tabs' contexts (a restart?): pinned {len(self.tabs)} "
+                   "message": f"the daemon no longer held the tabs' contexts (a restart?): PUT {len(self.tabs)} "
                               f"again"})
+        for tab in self.tabs:
+            self.pin(tab)
+            self.emit({"type": "tab", "tab": self.tab_view(tab)})
 
-    def retire(self, context: str | None) -> None:
-        """Delete a context no tab holds any longer; a DELETE that fails is reported, not raised: the change that
-        dropped the context stands."""
-        if not context:
-            return
+    def free(self, context: str) -> None:
+        """Drop a tab's context; a DELETE that fails is reported, not raised: the change that dropped the tab
+        stands. A 404 is already the goal."""
         try:
-            self.release(context)
-        except Exception as e:  # noqa: BLE001 -- reported to the page with the id, so it can be freed by hand
-            traceback.print_exc()
-            self.emit({"type": "error", "job": "free", "message": f"context {context} stays pinned on the daemon "
-                       f"(DELETE failed: {type(e).__name__}: {e}); delete it by hand or restart the daemon"})
-
-    def release(self, context: str) -> None:
-        """A delete is not reference-counted: never delete an id another tab still holds. A 404 is already the goal."""
-        if any(t["context"] == context for t in self.tabs):
-            return
-        try:
-            self.daemon.delete(f"/v1/contexts/{context}")
+            self.daemon.delete(f"/council/v1/contexts/{context}")
         except ApiError as e:
-            if e.status != 404:
-                raise
+            if e.status == 404:
+                return
+            self.free_failed(context, e)
+        except Exception as e:  # noqa: BLE001 -- reported to the page with the id, so it can be freed by hand
+            self.free_failed(context, e)
+
+    def free_failed(self, context: str, e: BaseException) -> None:
+        traceback.print_exc()
+        self.emit({"type": "error", "job": "free", "message": f"context {context} stays pinned on the daemon "
+                   f"(DELETE failed: {type(e).__name__}: {e}); delete it by hand or restart the daemon"})
 
     def tab(self, tid: str) -> dict:
         for t in self.tabs:
@@ -552,13 +603,12 @@ class Council:
         self.submit("backfill")
 
     def do_tab_add(self, name: str, preamble: str = "", color: str | None = None) -> dict:
-        if len(self.tabs) >= MAX_TABS:
-            raise Refused(f"at most {MAX_TABS} tabs: a read takes at most {MAX_TABS} contexts")
+        if len(self.tabs) >= self.max_tabs:
+            raise Refused(f"at most {self.max_tabs} tabs: a read takes at most {self.max_tabs} contexts")
         used = {t["color"] for t in self.tabs}
         color = color or next((c for c in PALETTE if c not in used), PALETTE[len(self.tabs) % len(PALETTE)])
-        tab = {"id": f"t{next(self.tab_seq)}", "name": name, "color": color, "include": True, "preamble": preamble,
-               "messages": [], "context": None, "n_tokens": 0, "pin_ms": 0.0, "chat": None}
-        self.pin(tab)
+        tab = self.new_tab(name, color, preamble)
+        self.pin_new(tab)
         with self.lock:
             self.tabs.append(tab)
         self.emit({"type": "tab", "tab": self.tab_view(tab)})
@@ -572,17 +622,15 @@ class Council:
         saved = dict(tab)
         with self.lock:
             tab.update(kw)
-        old = None
         if repin:
             try:
-                old = self.pin(tab)
+                self.pin(tab)
             except BaseException:
                 with self.lock:
                     tab.clear()
                     tab.update(saved)
                 raise
         self.emit({"type": "tab", "tab": self.tab_view(tab)})
-        self.retire(old)
         if repin and tab["include"]:
             self.changed("rename" if "name" in kw and kw["name"] != saved["name"] else "preamble", tab)
         elif include:
@@ -594,7 +642,7 @@ class Council:
         with self.lock:
             self.tabs.remove(tab)
         self.emit({"type": "tab_removed", "id": tid})
-        self.retire(tab["context"])
+        self.free(tab["context"])
         if tab["include"]:
             self.changed("remove", tab)
         return {"removed": tid}
@@ -605,13 +653,12 @@ class Council:
         with self.lock:
             change(tab["messages"])
         try:
-            old = self.pin(tab)
+            self.pin(tab)
         except BaseException:
             with self.lock:
                 tab["messages"][:] = saved
             raise
         self.emit({"type": "tab", "tab": self.tab_view(tab)})
-        self.retire(old)
         if tab["include"]:
             self.changed(what, tab)
         return self.tab_view(tab)
@@ -713,7 +760,7 @@ class Council:
                 reply["thinking"] = done["thinking"]
             with self.lock:
                 tab["messages"].append(reply)
-            old = self.pin(tab)
+            self.pin(tab)
             system, msgs = self.head(tab)
             tab["chat"] = {"checkpoint": done["checkpoint"], "system": system, "messages": msgs}
         except BaseException as e:
@@ -724,7 +771,6 @@ class Council:
             raise
         s = time.perf_counter() - t0
         self.emit({"type": "tab", "tab": self.tab_view(tab)})
-        self.retire(old)
         self.emit({"type": "ask_done", "tab": tid, "tokens": done["completion_tokens"], "s": round(s, 2),
                    "continued": "from" in route})
         if tab["include"]:
@@ -737,91 +783,124 @@ class Council:
         tabs = [t for t in self.tabs if t["include"]]
         if not tabs:
             raise Refused("no tab is included: include at least one context to decide")
-        ids = [t["context"] for t in tabs]
-        if len(set(ids)) != len(ids):
-            raise Refused("two included tabs hold the same context (the same head); a read takes distinct contexts: "
-                          "exclude one or edit it")
         return tabs
 
-    def opinion(self, spec: dict, action: str, ids: list[str]) -> tuple[dict, float]:
-        body = {"spec": spec["id"], "state": {"input": fenced(action)}, "questions": [{"field": spec["field"]}],
-                "contexts": ids, "pool": dict(self.pool), "timeout_ms": READ_TIMEOUT_MS}
+    def decision(self, spec: dict, action: str, ids: list[str]) -> tuple[dict, float]:
+        body = {"state": fenced(action), "spec_id": spec["id"], "ask": [spec["field"]],
+                "contexts": [{"id": c} for c in ids], "pool": dict(self.pool), "timeout_ms": READ_TIMEOUT_MS}
         t0 = time.perf_counter()
-        r = self.daemon.post("/v1/opinion", body)
+        r = self.daemon.post("/council/v1/decisions", body)
         return r, (time.perf_counter() - t0) * 1000
 
     def read_one(self, action: str, tabs: list[dict]) -> dict:
-        """One /v1/opinion across these tabs for this action. A 404 for a lost spec uploads the specs again, one for
-        a lost context pins every tab again, each at most once: a restart loses both, and the daemon names the spec
-        first, so a read after a restart can need both before it answers."""
+        """One decision across these tabs for this action. A 404 for a lost spec posts the specs again, one for a
+        lost context puts every tab again, each at most once: a restart loses both, and the daemon names the spec
+        first, so a read after a restart can need both before it answers. A read of a head the page did not put
+        puts those tabs again, once, and reads again."""
         recovered = set()
         while True:
             spec = self.specs[self.spec]
             ids = [t["context"] for t in tabs]
             try:
-                r, wall = self.opinion(spec, action, ids)
+                r, wall = self.decision(spec, action, ids)
                 return self.record(r, wall, spec, tabs, ids)
+            except Drifted as e:
+                if "drift" in recovered:
+                    raise RuntimeError(f"{e}, again after putting them again") from None
+                recovered.add("drift")
+                names = [t["name"] for t in e.tabs]
+                self.emit({"type": "repinned", "tabs": len(e.tabs),
+                           "message": f"the daemon read {names} at a head this page did not put (a PUT it took whose "
+                                      f"answer was lost?): PUT again"})
+                for tab in e.tabs:
+                    self.pin(tab)
+                    self.emit({"type": "tab", "tab": self.tab_view(tab)})
             except ApiError as e:
                 if e.status == 400:
-                    raise _refused_by_daemon(e, "the action") from None
+                    raise _refused_by_daemon(e, "the decision (the action, or the pool over these reads)") from None
                 if e.status != 404:
                     raise
-                if any(g in e.message for g in GONE) and "contexts" not in recovered:
-                    recovered.add("contexts")
-                    self.repin_all()
-                elif "no loaded spec" in e.message and "specs" not in recovered:
+                if e.param == "spec_id" and "specs" not in recovered:
                     recovered.add("specs")
                     self.upload_specs()
                     self.emit({"type": "repinned", "tabs": 0,
-                               "message": "the daemon no longer held the specs (a restart?): uploaded them again"})
+                               "message": "the daemon no longer held the specs (a restart?): posted them again"})
+                elif e.param == "id" and "contexts" not in recovered:  # council_api.rs context_gone
+                    recovered.add("contexts")
+                    self.repin_all()
                 else:
                     raise
 
     def record(self, r: dict, wall: float, spec: dict, tabs: list[dict], ids: list[str]) -> dict:
         """The stored read: each context's raw numbers, checked against the daemon's pool."""
         field, options = spec["field"], spec["options"]
-        if r["contexts"] != ids or len(r["reads"]) != len(ids):
-            raise RuntimeError(f"/v1/opinion answered {len(r['reads'])} reads for contexts {r['contexts']}, asked "
-                               f"{ids}")
+        if [x["context"] for x in r["reads"]] != ids:
+            raise RuntimeError(f"/council/v1/decisions answered reads for {[x['context'] for x in r['reads']]}, "
+                               f"asked {ids}")
+        # lfm2d names the context's head a read started from as its snapshot (council_decision.rs: the contract's
+        # spec layer is not held there), so it says what was read, whatever the page believes it put
+        drifted = [t for t, x in zip(tabs, r["reads"]) if x["snapshot"] != t["head"]]
+        if drifted:
+            raise Drifted(drifted)
         per = []
         for t, x in zip(tabs, r["reads"]):
-            a = x["answers"][0]
-            if a["field"] != field or [o["option"] for o in a["options"]] != options:
-                raise RuntimeError(f"a read answered {a['field']!r} over {[o['option'] for o in a['options']]}, "
+            a = x["answers"].get(field)
+            if a is None or a["type"] != "choice" or set(a["logprobs"]) != set(options):
+                raise RuntimeError(f"a read answered {sorted(x['answers'])} (logprobs {sorted((a or {}).get('logprobs', []))}), "
                                    f"asked {field!r} over {options}")
-            logprobs = [council_pool.f32(o["logprob"]) for o in a["options"]]
-            mass = math.exp(council_pool.f32(a["sequence_mass"]))
-            probs = council_pool.option_probs(logprobs)
+            logprobs = [a["logprobs"][o] for o in options]
+            if not _close(a["mass"], _read_mass(logprobs)):
+                raise RuntimeError(f"a read's mass is {a['mass']}; its own logprobs give {_read_mass(logprobs)}")
+            mass = math.exp(a["mass"])
+            wire = [math.exp(v - a["mass"]) for v in logprobs]
+            if not all(_close(wire[i], a["probabilities"][o]) for i, o in enumerate(options)):
+                raise RuntimeError(f"a read's probabilities are {a['probabilities']}; its own logprobs give {wire}")
+            probs = council_pool.option_probs(logprobs)  # renormalized over the options, as the pool sees them
+            described = [{"field": q, "value": x["described"][q]} for q in spec["describe"]
+                         if q in x.get("described", {})]
             per.append({"tab": t["id"], "name": t["name"], "color": t["color"], "logprobs": logprobs, "mass": mass,
-                        "probs": probs, "verdict": options[council_pool.argmax(probs)],
-                        "described": x.get("described", []), "cache": x.get("cache"),
-                        "context_tokens": x.get("context_tokens"),
-                        "prompt_tokens": x.get("prompt_tokens"), "cached_tokens": x.get("cached_tokens"),
-                        "described_tokens": x.get("described_tokens"),
-                        "ms": {k: x.get(k) for k in ("prefill_ms", "describe_ms", "read_ms")}})
-        pooled = [p for p in r["pooled"] if p["field"] == field]
-        if len(pooled) != 1 or pooled[0]["options"] != options:
-            raise RuntimeError(f"/v1/opinion pooled {[p['field'] for p in r['pooled']]}, asked {field!r}")
-        if r["pool"] != self.pool:
-            raise RuntimeError(f"/v1/opinion pooled under {r['pool']}, asked {self.pool}")
+                        "probs": probs, "verdict": options[council_pool.argmax(probs)], "described": described,
+                        "context_tokens": x.get("tokens"), "rendered_sha256": x["rendered_sha256"],
+                        "ms": {"total": x.get("ms")}})
+        got = r["answers"].get(field)
+        if got is None or got["type"] != "choice" or set(got["probabilities"]) != set(options):
+            raise RuntimeError(f"/council/v1/decisions pooled {sorted(r['answers'])}, asked {field!r} over {options}")
+        if {k: r["pool"][k] for k in ("method", "weights")} != self.pool:
+            raise RuntimeError(f"/council/v1/decisions pooled under {r['pool']}, asked {self.pool}")
         mine = council_pool.pool([p["logprobs"] for p in per], [p["mass"] for p in per], self.pool["method"],
                                  self.pool["weights"])
-        # every number the daemon pooled must be ours to the bit (`weights` since the daemon added it)
-        theirs = {k: pooled[0][k] for k in POOLED_KEYS if k in pooled[0]}
-        if not set(POOLED_KEYS[:4]) <= set(theirs) or {k: mine[k] for k in theirs} != theirs:
-            raise RuntimeError(f"the daemon pooled {theirs}; council_pool.py gives {mine} from the same reads: the "
-                               f"pooling is not the one this page explains")
+        # every number the daemon pooled must be ours, to float rounding
+        theirs_loo = got.get("leave_one_out") or {}
+        problems = []
+        if not all(_close(mine["probs"][i], got["probabilities"][o]) for i, o in enumerate(options)):
+            problems.append("probabilities")
+        if got["agree"] != mine["agree"]:
+            problems.append("agree")
+        if not _close(got["spread"], mine["spread"]):
+            problems.append("spread")
+        if not _all_close(r["pool"]["normalized"].get(field, []), mine["weights"]):
+            problems.append("weights")
+        want_loo = {c: row for c, row in zip(ids, mine["leave_one_out"])}
+        if set(theirs_loo) != set(want_loo) or any(
+                (theirs_loo[c] is None) != (row is None)
+                or (row is not None and not all(_close(row[i], theirs_loo[c][o]) for i, o in enumerate(options)))
+                for c, row in want_loo.items()):
+            problems.append("leave_one_out")
+        if problems:
+            raise RuntimeError(f"the daemon pooled {got} / {r['pool']}; council_pool.py gives {mine} from the same "
+                               f"reads, differing in {problems}: the pooling is not the one this page explains")
         read = {"spec": spec["file"], "spec_id": spec["id"], "field": field, "options": options,
-                "tabs": [t["id"] for t in tabs], "contexts": ids, "per": per, "ms": round(wall, 1),
-                "queue_ms": r.get("queue_ms"), "t": time.time()}
-        return self.derive(read)
+                "tabs": [t["id"] for t in tabs], "contexts": ids, "heads": [t["head"] for t in tabs], "per": per,
+                "ms": round(wall, 1), "queue_ms": r.get("queue_ms"), "usage": r.get("usage"), "t": time.time()}
+        return self.derive(read, self.pool)
 
-    def derive(self, read: dict) -> dict:
-        """The pooled verdict under the current settings, both pools' stars, and leave-one-out, from the stored reads."""
+    def derive(self, read: dict, pool: dict) -> dict:
+        """The pooled verdict under `pool`, both pools' stars, and leave-one-out, from the stored reads. ValueError
+        where `pool` is undefined for them."""
         lg, ms, options = [p["logprobs"] for p in read["per"]], [p["mass"] for p in read["per"]], read["options"]
-        m, w = self.pool["method"], self.pool["weights"]
+        m, w = pool["method"], pool["weights"]
         pooled = council_pool.pool(lg, ms, m, w)
-        read["pool"] = dict(self.pool)
+        read["pool"] = dict(pool)
         read["pooled"] = {"probs": pooled["probs"], "weights": pooled["weights"], "agree": pooled["agree"],
                           "spread": pooled["spread"],
                           "verdict": options[council_pool.argmax(pooled["probs"])]}
@@ -886,8 +965,9 @@ class Council:
         except Refused as e:
             self.emit({"type": "backfill", "cause": causes, "reread": 0, "flips": [], "decisions": [], "note": str(e)})
             return {"reread": 0}
-        ids = [t["context"] for t in tabs]
-        todo = [d for d in recent if d["read"]["contexts"] != ids or d["read"]["spec"] != self.spec]
+        held = [(t["context"], t["head"]) for t in tabs]
+        todo = [d for d in recent if list(zip(d["read"]["contexts"], d["read"]["heads"])) != held
+                or d["read"]["spec"] != self.spec]
         if not todo:
             self.emit({"type": "backfill", "cause": causes, "reread": 0, "flips": [], "decisions": []})
             return {"reread": 0}
@@ -917,17 +997,26 @@ class Council:
         return {"reread": len(todo), "flips": flips}
 
     def do_pool(self, method: str, weights: str) -> dict:
-        if method == self.pool["method"] and weights == self.pool["weights"]:
-            return {"pool": dict(self.pool)}
+        new = {"method": method, "weights": weights}
         with self.lock:
-            self.pool = {"method": method, "weights": weights}
+            if new == self.pool:
+                return {"pool": dict(self.pool)}
+            # every stored read under the new pool before any of it is kept: one it cannot pool refuses the switch
+            redone = []
+            for d in self.decisions:
+                try:
+                    redone.append((d, self.derive(copy.deepcopy(d["read"]), new),
+                                   [self.derive(copy.deepcopy(h), new) for h in d["history"]]))
+                except ValueError as e:
+                    raise Refused(f"decision {d['id']} ({d['action']!r}) cannot be pooled {method} with {weights} "
+                                  f"weights ({e}); the pool stays {self.pool['method']} with "
+                                  f"{self.pool['weights']} weights") from None
+            self.pool = new
             flips = []
             cause = {"what": "pool", "pool": dict(self.pool), "t": time.time()}
-            for d in self.decisions:
+            for d, read, history in redone:
                 a = d["read"]["pooled"]["verdict"]
-                self.derive(d["read"])
-                for h in d["history"]:
-                    self.derive(h)
+                d["read"], d["history"] = read, history
                 b = d["read"]["pooled"]["verdict"]
                 d["flip"] = {"from": a, "to": b, "cause": cause} if a != b else None
                 if a != b:
@@ -954,13 +1043,15 @@ class Council:
         if d is None:
             raise Missing(f"no decision {did!r}")
         tabs = self.included()
-        if d["read"]["contexts"] != [t["context"] for t in tabs] or d["read"]["spec"] != self.spec:
+        if list(zip(d["read"]["contexts"], d["read"]["heads"])) != [(t["context"], t["head"]) for t in tabs] \
+                or d["read"]["spec"] != self.spec:
             raise Refused("its contexts or spec changed since it was read (it is older than the backfill reaches): "
                           "replay re-reads under the same contexts and spec only")
         self.set_status("reading", f"replaying {did}")
         new = self.read_one(d["action"], tabs)
         diffs = [p["name"] for p, q in zip(d["read"]["per"], new["per"])
-                 if (p["logprobs"], p["mass"], p["described"]) != (q["logprobs"], q["mass"], q["described"])]
+                 if (p["logprobs"], p["mass"], p["described"], p["rendered_sha256"])
+                 != (q["logprobs"], q["mass"], q["described"], q["rendered_sha256"])]
         match = not diffs
         with self.lock:
             d["replay"] = {"match": match, "t": time.time(), "diffs": diffs, "ms": new["ms"]}
@@ -976,11 +1067,13 @@ class Council:
         with self.lock:
             self.tabs, self.decisions, self.causes = [], [], []
             self.spec = self.spec_files[0]
-        self.seed_tabs()
-        self.rank_loud()
-        self.emit({"type": "reset", **self.snapshot()})
-        for c in dict.fromkeys(old):
-            self.retire(c)  # a seed head that came back under the same id is held again, and stays
+        try:
+            self.seed_tabs()
+        finally:  # a seed that fails leaves the tabs seeded so far, and the old ones are no one's either way
+            self.rank_loud()
+            self.emit({"type": "reset", **self.snapshot()})
+            for c in old:
+                self.free(c)  # the seed tabs are new UUIDs: the old ones are no one's
         return {"tabs": len(self.tabs)}
 
     # --- views --------------------------------------------------------------------
@@ -992,7 +1085,7 @@ class Council:
                 "pool": self.pool, "spec": self.spec, "options": self.options,
                 "specs": [{k: s[k] for k in ("file", "id", "field", "options", "describe", "input_label")}
                           for s in self.specs.values()],
-                "palette": PALETTE, "backfill_k": BACKFILL_K, "max_tabs": MAX_TABS, "max_decisions": MAX_DECISIONS,
+                "palette": PALETTE, "backfill_k": BACKFILL_K, "max_tabs": self.max_tabs, "max_decisions": MAX_DECISIONS,
                 "min_mass": MIN_MASS, "loud_rule": LOUD_RULE, "model": self.model, "about": scenario.ABOUT, "trust": TRUST,
                 "synthetic": scenario.SYNTHETIC, "actions": self.actions}))
 
