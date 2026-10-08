@@ -30,6 +30,8 @@ import council_scenario as scenario
 import server
 
 STATIC = Path(server.__file__).resolve().parent / "static"
+# the council run that passed (docs/lfm25-adjudicator.md, "Speaker and quoting"): what a tab's held context copies
+PASSED = Path(server.__file__).resolve().parents[2] / "benchmarks" / "lfm25" / "council" / "speaker-v1-prereg.json"
 CONTROL = ["<|", "<think>", "</think>", "<image>"]
 
 
@@ -480,9 +482,17 @@ class TabTests(CouncilTest):
             self.assertEqual(path, f"/council/v1/contexts/{t['context']}")  # the client's UUID, in the path
             uuid.UUID(t["context"])
             self.assertIs(body["pin"], True)
-            self.assertTrue(body["system"].startswith(scenario.REVIEWER))
+            # held as the passing run held it: slot 0 in the system turn in place of the sentence it contradicts,
+            # the opening exchange, and "Acknowledged." after each fact
+            passed = json.loads(PASSED.read_text())
+            self.assertTrue(body["system"].startswith(
+                scenario.REVIEWER.replace(passed["slot0"]["drop"], passed["slot0"]["text"])))
+            self.assertNotIn(passed["slot0"]["drop"], body["system"])
             self.assertIn(f"THIS SOURCE: {t['name']}", body["system"])
-            self.assertEqual(body["turns"], [{"role": m["role"], "content": m["content"]} for m in t["messages"]])
+            want = list(passed["opening"])
+            for m in t["messages"]:
+                want += [{"role": "user", "content": m["content"]}, {"role": "assistant", "content": "Acknowledged."}]
+            self.assertEqual(body["turns"], want)
 
     def test_the_vocabulary_comes_from_the_held_spec(self):
         st = self.cr.state_()
@@ -536,7 +546,9 @@ class TabTests(CouncilTest):
         self.assertEqual(len(cr.state.contexts), 3)
         self.assertEqual({t["name"]: t["context"] for t in cr.state_()["tabs"] if t["name"] != "Memory"}, others)
         put = [b for m_, p, b in cr.state.calls[m:] if m_ == "PUT"][0]
-        self.assertEqual(put["turns"], [{"role": "user", "content": "edited STEER:ask"}])  # the whole body, not a diff
+        # the whole body, not a diff
+        self.assertEqual(put["turns"], json.loads(PASSED.read_text())["opening"] + [
+            {"role": "user", "content": "edited STEER:ask"}, {"role": "assistant", "content": "Acknowledged."}])
 
     def test_a_put_reports_what_the_daemon_kept_and_fed(self):
         cr = self.cr
@@ -1000,6 +1012,11 @@ class ReplayAndAskTests(CouncilTest):
         # the held head carries the reply as generated, as an assistant turn with its reasoning
         self.assertEqual(cr.context_puts(m)[-1]["turns"][-1],
                          {"role": "assistant", "content": "Understood.", "reasoning": "short"})
+        # a question with its reply is not a fact: nothing acknowledges it
+        self.assertEqual(cr.context_puts(m)[-1]["turns"][-2],
+                         {"role": "user", "content": "what does this memory say about pushing?"})
+        # the chat sees the tab as written: no opening, no acknowledgements, the framing's own last sentence
+        self.assertTrue(all(x["role"] == "user" for x in chat[0]["messages"]))
         self.assertEqual(cr.deletes(m), [])
 
         # a second ask continues that chat from its checkpoint, with only what came after it
@@ -1366,6 +1383,11 @@ class DownTests(unittest.TestCase):
 
 
 class ScenarioTests(unittest.TestCase):
+    def test_the_held_contexts_scaffold_is_the_passing_runs_verbatim(self):
+        passed = json.loads(PASSED.read_text())
+        self.assertEqual((scenario.SLOT0, scenario.OPENING), (passed["slot0"], passed["opening"]))
+        self.assertEqual({c["ack"] for c in passed["conditions"].values()}, {scenario.ACK})
+
     def test_the_builtin_scenario_is_labeled_synthetic_and_well_formed(self):
         self.assertTrue(scenario.SYNTHETIC)
         self.assertIn("synthetic", scenario.ABOUT.lower())

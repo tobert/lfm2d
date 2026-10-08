@@ -522,11 +522,27 @@ class Council:
             msgs.append(x)
         return system, msgs
 
+    def held(self, tab: dict) -> tuple[str, list[dict]]:
+        """The tab's head as the daemon holds it for reads, as the council run that passed held every context: slot 0
+        in the system turn, the opening exchange, and the acknowledgement after each fact (a user message no reply
+        follows). An ask's question has its reply, so nothing acknowledges it. An ask's /v1/chat sees head() as
+        written: /v1/chat never takes an assistant turn as text, and slot 0 drops the sentence on answering one."""
+        system, msgs = self.head(tab)
+        if scenario.SLOT0["drop"] not in system:
+            raise RuntimeError("slot 0 replaces a sentence the reviewer framing does not hold")
+        system = system.replace(scenario.SLOT0["drop"], scenario.SLOT0["text"], 1)
+        out = [dict(m) for m in scenario.OPENING]
+        for k, m in enumerate(msgs):
+            out.append(m)
+            if m["role"] == "user" and (k + 1 == len(msgs) or msgs[k + 1]["role"] != "assistant"):
+                out.append({"role": "assistant", "content": scenario.ACK})
+        return system, out
+
     def pin(self, tab: dict) -> None:
         """Hold the tab's head pinned: PUT the whole context under the tab's UUID. The daemon feeds from the first
         difference with what it holds, and answers how much it kept and fed."""
         self.set_status("pinning", tab["name"])
-        system, msgs = self.head(tab)
+        system, msgs = self.held(tab)
         turns = [{"role": m["role"], "content": m["content"],
                   **({"reasoning": m["thinking"]} if "thinking" in m else {})} for m in msgs]
         t0 = time.perf_counter()

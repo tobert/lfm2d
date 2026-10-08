@@ -281,8 +281,10 @@ is the pool's top option, ties to the earlier one.
   and v3 allowed nothing the hint said to ask or report on
   ([`docs/lfm25-adjudicator.md`](../../docs/lfm25-adjudicator.md), "Speaker
   and quoting", 2026-10-03). That run also had slot 0, an opening exchange
-  and `Acknowledged.` turns in every context, which the council's tabs do
-  not carry yet. An action with a line that starts with ```` ``` ```` would
+  and `Acknowledged.` turns in every context, and so do the tabs' held
+  contexts (`held()` in `council.py`, verbatim from that run's
+  pre-registration). The tab shows, and an Ask's `/v1/chat` sees, the tab
+  as written: `/v1/chat` takes no assistant turn as text. An action with a line that starts with ```` ``` ```` would
   close the fence early, so it is refused (400).
 - **P(loudest), ranked.** Each card shows the pooled probability of the
   spec's loudest option (the menu's last) under the pool in use, and its
