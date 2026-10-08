@@ -87,6 +87,7 @@ One engine thread owns the daemon calls; every change runs there in order. The p
 """
 from __future__ import annotations
 
+import copy
 import itertools
 import json
 import math
@@ -147,6 +148,9 @@ _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 # The daemon pools in float64 from the same raw numbers; a Python exp() is not guaranteed to round as Rust's does, so
 # the check is a tolerance, far under any difference the page could show and far over rounding.
 POOL_TOL = 1e-9
+# lfm2d/src/council.rs read_numbers: the engine's logprobs are f32, so an answer set holding all the mass can sum a hair
+# past 1. The daemon reads a log-mass in (0, MASS_NOISE] as 0 and derives the read's probabilities from that.
+MASS_NOISE = 1e-6
 
 
 class Refused(ValueError):
@@ -167,6 +171,14 @@ class ApiError(Exception):
 
 class Unreachable(Exception):
     """The daemon did not answer at all."""
+
+
+class Drifted(Exception):
+    """The daemon read some tabs at a head the page never heard of (a PUT it took whose answer was lost)."""
+
+    def __init__(self, tabs: list[dict]):
+        super().__init__(f"the daemon holds other content for {[t['name'] for t in tabs]}")
+        self.tabs = tabs
 
 
 class Daemon:
@@ -295,6 +307,13 @@ def _close(a: float, b: float) -> bool:
 
 def _all_close(xs, ys) -> bool:
     return len(xs) == len(ys) and all(_close(x, y) for x, y in zip(xs, ys))
+
+
+def _read_mass(logprobs: list[float]) -> float:
+    """A read's log-mass as the daemon derives it from its option logprobs (council.rs read_numbers)."""
+    mx = max(logprobs)
+    lse = mx + math.log(sum(math.exp(v - mx) for v in logprobs))
+    return 0.0 if 0.0 < lse <= MASS_NOISE else lse
 
 
 class Council:
@@ -480,7 +499,7 @@ class Council:
         for k, s in enumerate(self.seeds):
             tab = self.new_tab(s["name"], s.get("color", PALETTE[k % len(PALETTE)]), s.get("preamble", ""),
                                s.get("include", True), [dict(m) for m in s.get("messages", [])])
-            self.pin(tab)
+            self.pin_new(tab)
             with self.lock:
                 self.tabs.append(tab)
             self.emit({"type": "tab", "tab": self.tab_view(tab)})
@@ -521,14 +540,26 @@ class Council:
             tab["pin_ms"] = round((time.perf_counter() - t0) * 1000, 1)
             tab["cached_tokens"], tab["fed_tokens"] = ctx["kept"], ctx["fed"]
 
-    def repin_all(self) -> None:
-        """Hold every tab again after the daemon lost them (a restart forgets every context)."""
-        for tab in self.tabs:
+    def pin_new(self, tab: dict) -> None:
+        """Pin a tab the page holds nothing for yet. A PUT whose outcome is unknown may have left the daemon holding
+        the UUID, which no tab would ever free: free it. A refusal held nothing."""
+        try:
             self.pin(tab)
-            self.emit({"type": "tab", "tab": self.tab_view(tab)})
+        except Refused:
+            raise
+        except BaseException:
+            self.free(tab["context"])
+            raise
+
+    def repin_all(self) -> None:
+        """Hold every tab again after the daemon lost them (a restart forgets every context). Says why first, so a
+        PUT that fails part way is not left unexplained."""
         self.emit({"type": "repinned", "tabs": len(self.tabs),
                    "message": f"the daemon no longer held the tabs' contexts (a restart?): PUT {len(self.tabs)} "
                               f"again"})
+        for tab in self.tabs:
+            self.pin(tab)
+            self.emit({"type": "tab", "tab": self.tab_view(tab)})
 
     def free(self, context: str) -> None:
         """Drop a tab's context; a DELETE that fails is reported, not raised: the change that dropped the tab
@@ -573,7 +604,7 @@ class Council:
         used = {t["color"] for t in self.tabs}
         color = color or next((c for c in PALETTE if c not in used), PALETTE[len(self.tabs) % len(PALETTE)])
         tab = self.new_tab(name, color, preamble)
-        self.pin(tab)
+        self.pin_new(tab)
         with self.lock:
             self.tabs.append(tab)
         self.emit({"type": "tab", "tab": self.tab_view(tab)})
@@ -760,7 +791,8 @@ class Council:
     def read_one(self, action: str, tabs: list[dict]) -> dict:
         """One decision across these tabs for this action. A 404 for a lost spec posts the specs again, one for a
         lost context puts every tab again, each at most once: a restart loses both, and the daemon names the spec
-        first, so a read after a restart can need both before it answers."""
+        first, so a read after a restart can need both before it answers. A read of a head the page did not put
+        puts those tabs again, once, and reads again."""
         recovered = set()
         while True:
             spec = self.specs[self.spec]
@@ -768,6 +800,17 @@ class Council:
             try:
                 r, wall = self.decision(spec, action, ids)
                 return self.record(r, wall, spec, tabs, ids)
+            except Drifted as e:
+                if "drift" in recovered:
+                    raise RuntimeError(f"{e}, again after putting them again") from None
+                recovered.add("drift")
+                names = [t["name"] for t in e.tabs]
+                self.emit({"type": "repinned", "tabs": len(e.tabs),
+                           "message": f"the daemon read {names} at a head this page did not put (a PUT it took whose "
+                                      f"answer was lost?): PUT again"})
+                for tab in e.tabs:
+                    self.pin(tab)
+                    self.emit({"type": "tab", "tab": self.tab_view(tab)})
             except ApiError as e:
                 if e.status == 400:
                     raise _refused_by_daemon(e, "the action") from None
@@ -778,7 +821,7 @@ class Council:
                     self.upload_specs()
                     self.emit({"type": "repinned", "tabs": 0,
                                "message": "the daemon no longer held the specs (a restart?): posted them again"})
-                elif e.param != "spec_id" and "contexts" not in recovered:
+                elif e.param == "id" and "contexts" not in recovered:  # council_api.rs context_gone
                     recovered.add("contexts")
                     self.repin_all()
                 else:
@@ -790,6 +833,11 @@ class Council:
         if [x["context"] for x in r["reads"]] != ids:
             raise RuntimeError(f"/council/v1/decisions answered reads for {[x['context'] for x in r['reads']]}, "
                                f"asked {ids}")
+        # lfm2d names the context's head a read started from as its snapshot (council_decision.rs: the contract's
+        # spec layer is not held there), so it says what was read, whatever the page believes it put
+        drifted = [t for t, x in zip(tabs, r["reads"]) if x["snapshot"] != t["head"]]
+        if drifted:
+            raise Drifted(drifted)
         per = []
         for t, x in zip(tabs, r["reads"]):
             a = x["answers"].get(field)
@@ -797,10 +845,13 @@ class Council:
                 raise RuntimeError(f"a read answered {sorted(x['answers'])} (logprobs {sorted((a or {}).get('logprobs', []))}), "
                                    f"asked {field!r} over {options}")
             logprobs = [a["logprobs"][o] for o in options]
+            if not _close(a["mass"], _read_mass(logprobs)):
+                raise RuntimeError(f"a read's mass is {a['mass']}; its own logprobs give {_read_mass(logprobs)}")
             mass = math.exp(a["mass"])
-            probs = council_pool.option_probs(logprobs)
-            if not all(_close(probs[i], a["probabilities"][o]) for i, o in enumerate(options)):
-                raise RuntimeError(f"a read's probabilities are {a['probabilities']}; its own logprobs give {probs}")
+            wire = [math.exp(v - a["mass"]) for v in logprobs]
+            if not all(_close(wire[i], a["probabilities"][o]) for i, o in enumerate(options)):
+                raise RuntimeError(f"a read's probabilities are {a['probabilities']}; its own logprobs give {wire}")
+            probs = council_pool.option_probs(logprobs)  # renormalized over the options, as the pool sees them
             described = [{"field": q, "value": x["described"][q]} for q in spec["describe"]
                          if q in x.get("described", {})]
             per.append({"tab": t["id"], "name": t["name"], "color": t["color"], "logprobs": logprobs, "mass": mass,
@@ -837,14 +888,15 @@ class Council:
         read = {"spec": spec["file"], "spec_id": spec["id"], "field": field, "options": options,
                 "tabs": [t["id"] for t in tabs], "contexts": ids, "heads": [t["head"] for t in tabs], "per": per,
                 "ms": round(wall, 1), "queue_ms": r.get("queue_ms"), "usage": r.get("usage"), "t": time.time()}
-        return self.derive(read)
+        return self.derive(read, self.pool)
 
-    def derive(self, read: dict) -> dict:
-        """The pooled verdict under the current settings, both pools' stars, and leave-one-out, from the stored reads."""
+    def derive(self, read: dict, pool: dict) -> dict:
+        """The pooled verdict under `pool`, both pools' stars, and leave-one-out, from the stored reads. ValueError
+        where `pool` is undefined for them."""
         lg, ms, options = [p["logprobs"] for p in read["per"]], [p["mass"] for p in read["per"]], read["options"]
-        m, w = self.pool["method"], self.pool["weights"]
+        m, w = pool["method"], pool["weights"]
         pooled = council_pool.pool(lg, ms, m, w)
-        read["pool"] = dict(self.pool)
+        read["pool"] = dict(pool)
         read["pooled"] = {"probs": pooled["probs"], "weights": pooled["weights"], "agree": pooled["agree"],
                           "spread": pooled["spread"],
                           "verdict": options[council_pool.argmax(pooled["probs"])]}
@@ -941,17 +993,26 @@ class Council:
         return {"reread": len(todo), "flips": flips}
 
     def do_pool(self, method: str, weights: str) -> dict:
-        if method == self.pool["method"] and weights == self.pool["weights"]:
-            return {"pool": dict(self.pool)}
+        new = {"method": method, "weights": weights}
         with self.lock:
-            self.pool = {"method": method, "weights": weights}
+            if new == self.pool:
+                return {"pool": dict(self.pool)}
+            # every stored read under the new pool before any of it is kept: one it cannot pool refuses the switch
+            redone = []
+            for d in self.decisions:
+                try:
+                    redone.append((d, self.derive(copy.deepcopy(d["read"]), new),
+                                   [self.derive(copy.deepcopy(h), new) for h in d["history"]]))
+                except ValueError as e:
+                    raise Refused(f"decision {d['id']} ({d['action']!r}) cannot be pooled {method} with {weights} "
+                                  f"weights ({e}); the pool stays {self.pool['method']} with "
+                                  f"{self.pool['weights']} weights") from None
+            self.pool = new
             flips = []
             cause = {"what": "pool", "pool": dict(self.pool), "t": time.time()}
-            for d in self.decisions:
+            for d, read, history in redone:
                 a = d["read"]["pooled"]["verdict"]
-                self.derive(d["read"])
-                for h in d["history"]:
-                    self.derive(h)
+                d["read"], d["history"] = read, history
                 b = d["read"]["pooled"]["verdict"]
                 d["flip"] = {"from": a, "to": b, "cause": cause} if a != b else None
                 if a != b:
@@ -1002,11 +1063,13 @@ class Council:
         with self.lock:
             self.tabs, self.decisions, self.causes = [], [], []
             self.spec = self.spec_files[0]
-        self.seed_tabs()
-        self.rank_loud()
-        self.emit({"type": "reset", **self.snapshot()})
-        for c in old:
-            self.free(c)  # the seed tabs are new UUIDs: the old ones are no one's
+        try:
+            self.seed_tabs()
+        finally:  # a seed that fails leaves the tabs seeded so far, and the old ones are no one's either way
+            self.rank_loud()
+            self.emit({"type": "reset", **self.snapshot()})
+            for c in old:
+                self.free(c)  # the seed tabs are new UUIDs: the old ones are no one's
         return {"tabs": len(self.tabs)}
 
     # --- views --------------------------------------------------------------------

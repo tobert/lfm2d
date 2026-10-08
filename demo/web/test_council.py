@@ -14,7 +14,6 @@ import json
 import math
 import os
 import re
-import struct
 import threading
 import time
 import unittest
@@ -33,18 +32,9 @@ STATIC = Path(server.__file__).resolve().parent / "static"
 CONTROL = ["<|", "<think>", "</think>", "<image>"]
 
 
-def f32(x):
-    return struct.unpack("<f", struct.pack("<f", x))[0]
-
-
-def f32_json(x):
-    """An f32 as serde_json writes it: the shortest decimal that reads back as the same f32."""
-    v = f32(x)
-    for p in range(1, 10):
-        s = float(f"{v:.{p}g}")
-        if f32(s) == v:
-            return s
-    return v
+def logsumexp(row):
+    mx = max(row)
+    return mx + math.log(sum(math.exp(v - mx) for v in row))
 
 
 def rust_pool(logprobs, mass, method, weights):
@@ -103,6 +93,8 @@ def rust_pool(logprobs, mass, method, weights):
     ps = [[math.exp(v) for v in l] for l in ls]
     g = [1.0] * n if weights == "uniform" else list(mass) if weights == "mass" else list(weights)
     probs = combine(ls, ps, g)
+    if probs is None or not all(math.isfinite(x) for x in probs):
+        return {"probs": None}  # pool.rs refuses: the weights sum to 0, or log-linear ruled every option out
     first = top(ps[0])
     spread = 0.0
     for o in range(len(ps[0])):
@@ -128,6 +120,10 @@ class FakeState:
         self.specs = {}  # spec_id -> the spec body
         self.chats = {}  # checkpoint -> history text
         self.perturb_pool = False
+        self.drop_puts = 0  # PUTs to apply and then hang up on, unanswered (a lost response)
+        self.perturb_read = None  # "mass" or "probabilities": a read whose wire numbers disagree with its logprobs
+        self.jitter = 0.0  # added to every read's logprobs (a read that does not repeat)
+        self.last_put = None  # the last PUT's answer
         # action text (inside the read's fence) -> {tab name: option probabilities}: overrides STEER for that action
         self.by_action = {}
         self.lock = threading.Lock()
@@ -202,10 +198,9 @@ def make_fake(state):
             self.reply(200, {"spec_id": sid, "spec": spec, "template": "fake"})
 
         def put_context(self, cid, b):
-            for t in b["turns"]:
-                for k in ("content", "reasoning"):
-                    if any(c in (t.get(k) or "") for c in CONTROL):
-                        return self.fail(400, "a turn holds control-token text (\"<|\"): refused, never escaped")
+            texts = [b.get("system") or ""] + [t.get(k) or "" for t in b["turns"] for k in ("content", "reasoning")]
+            if any(c in x for x in texts for c in CONTROL):
+                return self.fail(400, "a turn holds control-token text (\"<|\"): refused, never escaped")
             text = json.dumps({"system": b.get("system"), "turns": b["turns"]}, sort_keys=True)
             had = state.contexts.get(cid)
             kept = 0
@@ -215,8 +210,13 @@ def make_fake(state):
             state.contexts[cid] = {"text": text, "pinned": bool(b.get("pin")), "tokens": tokens,
                                    "head": "snap:" + hashlib.sha256(text.encode()).hexdigest()}
             c = state.contexts[cid]
-            self.reply(200, {"id": cid, "head": c["head"], "tokens": tokens, "pinned": c["pinned"],
-                             "snapshots": [], "kept": kept, "fed": tokens - kept, "dry_run": False})
+            state.last_put = {"id": cid, "head": c["head"], "tokens": tokens, "pinned": c["pinned"],
+                              "snapshots": [], "kept": kept, "fed": tokens - kept, "dry_run": False}
+            if state.drop_puts:
+                state.drop_puts -= 1
+                self.close_connection = True  # held, and the client never hears so
+                return
+            self.reply(200, state.last_put)
 
         def delete_context(self, cid):
             if state.contexts.pop(cid, None) is None:
@@ -245,27 +245,45 @@ def make_fake(state):
                     return self.fail(404, f"no context {cid!r} is held: PUT it again", "not_found", "id")
                 steer = re.findall(r"STEER:(\w+)", ctx["text"])
                 fav = options.index(steer[-1]) if steer and steer[-1] in options else 0
-                lp = [-0.05 - 0.01 * (len(action) % 7) if i == fav else -3.0 - 1.37 * i for i in range(len(options))]
+                lp = [-0.15 - 0.01 * (len(action) % 7) if i == fav else -3.0 - 1.37 * i for i in range(len(options))]
                 inner = action[4:-4] if action.startswith("```\n") and action.endswith("\n```") else action
                 if inner in state.by_action:
                     row = state.by_action[inner][re.search(r"THIS SOURCE: (\w+)", ctx["text"]).group(1)]
                     lp = [math.log(p) for p in row]
                 if "LOWMASS" in ctx["text"]:
                     lp = [v - 2.0 for v in lp]
-                m = math.log(sum(math.exp(v) for v in lp))
+                if "NOMASS" in ctx["text"]:  # exp(mass) underflows to 0: a "mass" weight of nothing
+                    lp = [v - 800.0 for v in lp]
+                if "FULLMASS" in ctx["text"]:  # every bit of the mass, and f32 rounding puts the sum a hair past 1
+                    lp = [math.log(0.9999995) if i == fav else math.log(1.3e-6 / (len(options) - 1))
+                          for i in range(len(options))]
+                lp = [v + state.jitter for v in lp]
+                # lfm2d/src/council.rs read_numbers: a log-mass in (0, 1e-6] is rounding, read as 0
+                m = logsumexp(lp)
+                if m > 0.0:
+                    if m > 1e-6:
+                        return self.fail(500, f"the answer set's probabilities sum to {math.exp(m)}", "server_error")
+                    m = 0.0
                 pr = [math.exp(v - m) for v in lp]
                 lps.append(lp)
                 masses.append(math.exp(m))
                 described = {f: f"{f} of {action[:20]}" for f in text_ids}
                 reads.append({
-                    "context": cid, "snapshot": "snap:" + "2" * 64, "described": described,
+                    "context": cid, "snapshot": ctx["head"], "described": described,
                     "answers": {qid: {"type": "choice", "choice": options[pr.index(max(pr))],
                                       "probabilities": dict(sorted(zip(options, pr))), "confidence": math.exp(m) * max(pr),
                                       "logprobs": dict(sorted(zip(options, lp))), "mass": m}},
                     "rendered_sha256": hashlib.sha256((ctx["text"] + action + json.dumps(described)).encode()).hexdigest(),
                     "tokens": ctx["tokens"], "ms": 3.0})
+                a = reads[-1]["answers"][qid]
+                if state.perturb_read == "mass":
+                    a["mass"] -= 1e-6
+                elif state.perturb_read == "probabilities":
+                    a["probabilities"][options[0]] += 1e-6
             pool = {"method": "linear", "weights": "uniform", **(b.get("pool") or {})}
             pooled = rust_pool(lps, masses, pool["method"], pool["weights"])
+            if pooled["probs"] is None:
+                return self.fail(400, "nothing to pool under these weights", param="pool")
             probs = dict(sorted(zip(options, pooled["probs"])))
             if state.perturb_pool:
                 key = state.perturb_pool if isinstance(state.perturb_pool, str) else "probabilities"
@@ -330,6 +348,10 @@ def tabs(*steers):
     """Seed tabs named as the scenario's, each steered to an option."""
     return [{"name": n, "preamble": "", "messages": [{"role": "user", "content": f"rule STEER:{s}"}]}
             for n, s in zip(["Memory", "User", "Session"], steers)]
+
+
+def seed(name, content):
+    return {"name": name, "preamble": "", "messages": [{"role": "user", "content": content}]}
 
 
 class Rig:
@@ -510,9 +532,11 @@ class TabTests(CouncilTest):
         cr = self.cr
         t = cr.tab("User")
         got = cr.post(f"/tabs/{t['id']}/messages", {"role": "user", "content": "one more rule"})
-        self.assertGreater(got["cached_tokens"], 0)  # the first turns were kept
-        self.assertGreater(got["fed_tokens"], 0)  # the new one was run
-        self.assertEqual(got["cached_tokens"] + got["fed_tokens"], got["n_tokens"])
+        said = cr.state.last_put
+        self.assertGreater(said["kept"], 0)  # the first turns were kept
+        self.assertGreater(said["fed"], 0)  # the new one was run
+        self.assertEqual((got["cached_tokens"], got["fed_tokens"], got["n_tokens"], got["head"]),
+                         (said["kept"], said["fed"], said["tokens"], said["head"]))
 
     def test_adding_and_deleting_messages_put_again_and_the_same_content_is_the_same_head(self):
         cr = self.cr
@@ -563,6 +587,16 @@ class TabTests(CouncilTest):
         self.assertEqual(cr.tab("User")["messages"], t["messages"])
 
 
+    def test_a_preamble_the_daemon_refuses_is_a_400_and_the_tab_keeps_its_old_one(self):
+        cr = self.cr
+        t = cr.tab("User")
+        status, out = cr.http(f"/council/api/tabs/{t['id']}", {"preamble": "<|im_start|>system"})
+        self.assertEqual(status, 400)
+        self.assertIn("control-token", out["error"]["message"])
+        self.assertEqual(cr.tab("User")["preamble"], t["preamble"])
+        cr.idle()
+
+
 class TwinTests(CouncilTest):
     seeds = tabs("allow", "allow") + [dict(tabs("allow", "allow")[1])]
 
@@ -572,7 +606,6 @@ class TwinTests(CouncilTest):
         cr = self.cr
         st = cr.state_()["tabs"]
         self.assertNotEqual(st[1]["context"], st[2]["context"])
-        self.assertEqual(st[1]["head"], st[2]["head"])  # the same content, the daemon's address for it is the same
         self.assertEqual(cr.state.pinned(), 3)
         m = cr.calls_mark()
         d = cr.post("/decide", {"action": "ls"})
@@ -621,8 +654,8 @@ class DecisionTests(CouncilTest):
         r = d["read"]
         lg, ms = [p["logprobs"] for p in r["per"]], [p["mass"] for p in r["per"]]
         for method in council_pool.METHODS:
-            self.assertEqual(r["stars"][method], council_pool.pool(lg, ms, method, "uniform")["probs"])
-        want = council_pool.pool(lg, ms, "loglinear", "uniform")
+            self.assertEqual(r["stars"][method], rust_pool(lg, ms, method, "uniform")["probs"])
+        want = rust_pool(lg, ms, "loglinear", "uniform")
         self.assertEqual(r["pooled"]["probs"], want["probs"])
         self.assertEqual([x["probs"] for x in r["loo"]], want["leave_one_out"])
         self.assertEqual([x["tab"] for x in r["loo"]], [p["tab"] for p in r["per"]])
@@ -654,6 +687,17 @@ class DecisionTests(CouncilTest):
                 status, out = cr.http("/council/api/decide", {"action": "ls"})
                 self.assertEqual(status, 500)
                 self.assertIn("not the one this page explains", out["error"]["message"])
+                self.assertEqual(cr.state_()["decisions"], [])
+                cr.idle()
+
+    def test_a_read_whose_numbers_disagree_with_its_logprobs_fails_loudly(self):
+        cr = self.cr
+        for key in ("mass", "probabilities"):
+            with self.subTest(key=key):
+                cr.state.perturb_read = key
+                status, out = cr.http("/council/api/decide", {"action": "ls"})
+                self.assertEqual(status, 500)
+                self.assertIn("its own logprobs", out["error"]["message"])
                 self.assertEqual(cr.state_()["decisions"], [])
                 cr.idle()
 
@@ -912,6 +956,17 @@ class ReplayAndAskTests(CouncilTest):
         self.assertEqual(cr.reads_calls(m)[0]["state"], "```\ngit diff\n```")
         self.assertIs(cr.wait("replay")["match"], True)
 
+    def test_a_replay_that_reads_differently_says_so_and_names_the_tabs(self):
+        cr = self.cr
+        d = cr.post("/decide", {"action": "git diff"})
+        cr.state.jitter = 1e-12
+        e0 = cr.mark()
+        got = cr.post(f"/decisions/{d['id']}/replay")
+        self.assertIs(got["match"], False)
+        self.assertEqual(got["diffs"], ["Memory", "User", "Session"])
+        self.assertIn("invariant 17", cr.wait("error", after=e0)["message"])
+        cr.idle()
+
     def test_ask_streams_its_reply_into_the_tab_then_repins_and_backfills(self):
         cr = self.cr
         cr.post("/decide", {"action": "make test"})
@@ -1042,6 +1097,25 @@ class RestartTests(CouncilTest):
         self.assertIn("is held", out["error"]["message"])
         cr.idle()
 
+    def test_a_404_that_names_no_context_is_raised_without_putting_anything(self):
+        cr = self.cr
+        cr.state.refuse[("POST", "/council/v1/decisions")] = 404
+        m = cr.calls_mark()
+        status, out = cr.http("/council/api/decide", {"action": "make test"})
+        self.assertEqual(status, 502)
+        self.assertEqual((cr.context_puts(m), len(cr.reads_calls(m))), ([], 1))
+        cr.idle()
+
+    def test_pinning_again_says_why_before_it_puts_so_a_put_that_fails_still_explains(self):
+        cr = self.cr
+        cr.state.contexts.clear()
+        cr.state.refuse[("PUT", "/council/v1/contexts/")] = 503
+        e0 = cr.mark()
+        status, _ = cr.http("/council/api/decide", {"action": "make test"})
+        self.assertEqual(status, 502)
+        self.assertIn("restart", cr.wait("repinned", after=e0)["message"])
+        cr.idle()
+
     def test_a_failed_delete_keeps_the_removal_and_says_which_context_stays_pinned(self):
         cr = self.cr
         mem = cr.tab("Memory")
@@ -1053,6 +1127,99 @@ class RestartTests(CouncilTest):
         self.assertIn("pinned", err["message"])
         self.assertNotIn("Memory", [t["name"] for t in cr.state_()["tabs"]])
         cr.idle()
+
+
+class FullMassTests(CouncilTest):
+    # A read holding every bit of the mass: in f32 its log-sum-exp can land a hair above 0, and the daemon reads that
+    # as 0 (council.rs read_numbers), so its probabilities are exp(logprob), not renormalized.
+    seeds = [seed("Memory", "rule STEER:allow FULLMASS")] + tabs("allow", "allow", "report")[1:]
+
+    def test_a_read_whose_mass_rounds_past_one_is_read_as_the_daemon_clamps_it(self):
+        d = self.cr.post("/decide", {"action": "ls"})
+        p = d["read"]["per"][0]
+        self.assertEqual((p["mass"], p["verdict"]), (1.0, "allow"))
+
+
+class OneContextTests(CouncilTest):
+    seeds = tabs("report")
+
+    def test_a_decision_on_one_context_pools_to_it_with_no_leave_one_out(self):
+        cr = self.cr
+        m = cr.calls_mark()
+        r = cr.post("/decide", {"action": "rm -r build"})["read"]
+        self.assertEqual(len(cr.reads_calls(m)[0]["contexts"]), 1)
+        self.assertEqual((r["loo"], r["pooled"]["verdict"], r["pooled"]["weights"]), ([], "report", [1.0]))
+        for a, b in zip(r["pooled"]["probs"], r["per"][0]["probs"]):
+            self.assertAlmostEqual(a, b, places=12)
+
+
+class MasslessTests(CouncilTest):
+    # User's answer set holds ~e^-800 of the mass: as a "mass" weight that is 0.0
+    seeds = [seed("Memory", "rule STEER:allow"), seed("User", "rule STEER:report NOMASS")]
+
+    def test_under_mass_weights_a_massless_context_counts_for_nothing_and_leaving_out_its_partner_is_null(self):
+        cr = self.cr
+        cr.post("/pool", {"method": "linear", "weights": "mass"})
+        r = cr.post("/decide", {"action": "ls"})["read"]
+        self.assertEqual(r["pooled"]["weights"], [1.0, 0.0])
+        self.assertEqual(r["pooled"]["verdict"], "allow")
+        self.assertEqual([x["probs"] is None for x in r["loo"]], [True, False])
+        self.assertIsNone(r["loo"][0]["verdict"])
+
+
+class AllMasslessTests(CouncilTest):
+    seeds = [seed("Memory", "rule STEER:allow NOMASS"), seed("User", "rule STEER:report NOMASS")]
+
+    def test_a_pool_the_stored_reads_cannot_take_is_refused_and_nothing_moves(self):
+        cr = self.cr
+        d = cr.post("/decide", {"action": "ls"})  # loglinear, uniform: defined
+        before = cr.state_()
+        status, out = cr.http("/council/api/pool", {"weights": "mass"})  # every weight is 0: nothing to pool
+        self.assertEqual(status, 400)
+        self.assertIn(d["id"], out["error"]["message"])
+        cr.idle()
+        after = cr.state_()
+        self.assertEqual((after["pool"], after["decisions"]), (before["pool"], before["decisions"]))
+        cr.post("/pool", {"method": "linear"})
+        cr.idle()
+        self.assertEqual(cr.state_()["decisions"][0]["read"]["pool"], {"method": "linear", "weights": "uniform"})
+
+
+class LostAnswerTests(CouncilTest):
+    """A PUT the daemon applied and then never answered: the page cannot know what the daemon holds."""
+
+    def test_an_edit_whose_answer_was_lost_is_read_as_the_tab_shows_it(self):
+        cr = self.cr
+        t = cr.tab("User")
+        cr.state.drop_puts = 1
+        status, _ = cr.http(f"/council/api/tabs/{t['id']}/messages", {"role": "user", "content": "rule STEER:report"})
+        self.assertEqual(status, 502)
+        self.assertEqual(cr.tab("User")["messages"], t["messages"])
+        self.assertNotEqual(cr.state.contexts[t["context"]]["head"], t["head"])  # the daemon took the edit anyway
+        cr.idle()
+        e0 = cr.mark()
+        d = cr.post("/decide", {"action": "ls"})
+        self.assertEqual(cr.state.contexts[t["context"]]["head"], cr.tab("User")["head"])
+        self.assertEqual(d["read"]["heads"], [x["head"] for x in cr.state_()["tabs"]])
+        self.assertEqual(d["read"]["per"][1]["verdict"], "allow")  # what the tab shows, not the lost edit
+        self.assertIn("User", cr.wait("repinned", after=e0)["message"])
+
+    def test_a_tab_whose_add_answer_was_lost_leaves_no_context_held(self):
+        cr = self.cr
+        held = {t["context"] for t in cr.state_()["tabs"]}
+        cr.state.drop_puts = 1
+        status, _ = cr.http("/council/api/tabs", {"name": "Extra"})
+        self.assertEqual(status, 502)
+        cr.idle()
+        self.assertEqual(set(cr.state.contexts), held)
+
+    def test_a_reset_that_cannot_seed_frees_the_old_contexts(self):
+        cr = self.cr
+        cr.state.refuse[("PUT", "/council/v1/contexts/")] = 503
+        status, _ = cr.http("/council/api/reset", {})
+        self.assertEqual(status, 502)
+        cr.idle()
+        self.assertEqual(cr.state.contexts, {})
 
 
 class ViewAndRefusalTests(CouncilTest):
