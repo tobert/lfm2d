@@ -1383,6 +1383,20 @@ class DownTests(unittest.TestCase):
 
 
 class ScenarioTests(unittest.TestCase):
+    def test_nothing_the_model_reads_or_the_page_shows_names_one_person(self):
+        # the council has other users: the scenario's human is "the operator", whoever runs the agent
+        c = council.Council(None, seeds=scenario.TABS)
+        seen = [scenario.ABOUT]
+        for s in scenario.TABS:
+            system, turns = c.held(c.new_tab(s["name"], "#ffffff", s["preamble"], True, s["messages"]))
+            seen += [system, s["name"], s["preamble"]] + [m["content"] for m in turns]
+        seen += [a["text"] + " " + (a.get("note") or "") for a in scenario.ACTIONS]
+        seen += [(STATIC / council.SPEC_DIR / f).read_text() for f in council.SPEC_FILES]
+        html = (STATIC / "council.html").read_text()
+        html = re.sub(r"/\*.*?\*/", "", html, flags=re.S)
+        seen += [line for line in html.splitlines() if not line.lstrip().startswith("//")]
+        self.assertEqual([x for x in seen if "Amy" in x], [])
+
     def test_the_held_contexts_scaffold_is_the_passing_runs_verbatim(self):
         passed = json.loads(PASSED.read_text())
         self.assertEqual((scenario.SLOT0, scenario.OPENING), (passed["slot0"], passed["opening"]))
