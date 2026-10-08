@@ -71,6 +71,14 @@ def test_a_short_run_is_refused():
         cd.score(rows({"M": HINTS}, HINTS)[:14])
 
 
+def test_rows_keep_what_each_tab_described():
+    per = [{"name": "M", "probs": [1, 0, 0], "mass": 1.0, "rendered_sha256": "h",
+            "described": [{"field": "effect", "value": "reads a file"}]}]
+    st = {"decisions": [{"n": 1, "action": "a", "rules": "allow",
+                         "read": {"options": OPTS, "per": per, "pooled": {"probs": [1, 0, 0]}, "pool": {}, "spec": "s"}}]}
+    assert cd.rows_of(st)[0]["described"] == {"M": {"effect": "reads a file"}}
+
+
 def test_rows_follow_play_order_not_list_order():
     st = {"decisions": [
         {"n": 2, "action": "b", "rules": "ask", "read": {"options": OPTS, "per": [], "pooled": {"probs": [0, 1, 0]},

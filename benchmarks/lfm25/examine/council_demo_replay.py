@@ -44,6 +44,7 @@ def rows_of(state: dict) -> list[dict]:
                     "per": {p["name"]: p["probs"] for p in r["per"]},
                     "mass": {p["name"]: p["mass"] for p in r["per"]},
                     "rendered_sha256": {p["name"]: p["rendered_sha256"] for p in r["per"]},
+                    "described": {p["name"]: {x["field"]: x["value"] for x in p["described"]} for p in r["per"]},
                     "pooled": r["pooled"]["probs"], "pool": r["pool"], "spec": r["spec"]})
     return out
 
