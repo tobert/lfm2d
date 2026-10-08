@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import tempfile
 import threading
 import time
 import unittest
@@ -124,6 +125,8 @@ class FakeState:
         self.perturb_read = None  # "mass" or "probabilities": a read whose wire numbers disagree with its logprobs
         self.jitter = 0.0  # added to every read's logprobs (a read that does not repeat)
         self.last_put = None  # the last PUT's answer
+        self.fail_puts = {}  # PUT ordinal (1-based, counted from boot) -> status, once
+        self.n_puts = 0
         # action text (inside the read's fence) -> {tab name: option probabilities}: overrides STEER for that action
         self.by_action = {}
         self.lock = threading.Lock()
@@ -198,6 +201,9 @@ def make_fake(state):
             self.reply(200, {"spec_id": sid, "spec": spec, "template": "fake"})
 
         def put_context(self, cid, b):
+            state.n_puts += 1
+            if state.n_puts in state.fail_puts:
+                return self.fail(state.fail_puts.pop(state.n_puts), "a context build that timed out", "timeout")
             texts = [b.get("system") or ""] + [t.get(k) or "" for t in b["turns"] for k in ("content", "reasoning")]
             if any(c in x for x in texts for c in CONTROL):
                 return self.fail(400, "a turn holds control-token text (\"<|\"): refused, never escaped")
@@ -267,7 +273,8 @@ def make_fake(state):
                 pr = [math.exp(v - m) for v in lp]
                 lps.append(lp)
                 masses.append(math.exp(m))
-                described = {f: f"{f} of {action[:20]}" for f in text_ids}
+                # the daemon sends `described` only when the spec has a text question, and only for those
+                described = {f: f"{f} of {action[:20]}" for f in text_ids} if text_ids else None
                 reads.append({
                     "context": cid, "snapshot": ctx["head"], "described": described,
                     "answers": {qid: {"type": "choice", "choice": options[pr.index(max(pr))],
@@ -357,8 +364,10 @@ def seed(name, content):
 class Rig:
     """A fake daemon, demo/web/server.py on top of it (the council mounted), and the council's events."""
 
-    def __init__(self, seeds=None, actions=None):
+    def __init__(self, seeds=None, actions=None, setup=None):
         self.state = FakeState()
+        if setup is not None:
+            setup(self.state)
         self.fake = ThreadingHTTPServer(("127.0.0.1", 0), make_fake(self.state))
         threading.Thread(target=self.fake.serve_forever, daemon=True).start()
         self.srv = server.make_server("127.0.0.1", 0, "http://127.0.0.1:%d" % self.fake.server_address[1])
@@ -447,9 +456,10 @@ class Rig:
 class CouncilTest(unittest.TestCase):
     seeds = None
     actions = None
+    setup = None  # a staticmethod given the fake's state before the council boots
 
     def setUp(self):
-        self.cr = Rig(self.seeds, self.actions)
+        self.cr = Rig(self.seeds, self.actions, type(self).setup)
 
     def tearDown(self):
         self.cr.close()
@@ -675,9 +685,8 @@ class DecisionTests(CouncilTest):
         d = cr.post("/decide", {"action": "git log"})
         self.assertEqual(cr.reads_calls(m)[0]["pool"], {"method": "loglinear", "weights": "mass"})
         r = d["read"]
-        self.assertEqual(r["pooled"]["probs"], council_pool.pool([p["logprobs"] for p in r["per"]],
-                                                                 [p["mass"] for p in r["per"]], "loglinear",
-                                                                 "mass")["probs"])
+        self.assertEqual(r["pooled"]["probs"], rust_pool([p["logprobs"] for p in r["per"]],
+                                                         [p["mass"] for p in r["per"]], "loglinear", "mass")["probs"])
 
     def test_a_daemon_pool_that_differs_beyond_rounding_fails_the_read_loudly(self):
         cr = self.cr
@@ -782,9 +791,8 @@ class BackfillTests(CouncilTest):
         self.assertEqual(cr.reads_calls(m), [])
         self.assertEqual(ev["cause"][-1]["what"], "pool")
         r = cr.state_()["decisions"][0]["read"]
-        self.assertEqual(r["pooled"]["probs"], council_pool.pool([p["logprobs"] for p in r["per"]],
-                                                                 [p["mass"] for p in r["per"]], "linear",
-                                                                 "uniform")["probs"])
+        self.assertEqual(r["pooled"]["probs"], rust_pool([p["logprobs"] for p in r["per"]],
+                                                         [p["mass"] for p in r["per"]], "linear", "uniform")["probs"])
 
     def test_switching_spec_rereads_under_the_new_spec_and_its_reads_carry_their_descriptions(self):
         cr = self.cr
@@ -1220,6 +1228,44 @@ class LostAnswerTests(CouncilTest):
         self.assertEqual(status, 502)
         cr.idle()
         self.assertEqual(cr.state.contexts, {})
+
+
+class BootRetryTests(CouncilTest):
+    # the second seed's PUT times out once: boot is retried, and must not keep the first attempt's tabs
+    setup = staticmethod(lambda state: state.fail_puts.update({2: 504}))
+
+    def setUp(self):
+        self.retry, council.BOOT_RETRY_S = council.BOOT_RETRY_S, 0.05
+        super().setUp()
+
+    def tearDown(self):
+        super().tearDown()
+        council.BOOT_RETRY_S = self.retry
+
+    def test_a_boot_retried_after_some_seeds_were_put_holds_each_seed_once(self):
+        cr = self.cr
+        st = cr.state_()["tabs"]
+        self.assertEqual([t["name"] for t in st], ["Memory", "User", "Session"])
+        self.assertEqual(set(cr.state.contexts), {t["context"] for t in st})
+
+
+class SpecShapeTests(unittest.TestCase):
+    class Stub:
+        def post(self, path, body):
+            return {"spec_id": "sha256:" + "3" * 64, "spec": body, "template": "fake"}
+
+    def test_the_description_is_the_text_questions_before_the_verdict_and_nothing_else(self):
+        # the daemon describes text questions only (council_decision.rs); a score before the verdict is not one
+        spec = {"name": "s", "instructions": "i", "input_label": "Action",
+                "questions": [{"id": "effect", "type": "text"},
+                              {"id": "risk", "type": "score", "criteria": [{"level": 0}, {"level": 1}]},
+                              {"id": "verdict", "type": "choice", "criteria": [{"option": "allow"}, {"option": "ask"}]}]}
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / council.SPEC_DIR).mkdir()
+            (Path(d) / council.SPEC_DIR / "s.json").write_text(json.dumps(spec))
+            c = council.Council(self.Stub(), spec_files=["s.json"], static=Path(d))
+            c.upload_specs()
+        self.assertEqual((c.specs["s.json"]["field"], c.specs["s.json"]["describe"]), ("verdict", ["effect"]))
 
 
 class ViewAndRefusalTests(CouncilTest):

@@ -462,13 +462,17 @@ class Council:
                 raise RuntimeError(f"{f} asks {self.specs[f]['options']}, {self.spec_files[0]} asks "
                                    f"{first['options']}: switching specs would change what a verdict is")
         self.options = list(first["options"])
+        with self.lock:  # a boot retried after some seeds were put: those are no tab's, and are seeded again
+            left, self.tabs = self.tabs, []
+        for t in left:
+            self.free(t["context"])
         self.seed_tabs()
         self.booted = True
         self.set_status("idle")
 
     def upload_specs(self) -> None:
         """Hold every spec (the same spec is the same id) and read its question off the held spec: the LAST choice
-        question, so the text questions before it are the description."""
+        question; the text questions before it are the description (the daemon describes text questions only)."""
         specs = {}
         for f in self.spec_files:
             body = json.loads((self.static / SPEC_DIR / f).read_text())
@@ -482,7 +486,7 @@ class Council:
             if len(options) < 2:
                 raise RuntimeError(f"{f}: question {qs[q]['id']!r} has fewer than two options")
             specs[f] = {"file": f, "id": held["spec_id"], "field": qs[q]["id"], "options": options,
-                        "input_label": held["spec"]["input_label"], "describe": [x["id"] for x in qs[:q]]}
+                        "input_label": held["spec"]["input_label"], "describe": [x["id"] for x in qs[:q] if x["type"] == "text"]}
         with self.lock:
             self.specs = specs
 
@@ -813,7 +817,7 @@ class Council:
                     self.emit({"type": "tab", "tab": self.tab_view(tab)})
             except ApiError as e:
                 if e.status == 400:
-                    raise _refused_by_daemon(e, "the action") from None
+                    raise _refused_by_daemon(e, "the decision (the action, or the pool over these reads)") from None
                 if e.status != 404:
                     raise
                 if e.param == "spec_id" and "specs" not in recovered:
