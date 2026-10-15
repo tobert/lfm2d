@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: MIT
 # Ported from the megakernel council, service/pool.py (~/src/megakernel-qwen38-flashnext-strixhalo, MIT, 2026-10-03),
 # and written to compute what lfm2d/src/pool.rs computes, operation for operation.
-"""Pooling one question's opinion reads across held contexts, as `/v1/opinion` with `contexts` pools them.
+"""Pooling one question's reads across held contexts, as `/council/v1/decisions` with `contexts` pools them.
 
 Plain Python floats (IEEE f64), no numpy. Every sum over contexts or options is a loop in request order, as in
-lfm2d/src/pool.rs, so the daemon's `pooled` and this module's agree to the bit on the same reads (the council checks
-that on every read and fails loudly when they don't).
+lfm2d/src/pool.rs, so the daemon's pooled answer and this module's agree on the same reads, to float rounding (the
+council checks that on every read, to a tolerance, and fails loudly when they don't).
 
-The inputs are each context's raw option logprobs (the full-vocabulary `logprob` of each option's sequence, in the
-spec's option order) and its raw mass (`exp(sequence_mass)`). The daemon sends those as f32 and widens them to f64
-before pooling; a JSON reader sees the f32's shortest decimal, which is not the same f64, so `f32()` rounds a parsed
-number back to the f32 it was before anything here uses it.
+The inputs are each context's raw option logprobs (the full-vocabulary log probability of each option's answer tokens,
+in the spec's option order: the wire keys them by option name) and its raw mass (`exp` of the answer's `mass`, which
+the wire gives as a log). The contract has the daemon re-derive every number in f64 from those, so there is no
+widening to undo.
 
 - linear:    q = sum_c w_c p_c, renormalized. "Some context supports it."
 - loglinear: q = softmax(sum_c w_c l_c), a product of experts. "The contexts agree on it": sharper, and an option any
@@ -28,15 +28,9 @@ probability is not calibrated just because each context's was: nothing here fits
 from __future__ import annotations
 
 import math
-import struct
 
 METHODS = ("linear", "loglinear")
 WEIGHT_NAMES = ("uniform", "mass")
-
-
-def f32(x: float) -> float:
-    """The f32 a JSON number stood for, widened exactly to f64 (what pool.rs's `f64::from(f32)` sees)."""
-    return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
 def _sum_in_order(xs) -> float:
