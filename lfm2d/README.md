@@ -551,7 +551,7 @@ decided and why (also in the relevant doc comments):
 
 [tobert/lfm2d#3](https://github.com/tobert/lfm2d/issues/3) listed SYCL
 findings that needed an Intel GPU. They are fixed in candle
-`d72b9a8c` (this pin) and here:
+`d72b9a8c` and here:
 
 - **The 8B engine's router bias and conv weights no longer alias freed
   memory.** `QSyclStorage::dequantize`/`dequantize_f16` return owned
@@ -580,6 +580,25 @@ findings that needed an Intel GPU. They are fixed in candle
   nothing in the log. The B70 cold-describe repro passes after the
   freed-memory fix (`opinion_real`), so the aliased router bias was the
   cause.
+
+## Fixed 2026-11-06: SYCL error reporting and rope tables
+
+In candle `75bfdeab` (this pin):
+
+- **A tripped expert-id guard reaches the logits read.** The decode loop
+  never synchronizes; a device-to-host copy now reports (and clears) the
+  guard as `synchronize` does, so a bad id is an error, not numbers
+  computed with expert 0. The read and the clear are one device-side
+  exchange, so a trip on another thread is never wiped unread.
+- **An execution error an internal flush sees is kept until reported.**
+  The pool flushes and the queue's drop can return nothing; a failure they
+  see is held on the queue and returned by the next synchronize or host
+  copy, and the queue has an async handler (SYCL's default terminates).
+- **A rope table longer than the sequence is read right on every
+  backend.** A batched `(b, rows, d/2)` cos/sin table with rows past the
+  sequence had batch 1 onward read batch 0's tail on CPU, CUDA, ROCm, Metal
+  and SYCL; candle-nn cuts it to the sequence first. SYCL also takes an
+  unbatched longer table, as the others do. No lfm2d path passed one.
 
 ## Problems noted, not fixed
 
