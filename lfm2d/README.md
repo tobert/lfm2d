@@ -43,7 +43,7 @@ backend-gated, and the porting work lives in the candle fork.
 |---|---|---|---|---|
 | `rocm` | ROCm toolchain (hipcc, rocBLAS) | Radeon 8060S, gfx1151: everything; production | grouped (shared kernels) | `rocm:gfx1151:hip7.2` |
 | `cuda` | CUDA toolkit (nvcc) | DGX Spark, GB10 sm_121, CUDA 13.0, aarch64, since 2026-09-27: encoder parity, `demo/e2e.py`, real 8B suite | grouped (shared kernels, [docs/lfm25-grouped-prefill.md](../docs/lfm25-grouped-prefill.md)) | `cuda:sm_121:nvcc13.0:drv580.173.02` |
-| `sycl` | oneAPI 2026.1+ (`icpx` on `PATH`), Level Zero, Xe2+ GPU | Arc Pro B70 since 2026-10-02: encoder parity, every endpoint ([docs/lfm2d-b70-endpoint-exercise.md](../docs/lfm2d-b70-endpoint-exercise.md)) | grouped inside `indexed_moe_forward` at `batch*topk >= 64` ([docs/lfm25-sycl-b70.md](../docs/lfm25-sycl-b70.md)) | `sycl:2026.1:Intel(R) Arc(TM) Pro B70 Graphics` |
+| `sycl` | oneAPI 2026.1+ (`icpx` on `PATH`), Level Zero, Xe2+ GPU | Arc Pro B70 since 2026-10-02: encoder parity, every endpoint ([docs/lfm2d-b70-endpoint-exercise.md](../docs/lfm2d-b70-endpoint-exercise.md)) | grouped inside `indexed_moe_forward` at `batch*topk >= 64` ([docs/lfm25-sycl-b70.md](../docs/lfm25-sycl-b70.md)) | `sycl:icpx2026.1:drv1.28.6:Intel(R) Arc(TM) Pro B70 Graphics` |
 | `metal` | macOS | not verified | — | bare `metal` |
 
 The SYCL path differs from ROCm and CUDA in where the grouped prefill is
@@ -52,8 +52,9 @@ packs once per layer, while SYCL reports `false` and switches to its grouped
 GEMM inside each indexed call. F8E4M3 is unimplemented on SYCL and errors
 loudly. The `sycl` build compiles `candle-sycl-kernels` with `icpx`; a
 plain `cargo build` never touches oneAPI. After a candle revision bump,
-clear `target/release/build/candle-sycl-kernels-*` (see the problems
-list below).
+the kernels directory comes from the kernels crate's `links` metadata
+(fixed 2026-11-01, below), so a stale `candle-sycl-kernels-*` build is
+never picked by name.
 
 Candle core/nn/transformers are pinned together to one revision of our fork
 (`tobert/candle`, branch `lfm25-batch`) because crates.io 0.11 carries no
@@ -292,7 +293,9 @@ Errors: `{"error": {"message", "type"}}`. `type` is one of:
 - `"insufficient_storage"` (507) — a pin past half the checkpoint budget,
   or a checkpoint or context that does not fit beside the pins;
 - `"unprocessable"` (422) — an uploaded spec that parses but cannot be
-  served (the load-time refusal text is the message);
+  served (the load-time refusal text is the message), or a `/v1/opinion`
+  description that ran out of tokens before its slot (the message names the
+  field and whether the spec's budget or the context bound it);
 - `"cancelled"` (408) — the client went away before the answer, or the
   daemon is shutting down;
 - `"overloaded"` (503) — the opinion engine's queue is full;
@@ -467,7 +470,7 @@ to traces, metrics, and logs. Device metadata comes from the loaded engine,
 not host hardware inventory; `lfm2d.execution.device_name` carries the
 selected device's identity where the backend can name its target (ROCm:
 `rocm:gfx1151:hip7.2`; CUDA: `cuda:sm_121:nvcc13.0:drv580.173.02`; SYCL:
-`sycl:2026.1:Intel(R) Arc(TM) Pro B70 Graphics`) and is omitted elsewhere, and `lfm2d.candle_rev` names
+`sycl:icpx2026.1:drv1.28.6:Intel(R) Arc(TM) Pro B70 Graphics`) and is omitted elsewhere, and `lfm2d.candle_rev` names
 the candle build. Metrics:
 `lfm2d.worker.queue_depth` (observable gauge over an `AtomicUsize`,
 incremented on send, decremented when the worker picks a command up),
@@ -544,46 +547,42 @@ decided and why (also in the relevant doc comments):
    in one store, coverage accounting is a query rather than a second write
    path, and lfm2d keeps one job.
 
+## Fixed 2026-11-01: the SYCL post-merge review
+
+[tobert/lfm2d#3](https://github.com/tobert/lfm2d/issues/3) listed SYCL
+findings that needed an Intel GPU. They are fixed in candle
+`d72b9a8c` (this pin) and here:
+
+- **The 8B engine's router bias and conv weights no longer alias freed
+  memory.** `QSyclStorage::dequantize`/`dequantize_f16` return owned
+  storage; the cached dense copies are internal to the matmul and
+  grouped-MoE paths, where the weight outlives the call. The cache is one
+  process-wide LRU under a byte budget (`CANDLE_SYCL_DEQUANT_CACHE_MIB`,
+  default 2 GiB), so it no longer grows to ~15 GB on the 8B-A1B, and the f32
+  and f16 forms coexist.
+- **The mat-vec scratch is thread-safe.** A cached-scratch mat-vec holds a
+  submit lock from fetch to enqueue, so two same-shape calls on different
+  threads cannot interleave their three submits; eviction defers the free.
+- **The indexed-MoE integer kernel guards expert ids.** An id outside the
+  weight stack trips a device-side guard reported at the next synchronize,
+  instead of reading out of bounds, without a host round trip per layer.
+- **`snapshot_id` names the SYCL build and driver**:
+  `sycl:icpx<release>:drv<release>:<device name>`. The icpx release is
+  recorded by the kernels build script (not read from the host's oneAPI),
+  and the driver release comes from the SYCL device, as on CUDA.
+- **`lfm2d/build.rs` takes the kernels directory from the kernels crate's
+  `links` metadata** (`DEP_CANDLE_SYCL_ROOT`), so a stale
+  `candle-sycl-kernels-*` build cannot be picked by name.
+- **A description logs its start and is bounded**: 64 generated tokens per
+  field up to the last asked slot, at least 512 (`DESCRIBE_TOKEN_BUDGET`),
+  capped by the context; a read that runs out is a `422` naming the field.
+  A cold `/v1/opinion` read can no longer walk to the client deadline with
+  nothing in the log. The B70 cold-describe repro passes after the
+  freed-memory fix (`opinion_real`), so the aliased router bias was the
+  cause.
+
 ## Problems noted, not fixed
 
-- **`snapshot_id` names the GPU target on ROCm and CUDA, and only part of
-  it on SYCL.** It hashes the device identity and the candle revision
-  (`CANDLE_REV`, read from `Cargo.lock` by `lfm2d/build.rs`). ROCm's
-  (`rocm:gfx1151:hip7.2`, since 2026-09-24) comes from the fork's
-  `RocmDevice::arch()`/`hip_version()`. CUDA's
-  (`cuda:sm_121:nvcc13.0:drv580.173.02`, since 2026-09-27) is the compute
-  capability, the nvcc release in the header of candle's own PTX, and the
-  driver release from `/proc/driver/nvidia/version`: the driver
-  JIT-compiles that PTX, so a driver update can move the numbers. SYCL's
-  (`sycl:<icpx>:<device name>`, since 2026-10-02) reads the compiler release
-  from `CANDLE_SYCL_ICPX_VERSION` at run time, defaulting to `2026.1`, not
-  from the build that made `libcandle_sycl.so`; and the kernels build to
-  SPIR-V that the GPU driver JIT-compiles, so, as on CUDA, the driver
-  release belongs in the identity and is not there yet. Metal still
-  reports the bare backend name.
-- **SYCL: the 8B engine's router bias and conv weights alias freed
-  memory** (found in review 2026-10-03, code-read; not yet reproduced on a
-  device). The fork's `QSyclStorage` hands `dequantize` callers a
-  non-owning view of a per-storage cache, and `quantized_lfm2_moe.rs`
-  dequantizes `exp_probs_b.bias` and `shortconv.conv.weight` from
-  temporary QTensors, so the cache entry returns to the pool while the
-  model still reads it. Encoder parity cannot see it (no QTensor there).
-  Treat 8B numbers measured on SYCL before the fix as suspect.
-- **SYCL: a cold `/v1/opinion` describe runs until the client deadline.**
-  Seen on the B70 (2026-10-02, [docs/lfm2d-b70-endpoint-exercise.md](../docs/lfm2d-b70-endpoint-exercise.md)):
-  with the described-state cache cold, the read holds the worker at one
-  core until `timeout_ms`, then returns `cancelled`; warm reads take 79-97
-  ms. It answers cancellation, so the worker is walking, not deadlocked:
-  `describe_then_read` decodes up to `context_limit` with no budget of its
-  own and logs nothing until it finishes, and the two cold describes that
-  did finish took 17.8 and 25.7 s. Not seen on ROCm or CUDA. The aliased
-  router bias above is a candidate contributing factor; re-run after it.
-- **SYCL: a stale kernels library survives a candle bump.**
-  `lfm2d/build.rs` rpaths the newest-named
-  `target/<profile>/build/candle-sycl-kernels-*/out` that holds
-  `libcandle_sycl.so`; with several hash dirs present, name order is not
-  build order. Clear those dirs after a bump until the kernels crate hands
-  its path down directly.
 - **Spec registration telemetry has no source address.** The daemon has
   no `ConnectInfo` wiring, so a registration or eviction log line cannot
   say who uploaded the spec.

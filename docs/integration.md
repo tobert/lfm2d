@@ -72,12 +72,13 @@ calibration does not transfer between specs, and the failure is silent.
 `snapshot_id` covers the weights, tokenizer, template, rendered prefix,
 repetition penalty and spec, and since 2026-09-24 the device target
 (`GET /v1/adjudicator`'s `device`, e.g. `rocm:gfx1151:hip7.2`,
-`cuda:sm_121:nvcc13.0:drv580.173.02`, or `sycl:2026.1:Intel(R) Arc(TM) Pro B70
-Graphics`) and the candle build (`candle_rev`), because the same weights give
-different numbers on another GPU target, kernel build or, on CUDA, driver. The
-SYCL identity names the oneAPI compiler that built the kernels and the device
-the selected ordinal resolved to. On Metal `device` is still the bare
-backend name.
+`cuda:sm_121:nvcc13.0:drv580.173.02`, or
+`sycl:icpx2026.1:drv1.28.6:Intel(R) Arc(TM) Pro B70 Graphics`) and the candle
+build (`candle_rev`), because the same weights give
+different numbers on another GPU target, kernel build or driver. The
+SYCL identity names the oneAPI compiler that built the kernels, the installed
+driver that JIT-compiles their SPIR-V, and the device the selected ordinal
+resolved to. On Metal `device` is still the bare backend name.
 Invariant 5 still holds for scores from the encoder heads; an opinion is a
 different instrument with this contract of its own.
 
@@ -101,7 +102,12 @@ order and each choice field's options. Never hard-code a spec name, a
 field name, an option, or an option's position — invariants 1–3 again,
 for the opinion vocabulary. `described` is an ordered list of
 `{field, value}`, not an object; the order is the spec's. The menu now
-also carries uploads (invariant 12) beside the boot-time specs.
+also carries uploads (invariant 12) beside the boot-time specs. A
+description generates every field before the last asked slot and is
+bounded at 64 tokens per field (at least 512, capped by the context the
+input leaves); a read that needs more is refused with `422`, naming the
+field and which bound it hit, so long text fields or a long input are a
+spec or input problem, not a server failure.
 
 **12. A spec's `id` is a content hash; an unknown `spec` means upload it.**
 Every menu entry (boot or uploaded) has an `id`: the lowercase hex sha256

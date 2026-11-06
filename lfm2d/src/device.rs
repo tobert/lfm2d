@@ -122,16 +122,21 @@ fn identity_of(device: &Device, backend: DeviceArg) -> Result<String, String> {
         Device::Rocm(d) => Ok(format!("rocm:{}:hip{}", d.arch(), d.hip_version())),
         #[cfg(feature = "sycl")]
         Device::Sycl(d) => {
-            // oneAPI 2026.x: the compiler release that built libcandle_sycl.so
-            // (its kernels JIT nothing at runtime), plus the GPU's own name —
-            // "sycl:2026.1:Intel(R) Arc(TM) Pro B70 Graphics".
+            // What decides a SYCL result: the icpx release that compiled
+            // libcandle_sycl.so (its kernels are SPIR-V the driver JITs, so
+            // the installed driver also counts), and the GPU's own name —
+            // "sycl:icpx2026.1:drv1.28.6:Intel(R) Arc(TM) Pro B70 Graphics".
+            // The compiler release comes from the build that made the
+            // library, never from the host's oneAPI.
             let info = d
                 .queue()
                 .device_info()
                 .map_err(|e| format!("sycl identity: device info: {e}"))?;
-            let icpx = std::env::var("CANDLE_SYCL_ICPX_VERSION")
-                .unwrap_or_else(|_| "2026.1".into());
-            Ok(format!("sycl:{icpx}:{}", info.name))
+            sycl_identity(
+                candle_core::sycl_backend::k::ICPX_VERSION,
+                &info.driver_version,
+                &info.name,
+            )
         }
         #[cfg(feature = "cuda")]
         Device::Cuda(d) => {
@@ -144,6 +149,23 @@ fn identity_of(device: &Device, backend: DeviceArg) -> Result<String, String> {
         }
         _ => Ok(backend.as_str().to_string()),
     }
+}
+
+/// Three things decide what a SYCL device computes: the icpx release that
+/// compiled `libcandle_sycl.so`, the driver whose JIT turns its SPIR-V into
+/// machine code, and the GPU. A blank driver or name is refused rather than
+/// silently producing a trailing colon or an identity two builds share.
+#[cfg_attr(not(feature = "sycl"), allow(dead_code))]
+fn sycl_identity(icpx: &str, driver: &str, name: &str) -> Result<String, String> {
+    let driver = driver.trim();
+    let name = name.trim();
+    if driver.is_empty() {
+        return Err("sycl identity: the driver reports no version".into());
+    }
+    if name.is_empty() {
+        return Err("sycl identity: the device reports no name".into());
+    }
+    Ok(format!("sycl:icpx{icpx}:drv{driver}:{name}"))
 }
 
 /// Three things decide what a CUDA device computes: the target the kernels
@@ -290,6 +312,29 @@ mod tests {
         assert!(nvcc_release(".version 9.0\n.target sm_121f\n").is_err());
         assert!(driver_release("GCC version:  gcc version 13.3.0\n").is_err());
         assert!(driver_release("NVRM version: NVIDIA UNIX Open Kernel Module for aarch64\n").is_err());
+    }
+
+    #[cfg(feature = "sycl")]
+    #[test]
+    fn sycl_identity_names_build_driver_and_device() {
+        assert_eq!(
+            sycl_identity("2026.1", "1.28.6", "Intel(R) Arc(TM) Pro B70 Graphics").unwrap(),
+            "sycl:icpx2026.1:drv1.28.6:Intel(R) Arc(TM) Pro B70 Graphics"
+        );
+        // The driver's string can carry padding; the identity must not.
+        assert_eq!(
+            sycl_identity("2026.1", " 1.28.6 ", "Intel(R) Arc(TM) Pro B70 Graphics").unwrap(),
+            "sycl:icpx2026.1:drv1.28.6:Intel(R) Arc(TM) Pro B70 Graphics"
+        );
+    }
+
+    #[cfg(feature = "sycl")]
+    #[test]
+    fn sycl_identity_parts_fail_rather_than_guess() {
+        assert!(sycl_identity("2026.1", "", "Intel(R) Arc(TM) Pro B70 Graphics").is_err());
+        assert!(sycl_identity("2026.1", "   ", "Intel(R) Arc(TM) Pro B70 Graphics").is_err());
+        assert!(sycl_identity("2026.1", "1.28.6", "").is_err());
+        assert!(sycl_identity("2026.1", "1.28.6", "  ").is_err());
     }
 
     #[test]

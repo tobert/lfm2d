@@ -38,6 +38,28 @@ pub const CANDLE_REV: &str = env!("LFM2D_CANDLE_REV");
 /// puts it anywhere else.
 const EOS: u32 = 124900;
 const MAX_NEW: usize = 2048;
+
+/// Floor on the tokens one opinion description may generate, and the ceiling
+/// the per-field allowance never exceeds without the context's own limit.
+/// A description is bounded at [`DESCRIBE_TOKENS_PER_FIELD`] tokens for every
+/// field up to and including the last asked slot, never below this floor: a
+/// fixed cap turned valid specs with several text fields into server errors
+/// (a ten-field spec of one-sentence answers needs a few hundred tokens), and
+/// a run that needs more than its allowance is a spec or model problem, not a
+/// reason to decode to `context_limit`. Before this, `describe_then_read`
+/// could walk thousands of tokens with no log until it finished (the cold
+/// describe seen on the B70, 2026-10-02).
+const DESCRIBE_TOKEN_BUDGET: usize = 512;
+/// Tokens allowed per field when sizing a description's budget.
+const DESCRIBE_TOKENS_PER_FIELD: usize = 64;
+
+/// The tokens a description may generate for `fields` fields (every field up
+/// to and including the last asked slot) when `remaining` tokens of context
+/// are left after the prompt: the per-field allowance, never below
+/// [`DESCRIBE_TOKEN_BUDGET`], never past the context.
+fn describe_budget(fields: usize, remaining: usize) -> usize {
+    remaining.min(DESCRIBE_TOKEN_BUDGET.max(DESCRIBE_TOKENS_PER_FIELD.saturating_mul(fields)))
+}
 /// `/v1/adjudicate`'s input cap: `/v1/opinion`'s 64 KiB state plus
 /// headroom for the rendered `{input_label}:\n`, so an escalation of a
 /// full-size opinion is never refused (pinned by
@@ -438,7 +460,10 @@ pub enum Failure {
     /// refusals `LoadedSpec::load` runs (grammar compile, tokenization,
     /// opinion block split) — the same checks a boot spec passes before it
     /// ever reaches a request, now surfaced to the uploader instead of
-    /// exiting the process.
+    /// exiting the process. Also a `/v1/opinion` read whose description ran
+    /// out of tokens before its slot (the spec's per-field budget or the
+    /// context the input leaves): the request is well formed, the spec and
+    /// input together cannot be served.
     Unprocessable(String),
     /// A boot-time spec cannot be deleted — `DELETE /v1/opinion/specs/{id}`
     /// against an `--opinion-spec`.
@@ -1633,6 +1658,30 @@ mod failure_wire_tests {
         for (failure, status, expected) in cases {
             assert_eq!(kind(failure).await, (status, expected.to_string()));
         }
+    }
+}
+
+#[cfg(test)]
+mod describe_budget_tests {
+    use super::*;
+
+    #[test]
+    fn the_floor_holds_for_a_short_spec() {
+        assert_eq!(describe_budget(1, 4000), DESCRIBE_TOKEN_BUDGET);
+        assert_eq!(describe_budget(8, 4000), DESCRIBE_TOKEN_BUDGET);
+    }
+
+    #[test]
+    fn the_allowance_scales_past_the_floor_with_the_fields() {
+        let fields = DESCRIBE_TOKEN_BUDGET / DESCRIBE_TOKENS_PER_FIELD + 2;
+        assert_eq!(describe_budget(fields, 100_000), fields * DESCRIBE_TOKENS_PER_FIELD);
+    }
+
+    #[test]
+    fn the_context_caps_the_allowance() {
+        assert_eq!(describe_budget(1, 3), 3);
+        assert_eq!(describe_budget(1_000, 700), 700);
+        assert_eq!(describe_budget(usize::MAX, 9), 9);
     }
 }
 
@@ -3246,6 +3295,20 @@ impl Adjudicator {
                 }
                 let prefill_ms = begin.elapsed().as_secs_f64() * 1000.;
                 let describe = Instant::now();
+                // Every field up to the last asked slot is generated, and a
+                // text field is not length-limited, so the allowance scales
+                // with the spec instead of a fixed cap that would refuse
+                // valid multi-field specs.
+                let remaining = context_limit - prompt_ids.len();
+                let describe_budget = describe_budget(last.describe.len() + 1, remaining);
+                tracing::info!(
+                    spec = %request.spec,
+                    spec_id = %spec.id,
+                    prompt_tokens = prompt_ids.len(),
+                    context_limit,
+                    describe_budget,
+                    "opinion: describing the input"
+                );
                 let mut sampler = crate::constrain::Decoder::new(
                     Some(&grammar),
                     logits.device(),
@@ -3257,7 +3320,7 @@ impl Adjudicator {
                 let mut text = String::new();
                 let mut slots = Vec::with_capacity(questions.len());
                 let mut slot_text = questions[0].slot_text();
-                for _ in prompt_ids.len()..context_limit {
+                for _ in 0..describe_budget {
                     check()?;
                     let token = sampler.sample(&logits)?;
                     if self.tokenizer.id_to_token(token).is_none() {
@@ -3320,12 +3383,34 @@ impl Adjudicator {
                 }
                 if slots.len() < questions.len() {
                     // The grammar makes every field reachable and required,
-                    // so this is the context running out or the model
-                    // ending the turn where the grammar forbids it — loud,
-                    // never a read off the wrong slot.
+                    // so this is one of two things: the allowance ran out
+                    // (the spec's per-field budget, or the context the input
+                    // left — both a spec or input problem, refused as 422),
+                    // or the model ended the turn where the grammar forbids
+                    // it — loud, never a read off the wrong slot.
+                    let field = &questions[slots.len()].field;
+                    if generated.len() == describe_budget {
+                        let bound = if describe_budget == remaining {
+                            "the context the input leaves"
+                        } else {
+                            "the spec's per-field budget"
+                        };
+                        tracing::warn!(
+                            spec = %request.spec,
+                            spec_id = %spec.id,
+                            field = %field,
+                            described_tokens = generated.len(),
+                            describe_budget,
+                            bound,
+                            "opinion: description ran out of tokens before the slot"
+                        );
+                        return Err(Failure::Unprocessable(format!(
+                            "description ended before the {field:?} slot after {} tokens ({bound}, {describe_budget} tokens): shorten the input or the spec's text fields",
+                            generated.len()
+                        )));
+                    }
                     return Err(Failure::Internal(format!(
-                        "description ended before the {:?} slot after {} tokens: {text:?}",
-                        questions[slots.len()].field,
+                        "description ended before the {field:?} slot after {} tokens (budget {describe_budget}): {text:?}",
                         generated.len()
                     )));
                 }
