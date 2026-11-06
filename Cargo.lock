@@ -282,7 +282,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "candle-core"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "byteorder",
  "candle-kernels",
@@ -316,7 +316,7 @@ dependencies = [
 [[package]]
 name = "candle-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "cudaforge",
 ]
@@ -324,7 +324,7 @@ dependencies = [
 [[package]]
 name = "candle-metal-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "block2",
  "half",
@@ -339,7 +339,7 @@ dependencies = [
 [[package]]
 name = "candle-nn"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "candle-core",
  "candle-metal-kernels",
@@ -357,7 +357,7 @@ dependencies = [
 [[package]]
 name = "candle-rocm-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "dirs",
  "fslock",
@@ -370,7 +370,7 @@ dependencies = [
 [[package]]
 name = "candle-sycl-kernels"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "half",
  "parking_lot",
@@ -379,7 +379,7 @@ dependencies = [
 [[package]]
 name = "candle-transformers"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "byteorder",
  "candle-core",
@@ -397,7 +397,7 @@ dependencies = [
 [[package]]
 name = "candle-ug"
 version = "0.11.0"
-source = "git+https://github.com/tobert/candle?rev=d72b9a8c2bc52d56ac43a351f9ef50fa4008c156#d72b9a8c2bc52d56ac43a351f9ef50fa4008c156"
+source = "git+https://github.com/tobert/candle?rev=75bfdeabed2a9e3104c7411db987156046259b04#75bfdeabed2a9e3104c7411db987156046259b04"
 dependencies = [
  "ug",
  "ug-cuda",
@@ -820,7 +820,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2402,7 +2402,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2721,7 +2721,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3276,7 +3276,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
