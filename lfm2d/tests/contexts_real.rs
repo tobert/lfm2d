@@ -131,16 +131,20 @@ fn held_contexts_and_multi_context_reads_on_the_real_model() {
     // turn forwards from the longest held context, never from the chat's
     // assistant checkpoint, though it extends those very ids.
     //
-    // The turn must end on its own (the replay needs a whole reply), so the
-    // cap is far above any backend's length: this greedy turn takes 297
-    // tokens on CPU and 361 on SYCL (2026-11-06; the first thinking word is a
-    // 0.02-nat tie between "The" and "We", so backends take different paths).
+    // The turn must end on its own with its reasoning closed (the replay
+    // needs a whole reply), so the cap sits well above the measured lengths:
+    // this greedy turn took 297 tokens on CPU (through the daemon) and 361 on
+    // SYCL (2026-11-06). The first thinking word is a 0.02-nat tie between
+    // "The" and "We" (`/v1/probe`), so backends take different paths; a new
+    // backend re-measures. Above ~1.9k the chat's own context check refuses
+    // the request instead.
     let started: lfm2d::chat_session::ChatRequest = serde_json::from_value(json!({
         "system": SYSTEM, "messages": turns(1).as_array().unwrap()[..1], "max_tokens": 1024
     }))
     .unwrap();
     let turn = a.chat(&started, &|_| {}, &|| Ok(())).expect("a chat turn");
     assert_eq!(turn.finish_reason, "stop", "{:?}", turn.text);
+    assert!(turn.content.is_some(), "the reasoning region never closed: {:?}", turn.text);
     let replayed = build(
         &mut a,
         &context(
