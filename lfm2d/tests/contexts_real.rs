@@ -130,8 +130,13 @@ fn held_contexts_and_multi_context_reads_on_the_real_model() {
     // context's prefill. A context that re-renders a chat's reply and adds a
     // turn forwards from the longest held context, never from the chat's
     // assistant checkpoint, though it extends those very ids.
+    //
+    // The turn must end on its own (the replay needs a whole reply), so the
+    // cap is far above any backend's length: this greedy turn takes 297
+    // tokens on CPU and 361 on SYCL (2026-11-06; the first thinking word is a
+    // 0.02-nat tie between "The" and "We", so backends take different paths).
     let started: lfm2d::chat_session::ChatRequest = serde_json::from_value(json!({
-        "system": SYSTEM, "messages": turns(1).as_array().unwrap()[..1], "max_tokens": 256
+        "system": SYSTEM, "messages": turns(1).as_array().unwrap()[..1], "max_tokens": 1024
     }))
     .unwrap();
     let turn = a.chat(&started, &|_| {}, &|| Ok(())).expect("a chat turn");
